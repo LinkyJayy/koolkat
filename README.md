@@ -12,6 +12,7 @@ A private, Snapchat-style photo app. You take photos in the app with the front o
 - **Disappearing snaps.** A snap shows for 10 seconds (or until you tap) and can only be opened once. When every recipient has opened it, the server deletes the encrypted data. Unopened snaps expire after 30 days.
 - **Streaks.** 🔥 A streak grows by one for each day both friends snap each other. ⌛ means you'll lose it if you don't both snap today. A missed day resets it.
 - **Sent view.** Shows "Delivered" or "Opened" for snaps you've sent.
+- **Light and dark mode.** Choose System, Light or Dark under *Appearance* on the sign-in screen or in your profile. The choice is remembered on that device.
 
 ## End-to-end encryption
 

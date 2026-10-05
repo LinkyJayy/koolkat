@@ -471,7 +471,7 @@ async function loadInbox() {
 
 function renderInbox() {
   const empty = $('inbox-empty');
-  empty.textContent = 'No snaps yet. When friends send you snaps, they show up here.';
+  $('inbox-empty-text').textContent = 'No snaps yet. When friends send you snaps, they show up here.';
   empty.hidden = state.inbox.length > 0;
   $('inbox-list').replaceChildren(
     ...state.inbox.map((s) =>
@@ -502,7 +502,7 @@ function renderInbox() {
 
 function renderSent(snaps) {
   const empty = $('inbox-empty');
-  empty.textContent = "You haven't sent any snaps yet.";
+  $('inbox-empty-text').textContent = "You haven't sent any snaps yet.";
   empty.hidden = snaps.length > 0;
   $('inbox-list').replaceChildren(
     ...snaps.map((s) => {
@@ -748,6 +748,35 @@ $('btn-profile').addEventListener('click', async () => {
   };
   dialog.showModal();
 });
+
+// ---------- appearance ----------
+const THEMES = [
+  ['system', 'System'],
+  ['light', 'Light'],
+  ['dark', 'Dark'],
+];
+
+function renderThemePickers() {
+  const current = window.koolkatTheme.get();
+  for (const picker of document.querySelectorAll('[data-theme-picker]')) {
+    picker.replaceChildren(
+      ...THEMES.map(([value, label]) =>
+        el('button', {
+          type: 'button',
+          role: 'radio',
+          class: `tab${value === current ? ' active' : ''}`,
+          'aria-checked': String(value === current),
+          text: label,
+          onclick: () => {
+            window.koolkatTheme.set(value);
+            renderThemePickers();
+          },
+        })
+      )
+    );
+  }
+}
+renderThemePickers();
 
 // ---------- boot ----------
 async function boot() {
