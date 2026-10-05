@@ -1,7 +1,7 @@
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { defaultDatabasePath, openDatabase } from '../server/db.js';
-import { cleanup, createApp } from '../server/app.js';
+import { INBOX_PAGE_SIZE, cleanup, createApp } from '../server/app.js';
 import { DAY_MS, dayNumber } from '../server/streaks.js';
 import { createPusher } from '../server/push.js';
 import {
@@ -185,7 +185,7 @@ describe('friends and snaps', () => {
     assert.equal(res.status, 403);
   });
 
-  test('a snap is end-to-end encrypted, viewable once, and only by its recipient', async () => {
+  test('a snap is end-to-end encrypted, kept after viewing, and only for its recipient', async () => {
     const sent = await sendSnap(bob, [carol], 'look at this cat 🐱');
     assert.equal(sent.status, 201);
 
@@ -211,18 +211,52 @@ describe('friends and snaps', () => {
     await assert.rejects(decryptSnap(snap, dave.privateKey, carol.id));
 
     await call('POST', `/snaps/${sent.body.id}/viewed`, { token: carol.token });
-    assert.equal((await call('GET', `/snaps/${sent.body.id}`, { token: carol.token })).status, 410);
-    assert.equal(db.prepare('SELECT ciphertext FROM snaps WHERE id = ?').get(sent.body.id).ciphertext, null);
+    // Still there after viewing, and still decryptable by carol only.
+    const again = await call('GET', `/snaps/${sent.body.id}`, { token: carol.token });
+    assert.equal(again.status, 200);
+    assert.equal((await decryptSnap(again.body, carol.privateKey, carol.id)).caption, 'look at this cat 🐱');
+    assert.equal((await call('GET', `/snaps/${sent.body.id}`, { token: dave.token })).status, 404);
+    const after = (await call('GET', '/snaps/inbox', { token: carol.token })).body.snaps[0];
+    assert.equal(after.opened, true);
+    assert.equal(after.available, true);
 
     const sentList = (await call('GET', '/snaps/sent', { token: bob.token })).body.snaps;
     assert.equal(sentList.find((s) => s.id === sent.body.id).recipients[0].opened, true);
   });
 
-  test('unfriending hides unopened snaps', async () => {
+  test('unfriending hides saved snaps; becoming friends again shows them', async () => {
     await befriend(bob, dave);
     const sent = await sendSnap(bob, [dave]);
     await call('DELETE', `/friends/${bob.id}`, { token: dave.token });
     assert.equal((await call('GET', `/snaps/${sent.body.id}`, { token: dave.token })).status, 403);
+    assert.equal((await call('GET', '/snaps/inbox', { token: dave.token })).body.snaps.length, 0);
+    await befriend(bob, dave);
+    assert.equal((await call('GET', `/snaps/${sent.body.id}`, { token: dave.token })).status, 200);
+  });
+
+  test('a recipient can delete their copy; the data goes once nobody has it', async () => {
+    const sent = await sendSnap(bob, [carol, dave]);
+    const id = sent.body.id;
+    assert.equal((await call('DELETE', `/snaps/${id}`, { token: carol.token })).status, 200);
+    assert.equal((await call('GET', `/snaps/${id}`, { token: carol.token })).status, 404);
+    assert.equal((await call('GET', `/snaps/${id}`, { token: dave.token })).status, 200, "dave's copy stays");
+    assert.equal((await call('DELETE', `/snaps/${id}`, { token: bob.token })).status, 404, 'sender is not a recipient');
+    await call('DELETE', `/snaps/${id}`, { token: dave.token });
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM snaps WHERE id = ?').get(id).n, 0);
+  });
+
+  test('the inbox is paged, newest first', async () => {
+    for (let i = 0; i < INBOX_PAGE_SIZE + 3; i++) {
+      now += 1000;
+      await sendSnap(bob, [carol], `n${i}`);
+    }
+    const first = (await call('GET', '/snaps/inbox', { token: carol.token })).body;
+    assert.equal(first.snaps.length, INBOX_PAGE_SIZE);
+    assert.equal(first.hasMore, true);
+    const next = (await call('GET', `/snaps/inbox?before=${first.snaps.at(-1).createdAt}`, { token: carol.token })).body;
+    assert.ok(next.snaps.length >= 3);
+    assert.ok(next.snaps.every((s) => s.createdAt < first.snaps.at(-1).createdAt));
+    assert.equal(new Set([...first.snaps, ...next.snaps].map((s) => s.id)).size, first.snaps.length + next.snaps.length);
   });
 });
 
@@ -375,7 +409,10 @@ describe('cross-origin access (GitHub Pages)', () => {
   });
 });
 
-test('cleanup removes expired snaps', () => {
+test('cleanup removes expired sessions but keeps snaps', () => {
+  const snapsBefore = db.prepare('SELECT COUNT(*) AS n FROM snaps').get().n;
   cleanup(db, now + 365 * DAY_MS);
-  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM snaps').get().n, 0);
+  assert.ok(snapsBefore > 0);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM snaps').get().n, snapsBefore);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM sessions').get().n, 0);
 });

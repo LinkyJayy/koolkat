@@ -1,6 +1,6 @@
 # KoolKat
 
-A private, Snapchat alternative. You take photos in the app with the front or rear camera, add a caption, and send them to friends. They're **end-to-end encrypted**, can only go to **friends**, disappear after they're opened, and build **streaks** when you and a friend snap each other every day.
+A private, Snapchat alternative. You take photos in the app with the front or rear camera, add a caption, and send them to friends. They're **end-to-end encrypted**, can only go to **friends**, stay saved so you can view them again, and build **streaks** when you and a friend snap each other every day.
 
 ## Features
 
@@ -9,7 +9,8 @@ A private, Snapchat alternative. You take photos in the app with the front or re
 - **Friends-only.** The server refuses to deliver a snap to anyone who isn't an accepted friend. It also refuses to let a recipient download a snap after the two of them stop being friends.
 - **Camera.** Uses the front or rear camera with a flip button. Selfies are mirrored like a normal selfie camera.
 - **Captions.** Tap the photo to add a caption, and tap somewhere else to move it. The caption is encrypted along with the photo.
-- **Disappearing snaps.** A snap shows for 10 seconds (or until you tap) and can only be opened once. When every recipient has opened it, the server deletes the encrypted data. Unopened snaps expire after 30 days.
+- **Saved snaps.** Snaps you receive stay in your inbox, so you can open them again whenever you like. They stay end-to-end encrypted on the server, and only the friends a snap was sent to can open it. If you unfriend someone, their snaps are hidden from you (and yours from them) until you're friends again.
+- **Deleting snaps.** Open a snap and tap 🗑 to remove it from your inbox. Once every recipient has deleted it, the encrypted data is removed from the server for good.
 - **Streaks.** 🔥 A streak grows by one for each day both friends snap each other. ⌛ means you'll lose it if you don't both snap today. A missed day resets it.
 - **Sent view.** Shows "Delivered" or "Opened" for snaps you've sent.
 - **Push notifications.** 🔔 Get notified about new snaps, friend requests, accepted requests, and streaks that are about to end. Turn them on from the banner on the Snaps screen or in your profile. Notifications only say *who* sent something. The snap itself stays end-to-end encrypted.
@@ -139,10 +140,11 @@ All endpoints are under `/api` and take and return JSON. Authenticated endpoints
 | POST | `/friends/:id/accept` | Accept a request |
 | DELETE | `/friends/:id` | Decline, cancel or unfriend |
 | POST | `/snaps` | Send an encrypted snap: `iv, ephemeralPublicKey, ciphertext, recipients[{userId, wrappedKey, wrapIv}]` |
-| GET | `/snaps/inbox` | Received snaps (metadata only) |
+| GET | `/snaps/inbox?before=` | Received snaps from current friends, newest first (metadata only, 50 per page) |
 | GET | `/snaps/sent` | Sent snaps and who has opened them |
-| GET | `/snaps/:id` | Download an unopened snap's ciphertext (recipient and friend only) |
-| POST | `/snaps/:id/viewed` | Mark as opened. The data is deleted once everyone has opened it |
+| GET | `/snaps/:id` | Download a snap's ciphertext (recipients who are still friends with the sender only) |
+| POST | `/snaps/:id/viewed` | Mark as opened, so the sender sees "Opened" |
+| DELETE | `/snaps/:id` | Remove a snap from your inbox. The data is deleted once no recipient has it |
 | GET | `/push/key` | The server's VAPID public key |
 | POST | `/push/subscribe` | Save this device's `PushSubscription` (as JSON) |
 | POST | `/push/unsubscribe` | `endpoint`: stop notifications for a device |

@@ -16,7 +16,7 @@ import { createPusher, parseSubscription } from './push.js';
 
 const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 
-export const SNAP_TTL_MS = 30 * 24 * 60 * 60 * 1000; // unopened snaps vanish after 30 days
+export const INBOX_PAGE_SIZE = 50;
 export const MAX_SNAP_BYTES = 8 * 1024 * 1024;
 export const MAX_RECIPIENTS = 50;
 
@@ -158,19 +158,23 @@ export function createApp({
     insertRecipient: db.prepare(`
       INSERT INTO snap_recipients (snap_id, recipient_id, wrapped_key, wrap_iv)
       VALUES (?, ?, ?, ?)`),
+    // Received snaps from people who are still friends, newest first, one page at a time.
     inbox: db.prepare(`
-      SELECT s.id, s.created_at, s.size, r.viewed_at, u.id AS sender_id, u.username, u.display_name
+      SELECT s.id, s.created_at, s.size, s.ciphertext IS NOT NULL AS available, r.viewed_at,
+             u.id AS sender_id, u.username, u.display_name
       FROM snap_recipients r
       JOIN snaps s ON s.id = r.snap_id
       JOIN users u ON u.id = s.sender_id
-      WHERE r.recipient_id = ? AND s.expires_at > ?
-      ORDER BY s.created_at DESC LIMIT 100`),
+      JOIN friendships f ON f.status = 'accepted'
+        AND f.user_low = MIN(r.recipient_id, s.sender_id) AND f.user_high = MAX(r.recipient_id, s.sender_id)
+      WHERE r.recipient_id = ? AND s.created_at < ?
+      ORDER BY s.created_at DESC LIMIT ?`),
     sent: db.prepare(`
       SELECT s.id, s.created_at, r.viewed_at, u.id AS recipient_id, u.username, u.display_name
       FROM snaps s
       JOIN snap_recipients r ON r.snap_id = s.id
       JOIN users u ON u.id = r.recipient_id
-      WHERE s.sender_id = ? AND s.expires_at > ?
+      WHERE s.sender_id = ?
       ORDER BY s.created_at DESC LIMIT 200`),
     snapForRecipient: db.prepare(`
       SELECT s.*, r.wrapped_key, r.wrap_iv, r.viewed_at,
@@ -182,10 +186,9 @@ export function createApp({
     markViewed: db.prepare(`
       UPDATE snap_recipients SET viewed_at = ?
       WHERE snap_id = ? AND recipient_id = ? AND viewed_at IS NULL`),
-    unviewedCount: db.prepare(
-      'SELECT COUNT(*) AS n FROM snap_recipients WHERE snap_id = ? AND viewed_at IS NULL'
-    ),
-    dropCiphertext: db.prepare('UPDATE snaps SET ciphertext = NULL WHERE id = ?'),
+    removeRecipient: db.prepare('DELETE FROM snap_recipients WHERE snap_id = ? AND recipient_id = ?'),
+    recipientCount: db.prepare('SELECT COUNT(*) AS n FROM snap_recipients WHERE snap_id = ?'),
+    deleteSnap: db.prepare('DELETE FROM snaps WHERE id = ?'),
   };
 
   const publicUser = (u) => ({ id: u.id, username: u.username, displayName: u.display_name });
@@ -441,7 +444,8 @@ export function createApp({
       const id = crypto.randomUUID();
       const now = clock();
       transaction(db, () => {
-        q.insertSnap.run(id, me, iv, ephemeralPublicKey, blob, blob.length, now, now + SNAP_TTL_MS);
+        // expires_at is left over from when snaps expired; 0 means "never".
+        q.insertSnap.run(id, me, iv, ephemeralPublicKey, blob, blob.length, now, 0);
         for (const r of recipients) {
           const other = Number(r.userId);
           q.insertRecipient.run(id, other, r.wrappedKey, r.wrapIv);
@@ -465,16 +469,22 @@ export function createApp({
   api.get(
     '/snaps/inbox',
     auth,
-    wrap((req) => ({
-      snaps: q.inbox.all(req.user.id, clock()).map((s) => ({
-        id: s.id,
-        from: { id: s.sender_id, username: s.username, displayName: s.display_name },
-        createdAt: s.created_at,
-        size: s.size,
-        opened: s.viewed_at != null,
-        openedAt: s.viewed_at,
-      })),
-    }))
+    wrap((req) => {
+      const before = Number(req.query.before) || Number.MAX_SAFE_INTEGER;
+      const rows = q.inbox.all(req.user.id, before, INBOX_PAGE_SIZE + 1);
+      return {
+        snaps: rows.slice(0, INBOX_PAGE_SIZE).map((s) => ({
+          id: s.id,
+          from: { id: s.sender_id, username: s.username, displayName: s.display_name },
+          createdAt: s.created_at,
+          size: s.size,
+          opened: s.viewed_at != null,
+          openedAt: s.viewed_at,
+          available: Boolean(s.available),
+        })),
+        hasMore: rows.length > INBOX_PAGE_SIZE,
+      };
+    })
   );
 
   api.get(
@@ -482,7 +492,7 @@ export function createApp({
     auth,
     wrap((req) => {
       const byId = new Map();
-      for (const row of q.sent.all(req.user.id, clock())) {
+      for (const row of q.sent.all(req.user.id)) {
         if (!byId.has(row.id)) byId.set(row.id, { id: row.id, createdAt: row.created_at, recipients: [] });
         byId.get(row.id).recipients.push({
           id: row.recipient_id,
@@ -501,9 +511,10 @@ export function createApp({
     auth,
     wrap((req) => {
       const snap = q.snapForRecipient.get(req.user.id, String(req.params.id));
-      if (!snap || snap.expires_at <= clock()) fail(404, 'Snap not found');
+      if (!snap) fail(404, 'Snap not found');
       if (!areFriends(req.user.id, snap.sender_id)) fail(403, 'Snaps are only visible to friends');
-      if (snap.viewed_at != null || snap.ciphertext == null) fail(410, 'This snap was already opened');
+      // Only snaps from before snaps were kept can be missing their data.
+      if (snap.ciphertext == null) fail(410, 'This snap is no longer available');
       return {
         id: snap.id,
         from: { id: snap.sender_id, username: snap.sender_username, displayName: snap.sender_display_name },
@@ -524,10 +535,22 @@ export function createApp({
       const id = String(req.params.id);
       const snap = q.snapForRecipient.get(req.user.id, id);
       if (!snap) fail(404, 'Snap not found');
+      q.markViewed.run(clock(), id, req.user.id);
+      return { ok: true };
+    })
+  );
+
+  // A recipient removes a snap from their inbox. When nobody has it any more,
+  // the encrypted data is deleted from the server.
+  api.delete(
+    '/snaps/:id',
+    auth,
+    wrap((req) => {
+      const id = String(req.params.id);
+      if (!q.snapForRecipient.get(req.user.id, id)) fail(404, 'Snap not found');
       transaction(db, () => {
-        q.markViewed.run(clock(), id, req.user.id);
-        // Once every recipient has opened it, the encrypted data is deleted for good.
-        if (q.unviewedCount.get(id).n === 0) q.dropCiphertext.run(id);
+        q.removeRecipient.run(id, req.user.id);
+        if (q.recipientCount.get(id).n === 0) q.deleteSnap.run(id);
       });
       return { ok: true };
     })
@@ -574,8 +597,7 @@ export function createApp({
   return app;
 }
 
-/** Delete expired snaps and sessions. Called periodically by the server. */
+/** Delete expired sessions. Called periodically by the server. (Snaps are kept.) */
 export function cleanup(db, now = Date.now()) {
-  db.prepare('DELETE FROM snaps WHERE expires_at <= ?').run(now);
   db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(now);
 }

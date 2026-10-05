@@ -260,7 +260,12 @@ async function refreshFriends() {
 }
 
 async function refreshInbox() {
-  state.inbox = (await api('GET', '/snaps/inbox')).snaps;
+  const { snaps, hasMore } = await api('GET', '/snaps/inbox');
+  // Keep any older pages already loaded with "Show older snaps".
+  const oldest = snaps.at(-1)?.createdAt ?? 0;
+  const older = hasMore ? state.inbox.filter((s) => s.createdAt < oldest) : [];
+  state.inbox = [...snaps, ...older];
+  if (!older.length) state.inboxHasMore = hasMore;
   const unopened = state.inbox.filter((s) => !s.opened).length;
   const badge = $('badge-inbox');
   badge.hidden = unopened === 0;
@@ -613,35 +618,59 @@ async function loadInbox() {
   }
 }
 
+function inboxStatus(s) {
+  if (!s.available) return 'No longer available';
+  if (!s.opened) return `New Snap · ${timeAgo(s.createdAt)}`;
+  return `Sent ${timeAgo(s.createdAt)} · tap to view again`;
+}
+
 function renderInbox() {
   const empty = $('inbox-empty');
   $('inbox-empty-text').textContent = 'No snaps yet. When friends send you snaps, they show up here.';
   empty.hidden = state.inbox.length > 0;
-  $('inbox-list').replaceChildren(
-    ...state.inbox.map((s) =>
+  const rows = state.inbox.map((s) =>
+    el(
+      'li',
+      {},
       el(
-        'li',
-        {},
+        'button',
+        { type: 'button', class: 'item', disabled: !s.available, onclick: () => openSnap(s) },
+        avatar(s.from),
         el(
-          'button',
-          { type: 'button', class: 'item', disabled: s.opened, onclick: () => openSnap(s) },
-          avatar(s.from),
+          'span',
+          { class: 'item-main' },
+          el('div', { class: 'item-title', text: s.from.displayName }),
           el(
-            'span',
-            { class: 'item-main' },
-            el('div', { class: 'item-title', text: s.from.displayName }),
-            el(
-              'div',
-              { class: `item-sub${s.opened ? '' : ' new'}` },
-              el('span', { class: `snap-icon${s.opened ? '' : ' new'}` }),
-              s.opened ? `Opened · ${timeAgo(s.openedAt)}` : `New Snap · ${timeAgo(s.createdAt)}`
-            )
-          ),
-          streakBadge(state.friends.find((f) => f.id === s.from.id)?.streak)
-        )
+            'div',
+            { class: `item-sub${s.opened ? '' : ' new'}` },
+            el('span', { class: `snap-icon${s.opened ? '' : ' new'}` }),
+            inboxStatus(s)
+          )
+        ),
+        streakBadge(state.friends.find((f) => f.id === s.from.id)?.streak)
       )
     )
   );
+  if (state.inboxHasMore) {
+    rows.push(
+      el(
+        'li',
+        { class: 'load-more' },
+        el('button', { type: 'button', class: 'btn', text: 'Show older snaps', onclick: (e) => withBusy(e.currentTarget, loadOlderSnaps) })
+      )
+    );
+  }
+  $('inbox-list').replaceChildren(...rows);
+}
+
+async function loadOlderSnaps() {
+  const before = state.inbox.at(-1)?.createdAt;
+  if (!before) return;
+  const { snaps, hasMore } = await api('GET', `/snaps/inbox?before=${before}`);
+  const known = new Set(state.inbox.map((s) => s.id));
+  state.inbox.push(...snaps.filter((s) => !known.has(s.id)));
+  state.inboxHasMore = hasMore;
+  renderInbox();
 }
 
 function renderSent(snaps) {
@@ -693,19 +722,15 @@ async function openSnap(summary) {
 
     show('viewer');
     fitFrame($('viewer-frame'), img.naturalWidth, img.naturalHeight);
-    viewer = { url, remaining: 10, timer: null, size: [img.naturalWidth, img.naturalHeight] };
-    $('viewer-timer').textContent = viewer.remaining;
-    viewer.timer = setInterval(() => {
-      viewer.remaining -= 1;
-      $('viewer-timer').textContent = viewer.remaining;
-      if (viewer.remaining <= 0) closeSnap();
-    }, 1000);
+    viewer = { url, summary, size: [img.naturalWidth, img.naturalHeight] };
 
-    summary.opened = true;
-    summary.openedAt = Date.now();
-    api('POST', `/snaps/${encodeURIComponent(summary.id)}/viewed`).catch(() => {});
+    if (!summary.opened) {
+      summary.opened = true;
+      summary.openedAt = Date.now();
+      api('POST', `/snaps/${encodeURIComponent(summary.id)}/viewed`).catch(() => {});
+    }
   } catch (err) {
-    if (err.status === 410 || err.status === 404) summary.opened = true;
+    if (err.status === 410 || err.status === 404) summary.available = false;
     toast(err.name === 'OperationError' ? "This snap couldn't be decrypted." : err.message, { error: true });
     renderInbox();
   }
@@ -713,14 +738,27 @@ async function openSnap(summary) {
 
 function closeSnap() {
   if (!viewer) return;
-  clearInterval(viewer.timer);
   URL.revokeObjectURL(viewer.url);
   $('viewer-img').removeAttribute('src');
   viewer = null;
   show('inbox');
   loadInbox();
 }
-$('screen-viewer').addEventListener('click', closeSnap);
+$('screen-viewer').addEventListener('click', (e) => {
+  if (!e.target.closest('#btn-snap-delete')) closeSnap();
+});
+
+$('btn-snap-delete').addEventListener('click', async (e) => {
+  if (!viewer) return;
+  const { summary } = viewer;
+  if (!confirm(`Delete this snap from ${summary.from.displayName}? You won't be able to see it again.`)) return;
+  await withBusy(e.currentTarget, async () => {
+    await api('DELETE', `/snaps/${encodeURIComponent(summary.id)}`);
+    state.inbox = state.inbox.filter((s) => s.id !== summary.id);
+    toast('Snap deleted');
+    closeSnap();
+  });
+});
 
 window.addEventListener('resize', () => {
   if (state.screen === 'preview' && state.capture) fitFrame($('preview-frame'), state.capture.width, state.capture.height);

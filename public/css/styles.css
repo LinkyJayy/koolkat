@@ -316,15 +316,6 @@ h1, h2, h3 { margin: 0; }
 }
 .viewer-top { justify-content: space-between; background: linear-gradient(rgba(0, 0, 0, 0.5), transparent); }
 .viewer-top > div { display: flex; flex-direction: column; }
-.timer {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: 2px solid #fff;
-  font-weight: 700;
-}
 
 /* ---------- panels ---------- */
 .panel { overflow-y: auto; padding-bottom: calc(24px + var(--safe-bottom)); }
@@ -394,6 +385,7 @@ label.item { cursor: pointer; }
 .snap-icon.sent.opened { border-left-color: var(--muted); }
 .item-sub.new { color: var(--snap); font-weight: 600; }
 
+.load-more { display: flex; justify-content: center; padding: 16px; }
 .streak { font-weight: 700; color: var(--fire); white-space: nowrap; }
 .streak.expiring::after { content: " ⌛"; }
 .streak-line { font-size: 18px; font-weight: 700; margin: 8px 0; }
