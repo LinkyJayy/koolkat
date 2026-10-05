@@ -1,6 +1,6 @@
-# 🐱 KoolKat
+# KoolKat
 
-A private, Snapchat-style photo app. You take photos in the app with the front or rear camera, add a caption, and send them to friends. They're **end-to-end encrypted**, can only go to **friends**, disappear after they're opened, and build **streaks** when you and a friend snap each other every day.
+A private, Snapchat alternative. You take photos in the app with the front or rear camera, add a caption, and send them to friends. They're **end-to-end encrypted**, can only go to **friends**, disappear after they're opened, and build **streaks** when you and a friend snap each other every day.
 
 ## Features
 
