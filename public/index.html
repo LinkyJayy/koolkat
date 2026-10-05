@@ -11,6 +11,7 @@
   <link rel="apple-touch-icon" href="icons/icon-180.png">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="css/styles.css">
+  <script src="js/boot-check.js"></script>
   <script src="js/theme.js"></script>
   <script src="js/config.js"></script>
   <script type="module" src="js/app.js"></script>
@@ -226,7 +227,11 @@
         <button class="btn" value="close">Close</button>
         <button class="btn danger" value="logout" id="btn-logout">Log out</button>
       </div>
-      <p class="dialog-brand"><img src="icons/logo.png" alt="">KoolKat</p>
+      <details class="camera-info">
+        <summary>Camera info (for troubleshooting)</summary>
+        <pre id="camera-info"></pre>
+      </details>
+      <p class="dialog-brand"><img src="icons/logo.png" alt="">KoolKat <span id="app-version"></span></p>
     </form>
   </dialog>
 

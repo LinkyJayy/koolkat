@@ -211,7 +211,8 @@ export function createApp({
     }
   };
 
-  api.get('/health', (req, res) => res.json({ ok: true }));
+  const version = (process.env.RAILWAY_GIT_COMMIT_SHA || process.env.KOOLKAT_VERSION || 'dev').slice(0, 7);
+  api.get('/health', (req, res) => res.json({ ok: true, version }));
 
   // ---------- accounts ----------
   api.post(

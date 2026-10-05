@@ -22,6 +22,12 @@ import {
 
 const $ = (id) => document.getElementById(id);
 
+// Show unexpected errors on screen instead of failing silently.
+window.addEventListener('error', (e) => toast(`Something went wrong: ${e.message}`, { error: true }));
+window.addEventListener('unhandledrejection', (e) =>
+  toast(`Something went wrong: ${e.reason?.message || e.reason}`, { error: true })
+);
+
 const state = {
   me: null, // { userId, username, displayName, publicKey, privateKey }
   friends: [],
@@ -863,12 +869,48 @@ $('btn-profile').addEventListener('click', async () => {
   $('profile-username').textContent = `@${state.me.username}`;
   $('profile-fingerprint').textContent = await fingerprint(state.me.publicKey);
   renderNotifyRow();
+  renderCameraInfo();
+  api('GET', '/health')
+    .then((h) => ($('app-version').textContent = `· version ${h.version}`))
+    .catch(() => {});
   dialog.returnValue = '';
   dialog.onclose = () => {
     if (dialog.returnValue === 'logout') logout();
   };
   dialog.showModal();
 });
+
+// ---------- troubleshooting ----------
+async function renderCameraInfo() {
+  const video = $('camera-video');
+  const track = state.stream?.getVideoTracks()[0];
+  const settings = track?.getSettings?.() ?? {};
+  const lines = [
+    `secure: ${window.isSecureContext}, getUserMedia: ${Boolean(navigator.mediaDevices?.getUserMedia)}`,
+    `asked for: ${state.facing}`,
+    track
+      ? `track: ${track.label || '(no label)'} | ${track.readyState}${track.muted ? ', muted' : ''}${track.enabled ? '' : ', disabled'}`
+      : 'track: none',
+    `settings: ${settings.width ?? '?'}x${settings.height ?? '?'} facing=${settings.facingMode ?? '?'}`,
+    `video: ${video.videoWidth}x${video.videoHeight}, readyState ${video.readyState}, paused ${video.paused}`,
+    `message: ${$('camera-message').hidden ? '(none)' : $('camera-message-text').textContent}`,
+  ];
+  try {
+    const cams = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'videoinput');
+    lines.push(`cameras: ${cams.length} ${cams.map((c) => c.label || '?').join(' / ')}`);
+  } catch (err) {
+    lines.push(`cameras: ${err.name}`);
+  }
+  try {
+    const perm = await navigator.permissions?.query({ name: 'camera' });
+    if (perm) lines.push(`permission: ${perm.state}`);
+  } catch {
+    /* not supported */
+  }
+  if (window.__koolkatErrors?.length) lines.push(`errors: ${window.__koolkatErrors.slice(-5).join(' | ')}`);
+  lines.push(navigator.userAgent);
+  $('camera-info').textContent = lines.join('\n');
+}
 
 // ---------- notifications ----------
 const BANNER_KEY = 'koolkat.pushBanner';
@@ -973,13 +1015,16 @@ renderThemePickers();
 async function boot() {
   setAuthMode('login');
   $('auth-config-warning').hidden = Boolean(API_BASE) || !location.hostname.endsWith('.github.io');
+  window.__koolkatBootStep = 'service worker';
   await registerServiceWorker((msg) => {
     if (msg.type === 'refresh' && state.me) refresh();
     if (msg.type === 'open') openView(msg.view);
   });
+  window.__koolkatBootStep = 'loading your keys';
   const identity = await loadIdentity();
   if (getToken() && identity) {
     try {
+      window.__koolkatBootStep = 'contacting the server';
       const me = await api('GET', '/me');
       if (me.user.id === identity.userId && me.publicKey === identity.publicKey) {
         state.me = { ...identity, displayName: me.user.displayName, username: me.user.username };
@@ -1000,4 +1045,9 @@ async function boot() {
   show('auth');
 }
 
-boot();
+boot()
+  .then(() => (window.__koolkatBooted = true))
+  .catch((err) => {
+    window.__koolkatErrors?.push(`boot: ${err?.name}: ${err?.message}`);
+    toast(`KoolKat couldn't start: ${err?.message}`, { error: true });
+  });

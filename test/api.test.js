@@ -90,7 +90,9 @@ async function sendSnap(from, to, caption = 'hi') {
 }
 
 test('health check', async () => {
-  assert.deepEqual((await call('GET', '/health')).body, { ok: true });
+  const { body } = await call('GET', '/health');
+  assert.equal(body.ok, true);
+  assert.equal(typeof body.version, 'string');
 });
 
 test('database path prefers KOOLKAT_DB, then a Railway volume', () => {

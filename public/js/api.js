@@ -37,9 +37,14 @@ export async function api(method, path, body) {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout?.(20000),
     });
-  } catch {
-    throw new Error("Can't reach KoolKat. Check your connection.");
+  } catch (err) {
+    throw new Error(
+      err?.name === 'TimeoutError'
+        ? 'KoolKat took too long to respond. Check your connection and try again.'
+        : "Can't reach KoolKat. Check your connection."
+    );
   }
   const data = await res.json().catch(() => ({}));
   if (res.status === 401 && token) onUnauthorized();
