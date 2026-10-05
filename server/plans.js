@@ -21,13 +21,17 @@ export function adminUsernames(env = process.env) {
 export const isAdmin = (username, admins = adminUsernames()) =>
   typeof username === 'string' && admins.includes(username.toLowerCase());
 
-/** When a user's Unlimited ends (ms), from gifts/codes or a paid subscription. 0 = free. */
-export const unlimitedUntil = (u) => Math.max(u.plan_until ?? 0, u.sub_until ?? 0);
-export const hasUnlimited = (u, now) => unlimitedUntil(u) > now;
+/**
+ * When a user's Unlimited ends (ms): admins always have it; otherwise from
+ * gifts/codes or a paid subscription. 0 = free.
+ */
+export const unlimitedUntil = (u, admins = adminUsernames()) =>
+  isAdmin(u.username, admins) ? FOREVER : Math.max(u.plan_until ?? 0, u.sub_until ?? 0);
+export const hasUnlimited = (u, now, admins) => unlimitedUntil(u, admins) > now;
 
 /** The badge and flair other people see next to a user's name. */
-export function perks(u, now) {
-  if (!hasUnlimited(u, now)) return { badge: false, flair: null };
+export function perks(u, now, admins) {
+  if (!hasUnlimited(u, now, admins)) return { badge: false, flair: null };
   return { badge: true, flair: u.flair || DEFAULT_FLAIR };
 }
 

@@ -250,13 +250,13 @@ export function createApp({
     id: u.id,
     username: u.username,
     displayName: u.display_name,
-    ...perks(u, clock()),
+    ...perks(u, clock(), admins),
   });
 
   const planFor = (u) => {
     const now = clock();
-    const unlimited = hasUnlimited(u, now);
-    const until = unlimitedUntil(u);
+    const unlimited = hasUnlimited(u, now, admins);
+    const until = unlimitedUntil(u, admins);
     return {
       plan: unlimited ? 'unlimited' : 'free',
       unlimitedUntil: unlimited ? (until >= FOREVER ? null : until) : null,
@@ -402,7 +402,7 @@ export function createApp({
     auth,
     wrap((req) => {
       const user = q.userById.get(req.user.id);
-      if (!hasUnlimited(user, clock())) fail(403, 'Kool flair is part of KoolKat Unlimited');
+      if (!hasUnlimited(user, clock(), admins)) fail(403, 'Kool flair is part of KoolKat Unlimited');
       const flair = cleanFlair(req.body?.flair);
       if (flair == null) fail(400, 'Flair must be text');
       // Empty resets to the default.

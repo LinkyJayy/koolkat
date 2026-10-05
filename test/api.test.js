@@ -455,6 +455,19 @@ describe('KoolKat Unlimited', () => {
     assert.equal((await call('POST', '/admin/grant', { token: kim.token, body: { username: 'kim' } })).status, 403);
   });
 
+  test('zalith9 always has KoolKat Unlimited, forever, even after a revoke', async () => {
+    let plan = (await me(admin)).plan;
+    assert.equal(plan.plan, 'unlimited');
+    assert.equal(plan.forever, true);
+    assert.equal(plan.storageLimit, UNLIMITED_STORAGE);
+    assert.equal(plan.flair, DEFAULT_FLAIR);
+    await call('POST', '/admin/revoke', { token: admin.token, body: { username: 'zalith9' } });
+    plan = (await me(admin)).plan;
+    assert.equal(plan.plan, 'unlimited');
+    const adminSeenByOthers = (await call('GET', '/users/search?q=zal', { token: kim.token })).body.users[0];
+    assert.equal(adminSeenByOthers.badge, true);
+  });
+
   test('everyone starts on KoolKat Free: 512 MB, no badge, no flair', async () => {
     const { plan, user } = await me(kim);
     assert.equal(plan.plan, 'free');
