@@ -4,6 +4,8 @@ import { defaultDatabasePath, openDatabase } from '../server/db.js';
 import { INBOX_PAGE_SIZE, cleanup, createApp } from '../server/app.js';
 import { DAY_MS, dayNumber } from '../server/streaks.js';
 import { createPusher } from '../server/push.js';
+import { DEFAULT_FLAIR, FREE_STORAGE, UNLIMITED_STORAGE, verifyStripeSignature } from '../server/plans.js';
+import crypto from 'node:crypto';
 import {
   createIdentity,
   decryptSnap,
@@ -85,7 +87,10 @@ async function sendSnap(from, to, caption = 'hi') {
     return { userId: t.id, publicKey: f ? f.publicKey : t.publicKey };
   });
   const image = new Uint8Array(2048).map((_, i) => i % 251);
-  const payload = await encryptSnap(image, { caption, captionY: 0.3 }, recipients);
+  const payload = await encryptSnap(image, { caption, captionY: 0.3 }, recipients, {
+    userId: from.id,
+    publicKey: from.publicKey,
+  });
   return call('POST', '/snaps', { token: from.token, body: payload });
 }
 
@@ -240,7 +245,6 @@ describe('friends and snaps', () => {
     assert.equal((await call('DELETE', `/snaps/${id}`, { token: carol.token })).status, 200);
     assert.equal((await call('GET', `/snaps/${id}`, { token: carol.token })).status, 404);
     assert.equal((await call('GET', `/snaps/${id}`, { token: dave.token })).status, 200, "dave's copy stays");
-    assert.equal((await call('DELETE', `/snaps/${id}`, { token: bob.token })).status, 404, 'sender is not a recipient');
     await call('DELETE', `/snaps/${id}`, { token: dave.token });
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM snaps WHERE id = ?').get(id).n, 0);
   });
@@ -406,6 +410,223 @@ describe('cross-origin access (GitHub Pages)', () => {
   test('ignores other origins', async () => {
     const res = await fetch(`${base}/push/key`, { headers: { origin: 'https://evil.example.com' } });
     assert.equal(res.headers.get('access-control-allow-origin'), null);
+  });
+});
+
+describe('senders can view their own snaps', () => {
+  let ivy, jack;
+  before(async () => {
+    [ivy, jack] = [await register('ivy'), await register('jack')];
+    await befriend(ivy, jack);
+  });
+
+  test('the sender can open and decrypt what they sent', async () => {
+    const sent = await sendSnap(ivy, [jack], 'my own snap');
+    const own = await call('GET', `/snaps/${sent.body.id}`, { token: ivy.token });
+    assert.equal(own.status, 200);
+    assert.equal(own.body.own, true);
+    assert.deepEqual(own.body.to.map((u) => u.username), ['jack']);
+    assert.equal((await decryptSnap(own.body, ivy.privateKey, ivy.id)).caption, 'my own snap');
+    const sentList = (await call('GET', '/snaps/sent', { token: ivy.token })).body.snaps;
+    assert.equal(sentList.find((s) => s.id === sent.body.id).viewable, true);
+  });
+
+  test('deleting as the sender removes it for everyone', async () => {
+    const sent = await sendSnap(ivy, [jack]);
+    const res = await call('DELETE', `/snaps/${sent.body.id}`, { token: ivy.token });
+    assert.equal(res.body.deletedForEveryone, true);
+    assert.equal((await call('GET', `/snaps/${sent.body.id}`, { token: jack.token })).status, 404);
+  });
+});
+
+describe('KoolKat Unlimited', () => {
+  let admin, kim, leo;
+  const me = async (u) => (await call('GET', '/me', { token: u.token })).body;
+  before(async () => {
+    // Admin is matched case-insensitively.
+    [admin, kim, leo] = [await register('ZaLiTh9'), await register('kim'), await register('leo')];
+    await befriend(kim, leo);
+  });
+
+  test('zalith9 (any capitalisation) is the admin; nobody else is', async () => {
+    assert.equal((await me(admin)).plan.isAdmin, true);
+    assert.equal((await me(kim)).plan.isAdmin, false);
+    assert.equal((await call('GET', '/admin/codes', { token: kim.token })).status, 403);
+    assert.equal((await call('POST', '/admin/grant', { token: kim.token, body: { username: 'kim' } })).status, 403);
+  });
+
+  test('everyone starts on KoolKat Free: 512 MB, no badge, no flair', async () => {
+    const { plan, user } = await me(kim);
+    assert.equal(plan.plan, 'free');
+    assert.equal(plan.storageLimit, FREE_STORAGE);
+    assert.equal(user.badge, false);
+    assert.equal(plan.flair, null);
+    assert.equal((await call('POST', '/me/flair', { token: kim.token, body: { flair: 'hi' } })).status, 403);
+  });
+
+  test('admin codes: custom text, usage limit, expiry, one use per person', async () => {
+    const expiresAt = now + 2 * DAY_MS;
+    const created = await call('POST', '/admin/codes', {
+      token: admin.token,
+      body: { code: 'nine lives', maxUses: 2, expiresAt, grantDays: 30 },
+    });
+    assert.equal(created.status, 201);
+    assert.equal(created.body.code.code, 'NINELIVES');
+    assert.equal(created.body.code.maxUses, 2);
+
+    const redeem = (u, code = 'ninelives') => call('POST', '/codes/redeem', { token: u.token, body: { code } });
+    assert.equal((await redeem(kim)).status, 200);
+    assert.equal((await redeem(kim)).status, 409, 'same person twice');
+    assert.equal((await redeem(leo)).status, 200);
+    assert.equal((await redeem(admin)).status, 410, 'used up');
+    assert.equal((await redeem(kim, 'NOPE-NOPE')).status, 404);
+
+    const k = await me(kim);
+    assert.equal(k.plan.plan, 'unlimited');
+    assert.equal(k.plan.storageLimit, UNLIMITED_STORAGE);
+    assert.ok(Math.abs(k.plan.unlimitedUntil - (now + 30 * DAY_MS)) < 5000);
+
+    const list = (await call('GET', '/admin/codes', { token: admin.token })).body.codes;
+    assert.equal(list.find((c) => c.code === 'NINELIVES').uses, 2);
+
+    const auto = (await call('POST', '/admin/codes', { token: admin.token, body: { expiresAt: now + DAY_MS } })).body.code;
+    assert.match(auto.code, /^KOOL-[A-Z0-9]{4}-[A-Z0-9]{4}$/);
+    now += 2 * DAY_MS;
+    assert.equal((await redeem(admin, auto.code)).status, 410, 'expired');
+    assert.equal((await call('DELETE', `/admin/codes/${auto.code}`, { token: admin.token })).status, 200);
+  });
+
+  test('badge and flair: default, customisable, and shown to friends', async () => {
+    let leoSeenByKim = (await call('GET', '/friends', { token: kim.token })).body.friends.find((f) => f.id === leo.id);
+    assert.equal(leoSeenByKim.badge, true);
+    assert.equal(leoSeenByKim.flair, DEFAULT_FLAIR);
+    assert.equal(DEFAULT_FLAIR, 'i have nine lives');
+
+    const long = 'x'.repeat(60);
+    const set = await call('POST', '/me/flair', { token: leo.token, body: { flair: `  cool\n cat ${long}` } });
+    assert.equal(set.body.flair.length, 40);
+    await call('POST', '/me/flair', { token: leo.token, body: { flair: 'certified kool' } });
+    leoSeenByKim = (await call('GET', '/friends', { token: kim.token })).body.friends.find((f) => f.id === leo.id);
+    assert.equal(leoSeenByKim.flair, 'certified kool');
+    await call('POST', '/me/flair', { token: leo.token, body: { flair: '' } });
+    assert.equal((await me(leo)).plan.flair, DEFAULT_FLAIR);
+  });
+
+  test('admin can gift Unlimited (forever or for some days) and take gifts back', async () => {
+    const gift = await call('POST', '/admin/grant', { token: admin.token, body: { username: 'ZALITH9' } });
+    assert.equal(gift.status, 200);
+    assert.equal(gift.body.forever, true);
+    assert.equal((await me(admin)).plan.forever, true);
+    assert.equal((await call('POST', '/admin/grant', { token: admin.token, body: { username: 'ghost' } })).status, 404);
+
+    await call('POST', '/admin/revoke', { token: admin.token, body: { username: 'kim' } });
+    assert.equal((await me(kim)).plan.plan, 'free');
+    const days = await call('POST', '/admin/grant', { token: admin.token, body: { username: 'kim', days: 7 } });
+    assert.ok(Math.abs(days.body.unlimitedUntil - (now + 7 * DAY_MS)) < 5000);
+  });
+
+  test('storage limits apply to what you have sent', async () => {
+    await call('POST', '/admin/revoke', { token: admin.token, body: { username: 'kim' } });
+    // Pretend kim has already used almost all of her 512 MB.
+    db.prepare(
+      `INSERT INTO snaps (id, sender_id, iv, ephemeral_key, ciphertext, size, created_at, expires_at)
+       VALUES ('filler', ?, 'x', 'x', x'00', ?, ?, 0)`
+    ).run(kim.id, FREE_STORAGE - 100, now);
+    const full = await sendSnap(kim, [leo]);
+    assert.equal(full.status, 413);
+    assert.match(full.body.error, /Unlimited/);
+    assert.equal((await me(kim)).plan.storageUsed, FREE_STORAGE - 100);
+
+    await call('POST', '/admin/grant', { token: admin.token, body: { username: 'kim', days: 1 } });
+    assert.equal((await sendSnap(kim, [leo])).status, 201);
+    db.prepare("DELETE FROM snaps WHERE id = 'filler'").run();
+  });
+
+  test('checkout explains when payments are not set up', async () => {
+    const res = await call('POST', '/billing/checkout', { token: kim.token });
+    assert.equal(res.status, 503);
+    assert.equal((await me(kim)).plan.payments, false);
+  });
+});
+
+describe('Stripe payments', () => {
+  const secret = 'whsec_test';
+  const stripeCalls = [];
+  let stripeServer;
+  let sbase;
+  let mia;
+
+  before(async () => {
+    const fakeFetch = async (url, init) => {
+      stripeCalls.push({ url, body: new URLSearchParams(init.body) });
+      return new Response(JSON.stringify({ url: 'https://checkout.stripe.test/session' }), { status: 200 });
+    };
+    stripeServer = createApp({
+      db,
+      clock,
+      serveStatic: false,
+      pusher,
+      stripe: { secretKey: 'sk_test', webhookSecret: secret, priceId: null },
+      stripeFetch: fakeFetch,
+    }).listen(0);
+    await new Promise((r) => stripeServer.once('listening', r));
+    sbase = `http://127.0.0.1:${stripeServer.address().port}/api`;
+    mia = await register('mia');
+  });
+  after(() => stripeServer.close());
+
+  const scall = async (method, path, { token, body, headers = {} } = {}) => {
+    const res = await fetch(sbase + path, {
+      method,
+      headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), ...headers },
+      body,
+    });
+    return { status: res.status, body: await res.json() };
+  };
+  const signed = (event) => {
+    const payload = JSON.stringify(event);
+    const t = Math.floor(now / 1000);
+    const sig = crypto.createHmac('sha256', secret).update(`${t}.${payload}`).digest('hex');
+    return { body: payload, headers: { 'stripe-signature': `t=${t},v1=${sig}`, 'content-type': 'application/json' } };
+  };
+
+  test('checkout creates a $4.99/month subscription session', async () => {
+    const res = await scall('POST', '/billing/checkout', { token: mia.token });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.url, 'https://checkout.stripe.test/session');
+    const body = stripeCalls[0].body;
+    assert.equal(body.get('mode'), 'subscription');
+    assert.equal(body.get('line_items[0][price_data][unit_amount]'), '499');
+    assert.equal(body.get('line_items[0][price_data][recurring][interval]'), 'month');
+    assert.equal(body.get('client_reference_id'), String(mia.id));
+  });
+
+  test('webhooks turn the subscription on and off; bad signatures are refused', async () => {
+    const periodEnd = Math.floor(now / 1000) + 30 * 86400;
+    const sub = (type, status) => ({
+      type,
+      data: { object: { id: 'sub_1', customer: 'cus_1', status, metadata: { user_id: String(mia.id) }, items: { data: [{ current_period_end: periodEnd }] } } },
+    });
+
+    const bad = signed(sub('customer.subscription.created', 'active'));
+    bad.headers['stripe-signature'] = bad.headers['stripe-signature'].replace(/v1=./, 'v1=0');
+    assert.equal((await scall('POST', '/stripe/webhook', bad)).status, 400);
+
+    assert.equal((await scall('POST', '/stripe/webhook', signed(sub('customer.subscription.created', 'active')))).status, 200);
+    let plan = (await scall('GET', '/me', { token: mia.token })).body.plan;
+    assert.equal(plan.plan, 'unlimited');
+    assert.equal(plan.subscribed, true);
+
+    await scall('POST', '/stripe/webhook', signed(sub('customer.subscription.deleted', 'canceled')));
+    now += 1;
+    plan = (await scall('GET', '/me', { token: mia.token })).body.plan;
+    assert.equal(plan.plan, 'free');
+  });
+
+  test('signature check rejects old timestamps', () => {
+    const t = Math.floor(now / 1000) - 3600;
+    const sig = crypto.createHmac('sha256', secret).update(`${t}.{}`).digest('hex');
+    assert.equal(verifyStripeSignature('{}', `t=${t},v1=${sig}`, secret, now), false);
   });
 });
 

@@ -205,12 +205,92 @@
     <ul class="list" id="outgoing-list"></ul>
   </section>
 
+  <!-- Admin tools (only for admins) -->
+  <section id="screen-admin" class="screen panel" hidden>
+    <header class="panel-header">
+      <button type="button" class="icon-btn plain" data-back="camera" aria-label="Back to camera">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12Z"/></svg>
+      </button>
+      <h2><img src="icons/logo.png" alt="" class="logo">Admin</h2>
+      <span></span>
+    </header>
+
+    <h3 class="section-title">Give KoolKat Unlimited</h3>
+    <form id="grant-form" class="admin-form" novalidate>
+      <label>Username
+        <input name="username" required autocapitalize="none" spellcheck="false">
+      </label>
+      <label>For how many days? <span class="fineprint">Leave blank for forever</span>
+        <input name="days" type="number" min="1" inputmode="numeric">
+      </label>
+      <div class="row">
+        <button type="submit" class="btn primary">Give Unlimited</button>
+        <button type="button" class="btn danger" id="btn-revoke">Take gift away</button>
+      </div>
+    </form>
+
+    <h3 class="section-title">Create a code</h3>
+    <form id="code-form" class="admin-form" novalidate>
+      <label>Code <span class="fineprint">Leave blank for a random one</span>
+        <input name="code" maxlength="32" autocapitalize="characters" spellcheck="false">
+      </label>
+      <label>Usage limit <span class="fineprint">How many people can use it. Blank = no limit</span>
+        <input name="maxUses" type="number" min="1" value="1" inputmode="numeric">
+      </label>
+      <label>Expires <span class="fineprint">Blank = never</span>
+        <input name="expiresAt" type="datetime-local">
+      </label>
+      <label>Days of Unlimited it gives <span class="fineprint">Blank = forever</span>
+        <input name="grantDays" type="number" min="1" value="30" inputmode="numeric">
+      </label>
+      <button type="submit" class="btn primary wide">Create code</button>
+    </form>
+
+    <h3 class="section-title">Codes</h3>
+    <ul class="list" id="code-list"></ul>
+    <p class="empty" id="code-empty" hidden>No codes yet.</p>
+  </section>
+
   <!-- Profile dialog -->
   <dialog id="dialog-profile">
     <form method="dialog">
       <span class="avatar large" id="profile-avatar"></span>
       <h2 id="profile-name"></h2>
       <p class="muted" id="profile-username"></p>
+      <p class="flair-line" id="profile-flair" hidden></p>
+
+      <section class="plan-card" aria-labelledby="plan-name">
+        <div class="plan-head">
+          <strong id="plan-name">KoolKat Free</strong>
+          <span class="fineprint" id="plan-detail"></span>
+        </div>
+        <div class="storage">
+          <div class="storage-bar"><span id="storage-fill"></span></div>
+          <span class="fineprint" id="storage-text"></span>
+        </div>
+        <div id="plan-upsell">
+          <ul class="perks">
+            <li>📦 2.5 GB of storage (Free has 512 MB)</li>
+            <li><img src="icons/kool-badge.png" alt="" class="kool-badge"> Kool badge next to your name</li>
+            <li>✨ Kool flair: a line of your own under your name</li>
+          </ul>
+          <button type="button" class="btn primary wide" id="btn-upgrade">Get KoolKat Unlimited · $4.99/month</button>
+        </div>
+        <button type="button" class="btn wide" id="btn-manage-sub" hidden>Manage subscription</button>
+        <div id="flair-editor" hidden>
+          <label class="fineprint" for="flair-input">Your Kool flair (friends see this)</label>
+          <div class="inline-form">
+            <input id="flair-input" maxlength="40" enterkeyhint="done">
+            <button type="button" class="btn small primary" id="btn-flair-save">Save</button>
+          </div>
+        </div>
+        <div class="inline-form redeem">
+          <input id="redeem-input" placeholder="Have a code?" autocapitalize="characters" spellcheck="false" aria-label="Redeem code" enterkeyhint="go">
+          <button type="button" class="btn small" id="btn-redeem">Redeem</button>
+        </div>
+        <button type="button" class="btn wide" id="btn-admin" hidden>🛠 Admin tools</button>
+      </section>
+
       <p class="fineprint">Your safety code</p>
       <code class="fingerprint" id="profile-fingerprint"></code>
       <p class="fineprint">Friends can compare this with the code they see for you to make sure nobody is in the middle.</p>
@@ -243,6 +323,7 @@
       <span class="avatar large" id="friend-avatar"></span>
       <h2 id="friend-name"></h2>
       <p class="muted" id="friend-username"></p>
+      <p class="flair-line" id="friend-flair" hidden></p>
       <p class="streak-line" id="friend-streak"></p>
       <p class="fineprint">Safety code</p>
       <code class="fingerprint" id="friend-fingerprint"></code>

@@ -484,3 +484,46 @@ dialog .row { display: flex; gap: 8px; justify-content: center; margin-top: 16px
 }
 .notify-banner .icon-btn { width: 32px; height: 32px; }
 .notify-banner svg { width: 18px; height: 18px; }
+
+/* ---------- KoolKat Unlimited ---------- */
+.kool-badge { height: 0.95em; width: auto; margin-left: 5px; vertical-align: -0.1em; }
+.flair-line { margin: 2px 0 8px; color: var(--brand); font-weight: 600; font-style: italic; overflow-wrap: anywhere; }
+dialog { max-height: 90dvh; overflow-y: auto; }
+.plan-card {
+  margin: 16px 0;
+  padding: 14px;
+  border-radius: 14px;
+  background: var(--surface);
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.plan-head { display: flex; flex-direction: column; }
+.plan-head strong { display: flex; align-items: center; font-size: 17px; }
+.plan-head .fineprint { margin: 2px 0 0; }
+.storage .fineprint { margin: 4px 0 0; display: block; }
+.storage-bar { height: 8px; border-radius: 999px; background: var(--border); overflow: hidden; }
+.storage-bar span { display: block; height: 100%; width: 0; background: var(--brand); border-radius: 999px; }
+.storage-bar span.full { background: var(--danger); }
+.perks { list-style: none; margin: 0; padding: 0; font-size: 14px; display: grid; gap: 4px; }
+.plan-card .btn.wide { margin-top: 0; }
+.inline-form { display: flex; gap: 8px; align-items: center; }
+.inline-form input, .admin-form input {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+}
+.inline-form input:focus, .admin-form input:focus { outline: 2px solid var(--brand); border-color: transparent; }
+.admin-form { padding: 0 16px; }
+.admin-form label { display: block; font-size: 14px; font-weight: 600; margin: 10px 0 0; }
+.admin-form label .fineprint { display: block; font-weight: 400; margin: 2px 0 0; }
+.admin-form input { display: block; width: 100%; margin-top: 6px; background: var(--surface); }
+.admin-form .row { display: flex; gap: 8px; margin-top: 12px; }
+.admin-form .btn.wide { margin-top: 14px; }
+.code-text { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.04em; }
+#btn-upgrade { white-space: normal; line-height: 1.25; }

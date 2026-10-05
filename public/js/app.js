@@ -63,6 +63,22 @@ function el(tag, props = {}, ...children) {
 const avatar = (user, cls = '') =>
   el('span', { class: `avatar ${cls}`, text: (user.displayName || user.username || '?').trim()[0] });
 
+/** A user's display name, with the Kool badge if they have KoolKat Unlimited. */
+const badgeImg = (user) =>
+  user?.badge
+    ? el('img', { src: 'icons/kool-badge.png', alt: 'KoolKat Unlimited', title: 'KoolKat Unlimited', class: 'kool-badge' })
+    : null;
+/** Drop empty parts, so replaceChildren() doesn't print "null". */
+const nodes = (...parts) => parts.filter((p) => p != null && p !== false);
+const nameEl = (user, cls = 'item-title') => el('div', { class: cls }, user.displayName, badgeImg(user));
+
+function formatBytes(n) {
+  if (n >= 1024 ** 3) return `${(n / 1024 ** 3).toFixed(n >= 10 * 1024 ** 3 ? 0 : 1)} GB`;
+  if (n >= 1024 ** 2) return `${(n / 1024 ** 2).toFixed(n >= 10 * 1024 ** 2 ? 0 : 1)} MB`;
+  if (n >= 1024) return `${Math.round(n / 1024)} KB`;
+  return `${n} B`;
+}
+
 let toastTimer;
 function toast(message, { error = false } = {}) {
   const t = $('toast');
@@ -233,6 +249,13 @@ function enterApp() {
     if (document.visibilityState === 'visible') refresh();
   }, 10000);
   resyncPush();
+  refreshMe().catch(() => {});
+  // Back from Stripe checkout.
+  const params = new URLSearchParams(location.search);
+  if (params.has('upgraded')) {
+    history.replaceState(null, '', location.pathname + location.hash);
+    welcomeUnlimited();
+  }
   // Opened from a notification: jump to what it was about.
   const view = location.hash.slice(1);
   if (view) {
@@ -532,7 +555,7 @@ function renderSendList() {
           el(
             'span',
             { class: 'item-main' },
-            el('div', { class: 'item-title', text: f.displayName }),
+            nameEl(f),
             el('div', { class: 'item-sub', text: `@${f.username}` })
           ),
           streakBadge(f.streak),
@@ -573,7 +596,11 @@ $('btn-send').addEventListener('click', async () => {
   try {
     const image = new Uint8Array(await state.capture.blob.arrayBuffer());
     const caption = $('caption-input').value.trim();
-    const payload = await encryptSnap(image, { caption, captionY: state.caption.y, mime: 'image/jpeg' }, recipients);
+    // Also encrypt the snap for yourself, so you can view it later from Sent.
+    const payload = await encryptSnap(image, { caption, captionY: state.caption.y, mime: 'image/jpeg' }, recipients, {
+      userId: state.me.userId,
+      publicKey: state.me.publicKey,
+    });
     button.textContent = 'Sending…';
     await api('POST', '/snaps', payload);
     toast(recipients.length === 1 ? 'Snap sent!' : `Snap sent to ${recipients.length} friends!`);
@@ -639,7 +666,7 @@ function renderInbox() {
         el(
           'span',
           { class: 'item-main' },
-          el('div', { class: 'item-title', text: s.from.displayName }),
+          nameEl(s.from),
           el(
             'div',
             { class: `item-sub${s.opened ? '' : ' new'}` },
@@ -686,14 +713,18 @@ function renderSent(snaps) {
         'li',
         {},
         el(
-          'div',
-          { class: 'item' },
+          s.viewable ? 'button' : 'div',
+          {
+            type: s.viewable ? 'button' : null,
+            class: 'item',
+            onclick: s.viewable ? () => openSnap({ ...s, own: true, available: true }) : null,
+          },
           el('span', { class: `snap-icon sent${opened === s.recipients.length ? ' opened' : ''}` }),
           el(
             'span',
             { class: 'item-main' },
             el('div', { class: 'item-title', text: `To ${s.recipients.map((r) => r.displayName).join(', ')}` }),
-            el('div', { class: 'item-sub', text: `${status} · ${timeAgo(s.createdAt)}` })
+            el('div', { class: 'item-sub', text: `${status} · ${timeAgo(s.createdAt)}${s.viewable ? ' · tap to view' : ''}` })
           )
         )
       );
@@ -713,7 +744,9 @@ async function openSnap(summary) {
     img.src = url;
     await img.decode();
 
-    $('viewer-from').textContent = snap.from.displayName;
+    $('viewer-from').replaceChildren(
+      ...nodes(...(snap.own ? [`You → ${snap.to.map((u) => u.displayName).join(', ')}`] : [snap.from.displayName, badgeImg(snap.from)]))
+    );
     $('viewer-time').textContent = timeAgo(snap.createdAt);
     const cap = $('viewer-caption');
     cap.textContent = opened.caption;
@@ -722,9 +755,9 @@ async function openSnap(summary) {
 
     show('viewer');
     fitFrame($('viewer-frame'), img.naturalWidth, img.naturalHeight);
-    viewer = { url, summary, size: [img.naturalWidth, img.naturalHeight] };
+    viewer = { url, summary, own: Boolean(snap.own), size: [img.naturalWidth, img.naturalHeight] };
 
-    if (!summary.opened) {
+    if (!snap.own && !summary.opened) {
       summary.opened = true;
       summary.openedAt = Date.now();
       api('POST', `/snaps/${encodeURIComponent(summary.id)}/viewed`).catch(() => {});
@@ -732,7 +765,8 @@ async function openSnap(summary) {
   } catch (err) {
     if (err.status === 410 || err.status === 404) summary.available = false;
     toast(err.name === 'OperationError' ? "This snap couldn't be decrypted." : err.message, { error: true });
-    renderInbox();
+    if (summary.own) loadInbox();
+    else renderInbox();
   }
 }
 
@@ -750,12 +784,15 @@ $('screen-viewer').addEventListener('click', (e) => {
 
 $('btn-snap-delete').addEventListener('click', async (e) => {
   if (!viewer) return;
-  const { summary } = viewer;
-  if (!confirm(`Delete this snap from ${summary.from.displayName}? You won't be able to see it again.`)) return;
+  const { summary, own } = viewer;
+  const question = own
+    ? 'Delete this snap for everyone? Nobody will be able to see it again, and it stops counting toward your storage.'
+    : `Delete this snap from ${summary.from.displayName}? You won't be able to see it again.`;
+  if (!confirm(question)) return;
   await withBusy(e.currentTarget, async () => {
     await api('DELETE', `/snaps/${encodeURIComponent(summary.id)}`);
     state.inbox = state.inbox.filter((s) => s.id !== summary.id);
-    toast('Snap deleted');
+    toast(own ? 'Snap deleted for everyone' : 'Snap deleted');
     closeSnap();
   });
 });
@@ -786,7 +823,7 @@ function userRow(user, sub, ...actions) {
       el(
         'span',
         { class: 'item-main' },
-        el('div', { class: 'item-title', text: user.displayName }),
+        nameEl(user),
         el('div', { class: 'item-sub', text: sub ?? `@${user.username}` })
       ),
       el('span', { class: 'item-actions' }, ...actions)
@@ -836,7 +873,7 @@ function renderFriends() {
   $('friends-empty').hidden = state.friends.length > 0;
   $('friends-list').replaceChildren(
     ...state.friends.map((f) => {
-      let sub = `@${f.username}`;
+      let sub = f.flair ? `@${f.username} · ${f.flair}` : `@${f.username}`;
       if (f.streak.count > 0 && f.streak.youNeedToSnap) sub = 'Snap them today to keep your streak!';
       else if (f.streak.count > 0 && f.streak.theyNeedToSnap) sub = `Waiting for ${f.displayName} to snap back`;
       return el(
@@ -849,7 +886,7 @@ function renderFriends() {
           el(
             'span',
             { class: 'item-main' },
-            el('div', { class: 'item-title', text: f.displayName }),
+            nameEl(f),
             el('div', { class: 'item-sub', text: sub })
           ),
           streakBadge(f.streak)
@@ -904,8 +941,10 @@ async function runSearch() {
 async function openFriend(friend) {
   const dialog = $('dialog-friend');
   $('friend-avatar').textContent = friend.displayName[0];
-  $('friend-name').textContent = friend.displayName;
+  $('friend-name').replaceChildren(...nodes(friend.displayName, badgeImg(friend)));
   $('friend-username').textContent = `@${friend.username}`;
+  $('friend-flair').textContent = friend.flair || '';
+  $('friend-flair').hidden = !friend.flair;
   $('friend-streak').textContent =
     friend.streak.count > 0 ? `🔥 ${friend.streak.count} day streak${friend.streak.expiring ? ' ⌛' : ''}` : 'No streak yet. Snap each other every day to start one!';
   $('friend-fingerprint').textContent = await fingerprint(friend.publicKey);
@@ -922,8 +961,9 @@ async function openFriend(friend) {
 $('btn-profile').addEventListener('click', async () => {
   const dialog = $('dialog-profile');
   $('profile-avatar').textContent = (state.me.displayName || state.me.username)[0];
-  $('profile-name').textContent = state.me.displayName;
   $('profile-username').textContent = `@${state.me.username}`;
+  renderPlan();
+  refreshMe().then(renderPlan).catch(() => {});
   $('profile-fingerprint').textContent = await fingerprint(state.me.publicKey);
   renderNotifyRow();
   renderCameraInfo();
@@ -936,6 +976,213 @@ $('btn-profile').addEventListener('click', async () => {
   };
   dialog.showModal();
 });
+
+// ---------- KoolKat Unlimited ----------
+async function refreshMe() {
+  const me = await api('GET', '/me');
+  state.plan = me.plan;
+  Object.assign(state.me, { displayName: me.user.displayName, badge: me.user.badge, flair: me.user.flair });
+  return me;
+}
+
+const formatDate = (ms) => new Date(ms).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+
+function renderPlan() {
+  const plan = state.plan;
+  $('profile-name').replaceChildren(...nodes(state.me.displayName, badgeImg(state.me)));
+  $('profile-flair').textContent = plan?.flair || '';
+  $('profile-flair').hidden = !plan?.flair;
+  if (!plan) return;
+  const unlimited = plan.plan === 'unlimited';
+  $('plan-name').replaceChildren(...nodes(unlimited ? 'KoolKat Unlimited' : 'KoolKat Free', unlimited && badgeImg({ badge: true })));
+  $('plan-detail').textContent = unlimited
+    ? plan.forever
+      ? 'Yours forever'
+      : plan.subscribed
+        ? `Renews monthly · $${(plan.price / 100).toFixed(2)}/month`
+        : `Until ${formatDate(plan.unlimitedUntil)}`
+    : '512 MB storage';
+  const pct = Math.min(100, (plan.storageUsed / plan.storageLimit) * 100);
+  $('storage-fill').style.width = `${pct}%`;
+  $('storage-fill').classList.toggle('full', pct >= 95);
+  $('storage-text').textContent = `${formatBytes(plan.storageUsed)} of ${formatBytes(plan.storageLimit)} used by snaps you've sent`;
+  $('plan-upsell').hidden = unlimited;
+  $('btn-manage-sub').hidden = !plan.subscribed;
+  $('flair-editor').hidden = !unlimited;
+  if (unlimited && document.activeElement !== $('flair-input')) $('flair-input').value = plan.flair;
+  $('btn-admin').hidden = !plan.isAdmin;
+}
+
+function welcomeUnlimited() {
+  toast('🎉 Welcome to KoolKat Unlimited!');
+  // The payment confirmation can take a few seconds to reach the server.
+  let tries = 0;
+  const check = () =>
+    refreshMe()
+      .then(() => {
+        if (state.plan?.plan !== 'unlimited' && ++tries < 10) setTimeout(check, 3000);
+      })
+      .catch(() => {});
+  check();
+}
+
+$('btn-upgrade').addEventListener('click', (e) =>
+  withBusy(e.currentTarget, async () => {
+    const { url } = await api('POST', '/billing/checkout');
+    location.href = url;
+  })
+);
+$('btn-manage-sub').addEventListener('click', (e) =>
+  withBusy(e.currentTarget, async () => {
+    const { url } = await api('POST', '/billing/portal');
+    location.href = url;
+  })
+);
+
+$('btn-flair-save').addEventListener('click', (e) =>
+  withBusy(e.currentTarget, async () => {
+    const { flair } = await api('POST', '/me/flair', { flair: $('flair-input').value });
+    $('flair-input').value = flair;
+    await refreshMe();
+    renderPlan();
+    toast('Kool flair saved ✨');
+  })
+);
+
+$('btn-redeem').addEventListener('click', (e) =>
+  withBusy(e.currentTarget, async () => {
+    const code = $('redeem-input').value.trim();
+    if (!code) throw new Error('Type a code first');
+    const res = await api('POST', '/codes/redeem', { code });
+    $('redeem-input').value = '';
+    await refreshMe();
+    renderPlan();
+    toast(res.forever ? '🎉 KoolKat Unlimited is yours forever!' : `🎉 KoolKat Unlimited until ${formatDate(res.unlimitedUntil)}!`);
+  })
+);
+
+// In the profile dialog, Enter would submit (and close) the dialog's form.
+for (const [input, button] of [
+  ['flair-input', 'btn-flair-save'],
+  ['redeem-input', 'btn-redeem'],
+]) {
+  $(input).addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      $(button).click();
+    }
+  });
+}
+
+// ---------- admin ----------
+$('btn-admin').addEventListener('click', () => {
+  $('dialog-profile').close();
+  show('admin');
+  loadCodes();
+});
+
+async function loadCodes() {
+  try {
+    renderCodes((await api('GET', '/admin/codes')).codes);
+  } catch (err) {
+    toast(err.message, { error: true });
+  }
+}
+
+function describeCodeRow(c) {
+  const parts = [`${c.uses}/${c.maxUses ?? '∞'} used`];
+  parts.push(c.grantDays ? `${c.grantDays} day${c.grantDays === 1 ? '' : 's'} of Unlimited` : 'Unlimited forever');
+  if (c.expiresAt) parts.push(c.expiresAt <= Date.now() ? 'expired' : `expires ${formatDate(c.expiresAt)}`);
+  else parts.push('never expires');
+  if (c.maxUses != null && c.uses >= c.maxUses) parts.push('used up');
+  return parts.join(' · ');
+}
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast(`Copied ${text}`);
+  } catch {
+    toast(text);
+  }
+}
+
+function renderCodes(codes) {
+  $('code-empty').hidden = codes.length > 0;
+  $('code-list').replaceChildren(
+    ...codes.map((c) =>
+      el(
+        'li',
+        {},
+        el(
+          'div',
+          { class: 'item' },
+          el(
+            'span',
+            { class: 'item-main' },
+            el('div', { class: 'item-title code-text', text: c.code }),
+            el('div', { class: 'item-sub', text: describeCodeRow(c) })
+          ),
+          el(
+            'span',
+            { class: 'item-actions' },
+            actionButton('Copy', () => copyText(c.code), ''),
+            actionButton('Delete', async () => {
+              if (!confirm(`Delete the code ${c.code}? Nobody will be able to redeem it.`)) return;
+              await api('DELETE', `/admin/codes/${encodeURIComponent(c.code)}`);
+              await loadCodes();
+            }, 'danger')
+          )
+        )
+      )
+    )
+  );
+}
+
+$('code-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.currentTarget;
+  const button = form.querySelector('button[type=submit]');
+  await withBusy(button, async () => {
+    const expires = form.expiresAt.value ? new Date(form.expiresAt.value).getTime() : null;
+    const { code } = await api('POST', '/admin/codes', {
+      code: form.code.value.trim() || null,
+      maxUses: form.maxUses.value || null,
+      expiresAt: expires,
+      grantDays: form.grantDays.value || null,
+    });
+    form.code.value = '';
+    await loadCodes();
+    copyText(code.code);
+  });
+});
+
+$('grant-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.currentTarget;
+  const button = form.querySelector('button[type=submit]');
+  await withBusy(button, async () => {
+    const username = form.username.value.trim();
+    if (!username) throw new Error('Type a username');
+    const res = await api('POST', '/admin/grant', { username, days: form.days.value || null });
+    toast(
+      res.forever
+        ? `🎁 ${res.user.displayName} has KoolKat Unlimited forever`
+        : `🎁 ${res.user.displayName} has KoolKat Unlimited until ${formatDate(res.unlimitedUntil)}`
+    );
+    if (res.user.id === state.me.userId) refreshMe().catch(() => {});
+  });
+});
+
+$('btn-revoke').addEventListener('click', (e) =>
+  withBusy(e.currentTarget, async () => {
+    const username = $('grant-form').username.value.trim();
+    if (!username) throw new Error('Type a username');
+    if (!confirm(`Take away gifted KoolKat Unlimited from ${username}? (A paid subscription isn't affected.)`)) return;
+    const res = await api('POST', '/admin/revoke', { username });
+    toast(`Removed gifted Unlimited from ${res.user.displayName}`);
+  })
+);
 
 // ---------- troubleshooting ----------
 async function renderCameraInfo() {

@@ -75,6 +75,24 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
 );
 CREATE INDEX IF NOT EXISTS idx_push_user ON push_subscriptions(user_id);
 
+-- Redeemable codes for KoolKat Unlimited, created by admins.
+CREATE TABLE IF NOT EXISTS codes (
+  code        TEXT PRIMARY KEY,           -- stored upper-case
+  created_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at  INTEGER NOT NULL,
+  expires_at  INTEGER,                    -- NULL: never expires
+  max_uses    INTEGER,                    -- NULL: unlimited uses
+  uses        INTEGER NOT NULL DEFAULT 0,
+  grant_days  INTEGER                     -- NULL: Unlimited forever
+);
+
+CREATE TABLE IF NOT EXISTS code_redemptions (
+  code         TEXT NOT NULL REFERENCES codes(code) ON DELETE CASCADE,
+  user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  redeemed_at  INTEGER NOT NULL,
+  PRIMARY KEY (code, user_id)
+);
+
 -- Server-wide key/value settings (e.g. generated VAPID keys).
 CREATE TABLE IF NOT EXISTS settings (
   key    TEXT PRIMARY KEY,
@@ -83,7 +101,18 @@ CREATE TABLE IF NOT EXISTS settings (
 `;
 
 // Columns added after the first release. Each is added if an older database lacks it.
-const MIGRATIONS = [['friendships', 'streak_reminded_day', 'INTEGER']];
+const MIGRATIONS = [
+  ['friendships', 'streak_reminded_day', 'INTEGER'],
+  // KoolKat Unlimited: from gifts/codes (plan_until) or a paid subscription (sub_until).
+  ['users', 'plan_until', 'INTEGER'],
+  ['users', 'sub_until', 'INTEGER'],
+  ['users', 'flair', 'TEXT'],
+  ['users', 'stripe_customer_id', 'TEXT'],
+  ['users', 'stripe_subscription_id', 'TEXT'],
+  // Lets the sender open their own snaps (the snap key wrapped for the sender).
+  ['snaps', 'sender_wrapped_key', 'TEXT'],
+  ['snaps', 'sender_wrap_iv', 'TEXT'],
+];
 
 function migrate(db) {
   for (const [table, column, type] of MIGRATIONS) {

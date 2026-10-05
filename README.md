@@ -10,11 +10,43 @@ A private, Snapchat alternative. You take photos in the app with the front or re
 - **Camera.** Uses the front or rear camera with a flip button. Selfies are mirrored like a normal selfie camera.
 - **Captions.** Tap the photo to add a caption, and tap somewhere else to move it. The caption is encrypted along with the photo.
 - **Saved snaps.** Snaps you receive stay in your inbox, so you can open them again whenever you like. They stay end-to-end encrypted on the server, and only the friends a snap was sent to can open it. If you unfriend someone, their snaps are hidden from you (and yours from them) until you're friends again.
+- **View your own snaps.** Each snap is also encrypted for you, so you can open it again from *Snaps → Sent*. As the sender, deleting a snap removes it for everyone.
 - **Deleting snaps.** Open a snap and tap 🗑 to remove it from your inbox. Once every recipient has deleted it, the encrypted data is removed from the server for good.
 - **Streaks.** 🔥 A streak grows by one for each day both friends snap each other. ⌛ means you'll lose it if you don't both snap today. A missed day resets it.
 - **Sent view.** Shows "Delivered" or "Opened" for snaps you've sent.
 - **Push notifications.** 🔔 Get notified about new snaps, friend requests, accepted requests, and streaks that are about to end. Turn them on from the banner on the Snaps screen or in your profile. Notifications only say *who* sent something. The snap itself stays end-to-end encrypted.
 - **Light and dark mode.** Choose System, Light or Dark under *Appearance* on the sign-in screen or in your profile. The choice is remembered on that device.
+
+## KoolKat Free vs KoolKat Unlimited
+
+| | KoolKat Free | KoolKat Unlimited ($4.99/month) |
+| --- | --- | --- |
+| Storage for snaps you've sent | 512 MB | 2.5 GB |
+| Kool badge 👑 next to your name | – | ✓ |
+| Kool flair (custom line under your name, default "i have nine lives") | – | ✓ |
+
+Storage counts the snaps you've sent that still exist. Deleting a sent snap (it's removed for everyone) frees the space. When it's full, KoolKat asks you to delete some or upgrade. Badges and flair are shown to your friends in their friend list, your profile and your snaps.
+
+You can get Unlimited by paying through Stripe, by redeeming a code (*Profile → Have a code?*), or as a gift from an admin.
+
+### Admin tools
+
+The account **`zalith9`** is the admin. Capitalisation doesn't matter, and usernames are unique regardless of capitalisation, so there can only be one zalith9. Set `KOOLKAT_ADMINS` to a comma-separated list to change it. Admins get an **Admin tools** button in their profile, where they can:
+
+- **create redeemable codes** with their own text (or a random `KOOL-XXXX-XXXX`), a **usage limit**, an **expiry date**, and how many days of Unlimited they give (or forever). Each person can use a code once;
+- see how many times each code has been used, and copy or delete codes;
+- **give KoolKat Unlimited to any user** for a number of days, or forever, and take a gift back.
+
+> Admin rights come from the username. If the database is ever lost (for example, Railway without a volume), whoever registers `zalith9` first becomes admin. Keep a volume attached.
+
+### Taking payments (Stripe)
+
+Without Stripe set up, the upgrade button explains that payments aren't available yet. Codes and gifts still work. To charge $4.99/month:
+
+1. Create a [Stripe](https://stripe.com) account and copy your **secret key** (Developers → API keys).
+2. In Stripe, go to Developers → Webhooks → **Add endpoint** with the URL `https://<your-app>/api/stripe/webhook`, and choose the events `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated` and `customer.subscription.deleted`. Copy its **signing secret**.
+3. To let people cancel or manage their subscription, turn on the **customer portal** (Settings → Billing → Customer portal).
+4. On Railway, add the variables `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`. Optionally add `STRIPE_PRICE_ID` to use a price you created in Stripe instead of the built-in $4.99/month.
 
 ## End-to-end encryption
 
@@ -50,6 +82,10 @@ Configuration (environment variables):
 | `TRUST_PROXY` | `1` on Railway, else off | Number of reverse proxies in front of the server, so rate limiting sees real client IPs |
 | `ALLOWED_ORIGINS` | – | Comma-separated sites allowed to use the API from another domain, e.g. `https://linkyjayy.github.io` for GitHub Pages |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | generated | Web Push keys. If you don't set them, a key pair is generated once and saved in the database. Generate your own with `npx web-push generate-vapid-keys` |
+| `KOOLKAT_ADMINS` | `zalith9` | Usernames (any capitalisation, comma-separated) that get admin tools |
+| `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | – | Turn on paid KoolKat Unlimited (see above) |
+| `STRIPE_PRICE_ID` | – | Use your own Stripe price instead of $4.99/month |
+| `PUBLIC_URL` | from request | The app's public address, used for Stripe return links |
 | `VAPID_SUBJECT` | repo URL | Contact URL or `mailto:` address sent to push services |
 
 ## Deploying to Railway
@@ -108,6 +144,7 @@ server/
   auth.js       auth-secret hashing, sessions, rate limiting
   streaks.js    streak rules
   push.js       Web Push: subscriptions, notifications, streak reminders
+  plans.js      KoolKat Free / Unlimited, codes, admins, Stripe helpers
   db.js         SQLite schema
 public/
   index.html, css/styles.css
@@ -145,6 +182,13 @@ All endpoints are under `/api` and take and return JSON. Authenticated endpoints
 | GET | `/snaps/:id` | Download a snap's ciphertext (recipients who are still friends with the sender only) |
 | POST | `/snaps/:id/viewed` | Mark as opened, so the sender sees "Opened" |
 | DELETE | `/snaps/:id` | Remove a snap from your inbox. The data is deleted once no recipient has it |
+| POST | `/me/flair` | `flair`: set your Kool flair (Unlimited; empty = default) |
+| POST | `/codes/redeem` | `code`: redeem a KoolKat Unlimited code |
+| GET / POST | `/admin/codes` | Admin: list / create codes (`code?, maxUses?, expiresAt?, grantDays?`) |
+| DELETE | `/admin/codes/:code` | Admin: delete a code |
+| POST | `/admin/grant` / `/admin/revoke` | Admin: give (`username, days?`) or take back gifted Unlimited |
+| POST | `/billing/checkout` / `/billing/portal` | Start a Stripe subscription / manage it |
+| POST | `/stripe/webhook` | Stripe events (signature-checked) |
 | GET | `/push/key` | The server's VAPID public key |
 | POST | `/push/subscribe` | Save this device's `PushSubscription` (as JSON) |
 | POST | `/push/unsubscribe` | `endpoint`: stop notifications for a device |

@@ -13,6 +13,28 @@ import {
 } from './auth.js';
 import { applySnapToStreak, describeStreak } from './streaks.js';
 import { createPusher, parseSubscription } from './push.js';
+import {
+  CODE_RE,
+  FOREVER,
+  FREE_STORAGE,
+  SUBSCRIPTION_GRACE_MS,
+  UNLIMITED_PRICE_CENTS,
+  UNLIMITED_STORAGE,
+  DEFAULT_FLAIR,
+  adminUsernames,
+  cleanFlair,
+  createStripeClient,
+  generateCode,
+  hasUnlimited,
+  isAdmin,
+  normaliseCode,
+  perks,
+  stripeConfig,
+  subscriptionPeriodEnd,
+  unlimitedUntil,
+  verifyStripeSignature,
+} from './plans.js';
+import { DAY_MS } from './streaks.js';
 
 const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 
@@ -74,6 +96,9 @@ export function createApp({
   serveStatic = true,
   pusher = createPusher({ db, clock }),
   allowedOrigins = parseAllowedOrigins(),
+  admins = adminUsernames(),
+  stripe = stripeConfig(),
+  stripeFetch = fetch,
 } = {}) {
   const app = express();
   app.disable('x-powered-by');
@@ -133,7 +158,8 @@ export function createApp({
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
     friendship: db.prepare('SELECT * FROM friendships WHERE user_low = ? AND user_high = ?'),
     friendshipsOf: db.prepare(`
-      SELECT f.*, u.id AS other_id, u.username, u.display_name, u.public_key
+      SELECT f.*, u.id AS other_id, u.username, u.display_name, u.public_key,
+             u.plan_until, u.sub_until, u.flair
       FROM friendships f
       JOIN users u ON u.id = CASE WHEN f.user_low = ? THEN f.user_high ELSE f.user_low END
       WHERE f.user_low = ? OR f.user_high = ?`),
@@ -149,19 +175,20 @@ export function createApp({
       SET low_last_day = ?, high_last_day = ?, streak_count = ?, streak_day = ?
       WHERE user_low = ? AND user_high = ?`),
     searchUsers: db.prepare(`
-      SELECT id, username, display_name FROM users
+      SELECT id, username, display_name, plan_until, sub_until, flair FROM users
       WHERE username LIKE ? ESCAPE '\\' AND id != ?
       ORDER BY length(username), username LIMIT 20`),
     insertSnap: db.prepare(`
-      INSERT INTO snaps (id, sender_id, iv, ephemeral_key, ciphertext, size, created_at, expires_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
+      INSERT INTO snaps (id, sender_id, iv, ephemeral_key, ciphertext, size, created_at, expires_at,
+                         sender_wrapped_key, sender_wrap_iv)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
     insertRecipient: db.prepare(`
       INSERT INTO snap_recipients (snap_id, recipient_id, wrapped_key, wrap_iv)
       VALUES (?, ?, ?, ?)`),
     // Received snaps from people who are still friends, newest first, one page at a time.
     inbox: db.prepare(`
       SELECT s.id, s.created_at, s.size, s.ciphertext IS NOT NULL AS available, r.viewed_at,
-             u.id AS sender_id, u.username, u.display_name
+             u.id AS sender_id, u.username, u.display_name, u.plan_until, u.sub_until, u.flair
       FROM snap_recipients r
       JOIN snaps s ON s.id = r.snap_id
       JOIN users u ON u.id = s.sender_id
@@ -170,7 +197,8 @@ export function createApp({
       WHERE r.recipient_id = ? AND s.created_at < ?
       ORDER BY s.created_at DESC LIMIT ?`),
     sent: db.prepare(`
-      SELECT s.id, s.created_at, r.viewed_at, u.id AS recipient_id, u.username, u.display_name
+      SELECT s.id, s.created_at, s.sender_wrapped_key IS NOT NULL AND s.ciphertext IS NOT NULL AS viewable,
+             r.viewed_at, u.id AS recipient_id, u.username, u.display_name, u.plan_until, u.sub_until, u.flair
       FROM snaps s
       JOIN snap_recipients r ON r.snap_id = s.id
       JOIN users u ON u.id = r.recipient_id
@@ -178,7 +206,8 @@ export function createApp({
       ORDER BY s.created_at DESC LIMIT 200`),
     snapForRecipient: db.prepare(`
       SELECT s.*, r.wrapped_key, r.wrap_iv, r.viewed_at,
-             u.username AS sender_username, u.display_name AS sender_display_name
+             u.username AS sender_username, u.display_name AS sender_display_name,
+             u.plan_until, u.sub_until, u.flair
       FROM snaps s
       JOIN snap_recipients r ON r.snap_id = s.id AND r.recipient_id = ?
       JOIN users u ON u.id = s.sender_id
@@ -189,9 +218,69 @@ export function createApp({
     removeRecipient: db.prepare('DELETE FROM snap_recipients WHERE snap_id = ? AND recipient_id = ?'),
     recipientCount: db.prepare('SELECT COUNT(*) AS n FROM snap_recipients WHERE snap_id = ?'),
     deleteSnap: db.prepare('DELETE FROM snaps WHERE id = ?'),
+    snapForSender: db.prepare('SELECT * FROM snaps WHERE id = ? AND sender_id = ?'),
+    snapRecipients: db.prepare(`
+      SELECT u.id, u.username, u.display_name, u.plan_until, u.sub_until, u.flair
+      FROM snap_recipients r JOIN users u ON u.id = r.recipient_id WHERE r.snap_id = ?`),
+    storageUsed: db.prepare(
+      'SELECT COALESCE(SUM(size), 0) AS used FROM snaps WHERE sender_id = ? AND ciphertext IS NOT NULL'
+    ),
+    setFlair: db.prepare('UPDATE users SET flair = ? WHERE id = ?'),
+    setPlanUntil: db.prepare('UPDATE users SET plan_until = ? WHERE id = ?'),
+    setSubscription: db.prepare(
+      'UPDATE users SET sub_until = ?, stripe_customer_id = COALESCE(?, stripe_customer_id), stripe_subscription_id = ? WHERE id = ?'
+    ),
+    linkStripeCustomer: db.prepare(
+      'UPDATE users SET stripe_customer_id = ?, stripe_subscription_id = COALESCE(?, stripe_subscription_id) WHERE id = ?'
+    ),
+    userByStripeCustomer: db.prepare('SELECT * FROM users WHERE stripe_customer_id = ?'),
+    code: db.prepare('SELECT * FROM codes WHERE code = ?'),
+    codes: db.prepare('SELECT * FROM codes ORDER BY created_at DESC'),
+    insertCode: db.prepare(`
+      INSERT INTO codes (code, created_by, created_at, expires_at, max_uses, grant_days)
+      VALUES (?, ?, ?, ?, ?, ?)`),
+    deleteCode: db.prepare('DELETE FROM codes WHERE code = ?'),
+    useCode: db.prepare('UPDATE codes SET uses = uses + 1 WHERE code = ?'),
+    redemption: db.prepare('SELECT 1 FROM code_redemptions WHERE code = ? AND user_id = ?'),
+    insertRedemption: db.prepare('INSERT INTO code_redemptions (code, user_id, redeemed_at) VALUES (?, ?, ?)'),
   };
 
-  const publicUser = (u) => ({ id: u.id, username: u.username, displayName: u.display_name });
+  // Name plus the KoolKat Unlimited badge and flair, if they have it.
+  const publicUser = (u) => ({
+    id: u.id,
+    username: u.username,
+    displayName: u.display_name,
+    ...perks(u, clock()),
+  });
+
+  const planFor = (u) => {
+    const now = clock();
+    const unlimited = hasUnlimited(u, now);
+    const until = unlimitedUntil(u);
+    return {
+      plan: unlimited ? 'unlimited' : 'free',
+      unlimitedUntil: unlimited ? (until >= FOREVER ? null : until) : null,
+      forever: unlimited && until >= FOREVER,
+      subscribed: (u.sub_until ?? 0) > now,
+      storageUsed: q.storageUsed.get(u.id).used,
+      storageLimit: unlimited ? UNLIMITED_STORAGE : FREE_STORAGE,
+      flair: unlimited ? u.flair || DEFAULT_FLAIR : null,
+      isAdmin: isAdmin(u.username, admins),
+      payments: Boolean(stripe),
+      price: UNLIMITED_PRICE_CENTS,
+    };
+  };
+
+  /** Add days of Unlimited (null = forever) on top of whatever they already have. */
+  const grantUnlimited = (user, days) => {
+    const now = clock();
+    const current = user.plan_until ?? 0;
+    let until;
+    if (days == null || current >= FOREVER) until = FOREVER;
+    else until = Math.max(now, current) + days * DAY_MS;
+    q.setPlanUntil.run(until, user.id);
+    return until;
+  };
 
   const areFriends = (a, b) => {
     const [low, high] = pair(a, b);
@@ -205,13 +294,19 @@ export function createApp({
       view: 'friends',
     });
 
+  // Runs a route handler (sync or async) and sends what it returns as JSON.
   const wrap = (handler) => (req, res, next) => {
-    try {
-      const result = handler(req, res);
-      if (result !== undefined && !res.headersSent) res.json(result);
-    } catch (err) {
-      next(err);
-    }
+    Promise.resolve()
+      .then(() => handler(req, res))
+      .then((result) => {
+        if (result !== undefined && !res.headersSent) res.json(result);
+      })
+      .catch(next);
+  };
+
+  const requireAdmin = (req, res, next) => {
+    if (!isAdmin(req.user?.username, admins)) return res.status(403).json({ error: 'Admins only' });
+    next();
   };
 
   const version = (process.env.RAILWAY_GIT_COMMIT_SHA || process.env.KOOLKAT_VERSION || 'dev').slice(0, 7);
@@ -297,7 +392,178 @@ export function createApp({
         publicKey: user.public_key,
         encryptedPrivateKey: user.encrypted_private_key,
         privateKeyIv: user.private_key_iv,
+        plan: planFor(user),
       };
+    })
+  );
+
+  api.post(
+    '/me/flair',
+    auth,
+    wrap((req) => {
+      const user = q.userById.get(req.user.id);
+      if (!hasUnlimited(user, clock())) fail(403, 'Kool flair is part of KoolKat Unlimited');
+      const flair = cleanFlair(req.body?.flair);
+      if (flair == null) fail(400, 'Flair must be text');
+      // Empty resets to the default.
+      q.setFlair.run(flair || null, user.id);
+      return { flair: flair || DEFAULT_FLAIR };
+    })
+  );
+
+  // ---------- KoolKat Unlimited: codes ----------
+  api.post(
+    '/codes/redeem',
+    auth,
+    wrap((req) => {
+      const code = normaliseCode(req.body?.code);
+      const row = code && q.code.get(code);
+      const now = clock();
+      if (!row) fail(404, "That code doesn't exist");
+      if (row.expires_at != null && row.expires_at <= now) fail(410, 'That code has expired');
+      if (row.max_uses != null && row.uses >= row.max_uses) fail(410, 'That code has been used up');
+      if (q.redemption.get(code, req.user.id)) fail(409, "You've already used this code");
+      const until = transaction(db, () => {
+        q.useCode.run(code);
+        q.insertRedemption.run(code, req.user.id, now);
+        return grantUnlimited(q.userById.get(req.user.id), row.grant_days);
+      });
+      return { ok: true, forever: until >= FOREVER, unlimitedUntil: until >= FOREVER ? null : until };
+    })
+  );
+
+  // ---------- admin ----------
+  const describeCode = (c) => ({
+    code: c.code,
+    createdAt: c.created_at,
+    expiresAt: c.expires_at,
+    maxUses: c.max_uses,
+    uses: c.uses,
+    grantDays: c.grant_days,
+  });
+
+  const optionalPositiveInt = (value, name, max) => {
+    if (value == null || value === '') return null;
+    const n = Number(value);
+    if (!Number.isInteger(n) || n < 1 || n > max) fail(400, `${name} must be a whole number from 1 to ${max}`);
+    return n;
+  };
+
+  api.get(
+    '/admin/codes',
+    auth,
+    requireAdmin,
+    wrap(() => ({ codes: q.codes.all().map(describeCode) }))
+  );
+
+  api.post(
+    '/admin/codes',
+    auth,
+    requireAdmin,
+    wrap((req, res) => {
+      const body = req.body ?? {};
+      const code = body.code ? normaliseCode(body.code) : generateCode();
+      if (!CODE_RE.test(code)) fail(400, 'Codes are 4-32 letters, numbers or dashes');
+      if (q.code.get(code)) fail(409, 'That code already exists');
+      const maxUses = optionalPositiveInt(body.maxUses, 'Usage limit', 1_000_000);
+      const grantDays = optionalPositiveInt(body.grantDays, 'Days of Unlimited', 36_500);
+      let expiresAt = null;
+      if (body.expiresAt != null && body.expiresAt !== '') {
+        expiresAt = Number(body.expiresAt);
+        if (!Number.isFinite(expiresAt) || expiresAt <= clock()) fail(400, 'Expiry must be in the future');
+      }
+      q.insertCode.run(code, req.user.id, clock(), expiresAt, maxUses, grantDays);
+      res.status(201);
+      return { code: describeCode(q.code.get(code)) };
+    })
+  );
+
+  api.delete(
+    '/admin/codes/:code',
+    auth,
+    requireAdmin,
+    wrap((req) => {
+      const code = normaliseCode(req.params.code);
+      if (!q.code.get(code)) fail(404, 'No such code');
+      q.deleteCode.run(code);
+      return { ok: true };
+    })
+  );
+
+  api.post(
+    '/admin/grant',
+    auth,
+    requireAdmin,
+    wrap((req) => {
+      const target = q.userByName.get(String(req.body?.username ?? '').trim());
+      if (!target) fail(404, 'No user with that username');
+      const days = optionalPositiveInt(req.body?.days, 'Days', 36_500);
+      const until = grantUnlimited(target, days);
+      return { user: publicUser(q.userById.get(target.id)), forever: until >= FOREVER, unlimitedUntil: until >= FOREVER ? null : until };
+    })
+  );
+
+  api.post(
+    '/admin/revoke',
+    auth,
+    requireAdmin,
+    wrap((req) => {
+      const target = q.userByName.get(String(req.body?.username ?? '').trim());
+      if (!target) fail(404, 'No user with that username');
+      // Removes gifted / code time only; a paid subscription is managed in Stripe.
+      q.setPlanUntil.run(null, target.id);
+      return { user: publicUser(q.userById.get(target.id)) };
+    })
+  );
+
+  // ---------- billing (Stripe) ----------
+  const stripeRequest = stripe && createStripeClient(stripe, stripeFetch);
+  const siteUrl = (req) => (process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
+
+  api.post(
+    '/billing/checkout',
+    auth,
+    wrap(async (req) => {
+      if (!stripeRequest) fail(503, "Payments aren't set up yet. Ask for a KoolKat Unlimited code instead!");
+      const user = q.userById.get(req.user.id);
+      if ((user.sub_until ?? 0) > clock()) fail(409, 'You already have a KoolKat Unlimited subscription');
+      const lineItem = stripe.priceId
+        ? { price: stripe.priceId, quantity: 1 }
+        : {
+            quantity: 1,
+            price_data: {
+              currency: 'usd',
+              unit_amount: UNLIMITED_PRICE_CENTS,
+              recurring: { interval: 'month' },
+              product_data: { name: 'KoolKat Unlimited' },
+            },
+          };
+      const session = await stripeRequest('POST', '/checkout/sessions', {
+        mode: 'subscription',
+        line_items: { 0: lineItem },
+        success_url: `${siteUrl(req)}/?upgraded=1`,
+        cancel_url: `${siteUrl(req)}/`,
+        client_reference_id: String(user.id),
+        customer: user.stripe_customer_id || undefined,
+        metadata: { user_id: String(user.id) },
+        subscription_data: { metadata: { user_id: String(user.id) } },
+      });
+      return { url: session.url };
+    })
+  );
+
+  api.post(
+    '/billing/portal',
+    auth,
+    wrap(async (req) => {
+      if (!stripeRequest) fail(503, "Payments aren't set up yet");
+      const user = q.userById.get(req.user.id);
+      if (!user.stripe_customer_id) fail(404, 'No subscription to manage');
+      const portal = await stripeRequest('POST', '/billing_portal/sessions', {
+        customer: user.stripe_customer_id,
+        return_url: `${siteUrl(req)}/`,
+      });
+      return { url: portal.url };
     })
   );
 
@@ -331,7 +597,7 @@ export function createApp({
       const incoming = [];
       const outgoing = [];
       for (const row of q.friendshipsOf.all(me, me, me)) {
-        const user = { id: row.other_id, username: row.username, displayName: row.display_name };
+        const user = publicUser({ ...row, id: row.other_id });
         if (row.status === 'accepted') {
           friends.push({
             ...user,
@@ -423,7 +689,7 @@ export function createApp({
     '/snaps',
     auth,
     wrap((req, res) => {
-      const { iv, ephemeralPublicKey, ciphertext, recipients } = req.body ?? {};
+      const { iv, ephemeralPublicKey, ciphertext, recipients, senderWrappedKey, senderWrapIv } = req.body ?? {};
       base64Field(iv, 'iv', { min: 12, max: 12 });
       validatePublicKey(ephemeralPublicKey, 'ephemeralPublicKey');
       const blob = base64Field(ciphertext, 'ciphertext', { min: 17, max: MAX_SNAP_BYTES });
@@ -440,12 +706,28 @@ export function createApp({
         base64Field(r.wrappedKey, 'wrappedKey', { min: 48, max: 48 });
         base64Field(r.wrapIv, 'wrapIv', { min: 12, max: 12 });
       }
+      // Optional copy of the snap key for the sender, so they can view it later.
+      if (senderWrappedKey != null || senderWrapIv != null) {
+        base64Field(senderWrappedKey, 'senderWrappedKey', { min: 48, max: 48 });
+        base64Field(senderWrapIv, 'senderWrapIv', { min: 12, max: 12 });
+      }
+
+      const sender = q.userById.get(me);
+      const plan = planFor(sender);
+      if (plan.storageUsed + blob.length > plan.storageLimit) {
+        fail(
+          413,
+          plan.plan === 'unlimited'
+            ? 'Your KoolKat storage is full. Delete some of your sent snaps to make room.'
+            : 'Your 512 MB of KoolKat storage is full. Delete some of your sent snaps, or upgrade to KoolKat Unlimited for 2.5 GB.'
+        );
+      }
 
       const id = crypto.randomUUID();
       const now = clock();
       transaction(db, () => {
         // expires_at is left over from when snaps expired; 0 means "never".
-        q.insertSnap.run(id, me, iv, ephemeralPublicKey, blob, blob.length, now, 0);
+        q.insertSnap.run(id, me, iv, ephemeralPublicKey, blob, blob.length, now, 0, senderWrappedKey ?? null, senderWrapIv ?? null);
         for (const r of recipients) {
           const other = Number(r.userId);
           q.insertRecipient.run(id, other, r.wrappedKey, r.wrapIv);
@@ -475,7 +757,7 @@ export function createApp({
       return {
         snaps: rows.slice(0, INBOX_PAGE_SIZE).map((s) => ({
           id: s.id,
-          from: { id: s.sender_id, username: s.username, displayName: s.display_name },
+          from: publicUser({ ...s, id: s.sender_id }),
           createdAt: s.created_at,
           size: s.size,
           opened: s.viewed_at != null,
@@ -493,11 +775,11 @@ export function createApp({
     wrap((req) => {
       const byId = new Map();
       for (const row of q.sent.all(req.user.id)) {
-        if (!byId.has(row.id)) byId.set(row.id, { id: row.id, createdAt: row.created_at, recipients: [] });
+        if (!byId.has(row.id)) {
+          byId.set(row.id, { id: row.id, createdAt: row.created_at, viewable: Boolean(row.viewable), recipients: [] });
+        }
         byId.get(row.id).recipients.push({
-          id: row.recipient_id,
-          username: row.username,
-          displayName: row.display_name,
+          ...publicUser({ ...row, id: row.recipient_id }),
           opened: row.viewed_at != null,
           openedAt: row.viewed_at,
         });
@@ -510,14 +792,33 @@ export function createApp({
     '/snaps/:id',
     auth,
     wrap((req) => {
-      const snap = q.snapForRecipient.get(req.user.id, String(req.params.id));
+      const id = String(req.params.id);
+      // The sender viewing their own snap.
+      const own = q.snapForSender.get(id, req.user.id);
+      if (own) {
+        if (!own.sender_wrapped_key) fail(410, 'Snaps sent before this update can only be viewed by their recipients');
+        if (own.ciphertext == null) fail(410, 'This snap is no longer available');
+        return {
+          id: own.id,
+          own: true,
+          from: publicUser(q.userById.get(req.user.id)),
+          to: q.snapRecipients.all(id).map(publicUser),
+          createdAt: own.created_at,
+          iv: own.iv,
+          ephemeralPublicKey: own.ephemeral_key,
+          wrappedKey: own.sender_wrapped_key,
+          wrapIv: own.sender_wrap_iv,
+          ciphertext: Buffer.from(own.ciphertext).toString('base64'),
+        };
+      }
+      const snap = q.snapForRecipient.get(req.user.id, id);
       if (!snap) fail(404, 'Snap not found');
       if (!areFriends(req.user.id, snap.sender_id)) fail(403, 'Snaps are only visible to friends');
       // Only snaps from before snaps were kept can be missing their data.
       if (snap.ciphertext == null) fail(410, 'This snap is no longer available');
       return {
         id: snap.id,
-        from: { id: snap.sender_id, username: snap.sender_username, displayName: snap.sender_display_name },
+        from: publicUser({ ...snap, id: snap.sender_id, username: snap.sender_username, display_name: snap.sender_display_name }),
         createdAt: snap.created_at,
         iv: snap.iv,
         ephemeralPublicKey: snap.ephemeral_key,
@@ -540,13 +841,18 @@ export function createApp({
     })
   );
 
-  // A recipient removes a snap from their inbox. When nobody has it any more,
+  // The sender deletes a snap for everyone (freeing their storage), or a
+  // recipient removes it from their inbox. When no recipient has it any more,
   // the encrypted data is deleted from the server.
   api.delete(
     '/snaps/:id',
     auth,
     wrap((req) => {
       const id = String(req.params.id);
+      if (q.snapForSender.get(id, req.user.id)) {
+        q.deleteSnap.run(id);
+        return { ok: true, deletedForEveryone: true };
+      }
       if (!q.snapForRecipient.get(req.user.id, id)) fail(404, 'Snap not found');
       transaction(db, () => {
         q.removeRecipient.run(id, req.user.id);
@@ -589,6 +895,50 @@ export function createApp({
     console.error(err);
     res.status(500).json({ error: 'Something went wrong' });
   });
+
+  // Stripe webhook: needs the raw body to check the signature, so it's mounted
+  // before the JSON-parsing API router.
+  app.post('/api/stripe/webhook', express.raw({ type: '*/*', limit: '1mb' }), (req, res) => {
+    if (!stripe?.webhookSecret) return res.status(503).json({ error: 'Webhooks not configured' });
+    const raw = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : '';
+    if (!verifyStripeSignature(raw, req.get('stripe-signature'), stripe.webhookSecret, clock())) {
+      return res.status(400).json({ error: 'Bad signature' });
+    }
+    let event;
+    try {
+      event = JSON.parse(raw);
+    } catch {
+      return res.status(400).json({ error: 'Invalid JSON' });
+    }
+    handleStripeEvent(event);
+    res.json({ received: true });
+  });
+
+  function handleStripeEvent(event) {
+    const obj = event?.data?.object ?? {};
+    const userFrom = (metaUserId, customerId) =>
+      (metaUserId && q.userById.get(Number(metaUserId))) || (customerId && q.userByStripeCustomer.get(customerId));
+    switch (event.type) {
+      case 'checkout.session.completed': {
+        const user = userFrom(obj.client_reference_id || obj.metadata?.user_id, obj.customer);
+        if (user && obj.customer) q.linkStripeCustomer.run(obj.customer, obj.subscription ?? null, user.id);
+        break;
+      }
+      case 'customer.subscription.created':
+      case 'customer.subscription.updated':
+      case 'customer.subscription.deleted': {
+        const user = userFrom(obj.metadata?.user_id, obj.customer);
+        if (!user) break;
+        const active = ['active', 'trialing', 'past_due'].includes(obj.status) && event.type !== 'customer.subscription.deleted';
+        const end = subscriptionPeriodEnd(obj);
+        const until = active && end ? end + SUBSCRIPTION_GRACE_MS : clock();
+        q.setSubscription.run(until, obj.customer ?? null, active ? obj.id : null, user.id);
+        break;
+      }
+      default:
+        break;
+    }
+  }
 
   app.use('/api', api);
   if (serveStatic) {

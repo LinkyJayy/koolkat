@@ -112,8 +112,10 @@ async function wrappingKey(privateKey, publicKey, recipientId) {
  * @param {Uint8Array} imageBytes  JPEG bytes
  * @param {{caption?: string, captionY?: number, mime?: string}} meta
  * @param {{userId: number, publicKey: string}[]} recipients
+ * @param {{userId: number, publicKey: string}} [sender]  also wrap the key for the
+ *        sender, so they can view their own snap later
  */
-export async function encryptSnap(imageBytes, meta, recipients) {
+export async function encryptSnap(imageBytes, meta, recipients, sender) {
   const metaBytes = enc.encode(
     JSON.stringify({ caption: meta.caption ?? '', captionY: meta.captionY ?? 0.5, mime: meta.mime ?? 'image/jpeg' })
   );
@@ -129,20 +131,21 @@ export async function encryptSnap(imageBytes, meta, recipients) {
   const rawSnapKey = await subtle.exportKey('raw', snapKey);
 
   const ephemeral = await subtle.generateKey(CURVE, true, ['deriveBits']);
-  const wrapped = await Promise.all(
-    recipients.map(async ({ userId, publicKey }) => {
-      const key = await wrappingKey(ephemeral.privateKey, await importPublicKey(publicKey), userId);
-      const wrapIv = randomBytes(12);
-      const wrappedKey = await subtle.encrypt({ name: 'AES-GCM', iv: wrapIv }, key, rawSnapKey);
-      return { userId, wrappedKey: toBase64(wrappedKey), wrapIv: toBase64(wrapIv) };
-    })
-  );
+  const wrapFor = async ({ userId, publicKey }) => {
+    const key = await wrappingKey(ephemeral.privateKey, await importPublicKey(publicKey), userId);
+    const wrapIv = randomBytes(12);
+    const wrappedKey = await subtle.encrypt({ name: 'AES-GCM', iv: wrapIv }, key, rawSnapKey);
+    return { userId, wrappedKey: toBase64(wrappedKey), wrapIv: toBase64(wrapIv) };
+  };
+  const wrapped = await Promise.all(recipients.map(wrapFor));
+  const own = sender ? await wrapFor(sender) : null;
 
   return {
     iv: toBase64(iv),
     ephemeralPublicKey: toBase64(await subtle.exportKey('spki', ephemeral.publicKey)),
     ciphertext: toBase64(ciphertext),
     recipients: wrapped,
+    ...(own ? { senderWrappedKey: own.wrappedKey, senderWrapIv: own.wrapIv } : {}),
   };
 }
 
