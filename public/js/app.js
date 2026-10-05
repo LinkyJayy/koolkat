@@ -1,4 +1,15 @@
-import { api, getToken, setToken, setUnauthorizedHandler } from './api.js';
+import { API_BASE, api, getToken, setToken, setUnauthorizedHandler } from './api.js';
+import {
+  disablePush,
+  enablePush,
+  needsHomeScreenInstall,
+  pushPreferenceOff,
+  pushState,
+  pushSupported,
+  registerServiceWorker,
+  resyncPush,
+  setPushPreference,
+} from './push.js';
 import { clearIdentity, loadIdentity, saveIdentity } from './keystore.js';
 import {
   createIdentity,
@@ -160,6 +171,8 @@ $('auth-form').addEventListener('submit', async (e) => {
 });
 
 async function logout() {
+  // Stop notifications for this account on this device before the token goes away.
+  await disablePush().catch(() => {});
   try {
     await api('POST', '/auth/logout');
   } catch {
@@ -194,6 +207,20 @@ function enterApp() {
   state.pollTimer = setInterval(() => {
     if (document.visibilityState === 'visible') refresh();
   }, 10000);
+  resyncPush();
+  // Opened from a notification: jump to what it was about.
+  const view = location.hash.slice(1);
+  if (view) {
+    history.replaceState(null, '', location.pathname + location.search);
+    openView(view);
+  }
+}
+
+function openView(view) {
+  if (!state.me) return;
+  if (view === 'inbox') openInbox();
+  else if (view === 'friends') openFriends();
+  else if (state.screen !== 'camera') show('camera');
 }
 
 // ---------- data ----------
@@ -449,10 +476,12 @@ for (const tab of document.querySelectorAll('[data-inbox-tab]')) {
     loadInbox();
   });
 }
-$('btn-inbox').addEventListener('click', () => {
+function openInbox() {
   show('inbox');
   loadInbox();
-});
+  renderNotifyBanner();
+}
+$('btn-inbox').addEventListener('click', openInbox);
 $('btn-inbox-refresh').addEventListener('click', loadInbox);
 
 async function loadInbox() {
@@ -584,13 +613,14 @@ window.addEventListener('resize', () => {
 });
 
 // ---------- friends ----------
-$('btn-friends').addEventListener('click', () => {
+function openFriends() {
   $('search-input').value = '';
   $('search-results').replaceChildren();
   show('friends');
   renderFriends();
   refreshFriends().then(renderFriends).catch((err) => toast(err.message, { error: true }));
-});
+}
+$('btn-friends').addEventListener('click', openFriends);
 
 function userRow(user, sub, ...actions) {
   return el(
@@ -742,11 +772,82 @@ $('btn-profile').addEventListener('click', async () => {
   $('profile-name').textContent = state.me.displayName;
   $('profile-username').textContent = `@${state.me.username}`;
   $('profile-fingerprint').textContent = await fingerprint(state.me.publicKey);
+  renderNotifyRow();
   dialog.returnValue = '';
   dialog.onclose = () => {
     if (dialog.returnValue === 'logout') logout();
   };
   dialog.showModal();
+});
+
+// ---------- notifications ----------
+const BANNER_KEY = 'koolkat.pushBanner';
+
+async function renderNotifyRow() {
+  const status = $('notify-status');
+  const button = $('btn-notify');
+  const current = await pushState();
+  button.hidden = false;
+  button.disabled = false;
+  if (current === 'on') {
+    status.textContent = 'On for this device';
+    button.textContent = 'Turn off';
+  } else if (current === 'blocked') {
+    status.textContent = 'Blocked in your browser settings';
+    button.hidden = true;
+  } else if (current === 'unsupported') {
+    status.textContent = needsHomeScreenInstall()
+      ? 'Add KoolKat to your Home Screen (Share → Add to Home Screen) to get notifications'
+      : 'Not supported in this browser';
+    button.hidden = true;
+  } else {
+    status.textContent = 'Snaps, friend requests and streak reminders';
+    button.textContent = 'Turn on';
+  }
+}
+
+async function turnOnNotifications() {
+  await enablePush();
+  setPushPreference(true);
+  toast('Notifications are on 🔔');
+}
+
+$('btn-notify').addEventListener('click', (e) =>
+  withBusy(e.currentTarget, async () => {
+    if ((await pushState()) === 'on') {
+      await disablePush();
+      setPushPreference(false);
+      toast('Notifications are off');
+    } else {
+      await turnOnNotifications();
+    }
+    await renderNotifyRow();
+  })
+);
+
+async function renderNotifyBanner() {
+  let dismissed = false;
+  try {
+    dismissed = localStorage.getItem(BANNER_KEY) === 'dismissed';
+  } catch {
+    /* storage blocked */
+  }
+  $('notify-banner').hidden = dismissed || pushPreferenceOff() || !pushSupported() || (await pushState()) !== 'off';
+}
+
+$('btn-notify-banner').addEventListener('click', (e) =>
+  withBusy(e.currentTarget, async () => {
+    await turnOnNotifications();
+    await renderNotifyBanner();
+  })
+);
+$('btn-notify-dismiss').addEventListener('click', () => {
+  try {
+    localStorage.setItem(BANNER_KEY, 'dismissed');
+  } catch {
+    /* storage blocked */
+  }
+  $('notify-banner').hidden = true;
 });
 
 // ---------- appearance ----------
@@ -781,6 +882,11 @@ renderThemePickers();
 // ---------- boot ----------
 async function boot() {
   setAuthMode('login');
+  $('auth-config-warning').hidden = Boolean(API_BASE) || !location.hostname.endsWith('.github.io');
+  await registerServiceWorker((msg) => {
+    if (msg.type === 'refresh' && state.me) refresh();
+    if (msg.type === 'open') openView(msg.view);
+  });
   const identity = await loadIdentity();
   if (getToken() && identity) {
     try {

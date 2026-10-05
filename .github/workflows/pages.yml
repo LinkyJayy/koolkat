@@ -1,0 +1,63 @@
+# Publishes the KoolKat web app (the public/ folder) to GitHub Pages.
+#
+# GitHub Pages only hosts static files, so the backend (npm start) must run
+# somewhere else. Point the app at it by setting a repository variable:
+#   Settings → Secrets and variables → Actions → Variables → KOOLKAT_API_URL
+#   e.g. https://koolkat-api.example.com
+# and start the backend with ALLOWED_ORIGINS=https://<your-user>.github.io
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    paths:
+      - 'public/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    # Only the default branch publishes the site.
+    if: github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build site
+        env:
+          API_URL: ${{ vars.KOOLKAT_API_URL }}
+        run: |
+          cp -r public _site
+          touch _site/.nojekyll
+          if [ -z "$API_URL" ]; then
+            echo "::warning::KOOLKAT_API_URL is not set, so the site won't be able to reach a backend. See README → GitHub Pages."
+          fi
+          node -e '
+            const url = (process.env.API_URL || "").trim().replace(/\/+$/, "");
+            if (url && !/^https:\/\/[^\s"]+$/.test(url)) {
+              console.error("KOOLKAT_API_URL must be an https:// address (GitHub Pages is served over https).");
+              process.exit(1);
+            }
+            require("fs").writeFileSync("_site/js/config.js",
+              "window.KOOLKAT_CONFIG = " + JSON.stringify({ apiUrl: url }) + ";\n");
+          '
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

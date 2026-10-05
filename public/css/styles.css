@@ -90,6 +90,7 @@ h1, h2, h3 { margin: 0; }
 .btn.primary { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
 .btn.danger { background: transparent; border-color: var(--danger); color: var(--danger); }
 .btn.small { padding: 6px 12px; font-size: 14px; }
+.btn { white-space: nowrap; }
 .btn.wide { width: 100%; padding: 12px; margin-top: 8px; }
 .btn:disabled { opacity: 0.55; cursor: default; }
 
@@ -451,3 +452,30 @@ dialog .row { display: flex; gap: 8px; justify-content: center; margin-top: 16px
 }
 .toast.error { background: var(--danger); }
 #screen-send { padding-bottom: 0; }
+.notify-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--surface);
+  text-align: left;
+}
+.notify-text { display: flex; flex-direction: column; }
+.notify-text .fineprint { margin: 2px 0 0; }
+.notify-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 16px 8px;
+  padding: 8px 8px 8px 14px;
+  border-radius: 12px;
+  background: var(--brand-soft);
+  font-size: 14px;
+  font-weight: 600;
+}
+.notify-banner .icon-btn { width: 32px; height: 32px; }
+.notify-banner svg { width: 18px; height: 18px; }

@@ -12,6 +12,7 @@ A private, Snapchat alternative. You take photos in the app with the front or re
 - **Disappearing snaps.** A snap shows for 10 seconds (or until you tap) and can only be opened once. When every recipient has opened it, the server deletes the encrypted data. Unopened snaps expire after 30 days.
 - **Streaks.** 🔥 A streak grows by one for each day both friends snap each other. ⌛ means you'll lose it if you don't both snap today. A missed day resets it.
 - **Sent view.** Shows "Delivered" or "Opened" for snaps you've sent.
+- **Push notifications.** 🔔 Get notified about new snaps, friend requests, accepted requests, and streaks that are about to end. Turn them on from the banner on the Snaps screen or in your profile. Notifications only say *who* sent something. The snap itself stays end-to-end encrypted.
 - **Light and dark mode.** Choose System, Light or Dark under *Appearance* on the sign-in screen or in your profile. The choice is remembered on that device.
 
 ## End-to-end encryption
@@ -46,6 +47,9 @@ Configuration (environment variables):
 | `KOOLKAT_DB` | `data/koolkat.db` | SQLite database file |
 | `TLS_CERT` / `TLS_KEY` | – | Serve HTTPS directly with this certificate and key |
 | `TRUST_PROXY` | – | Set to `1` when running behind a reverse proxy, so rate limiting sees real client IPs |
+| `ALLOWED_ORIGINS` | – | Comma-separated sites allowed to use the API from another domain, e.g. `https://linkyjayy.github.io` for GitHub Pages |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | generated | Web Push keys. If you don't set them, a key pair is generated once and saved in the database. Generate your own with `npx web-push generate-vapid-keys` |
+| `VAPID_SUBJECT` | repo URL | Contact URL or `mailto:` address sent to push services |
 
 ### Using it on your phone
 
@@ -56,6 +60,31 @@ Browsers only allow the camera on `https://` or on `http://localhost`. To use Ko
 
 You can then use "Add to Home Screen" to install KoolKat like an app.
 
+### Push notifications
+
+Notifications use the standard Web Push API, so they work without any third-party account:
+
+- **Android, Windows, Mac, Linux:** Chrome, Edge and Firefox work in the browser. Brave needs *Use Google services for push messaging* turned on.
+- **iPhone / iPad (iOS 16.4+):** first add KoolKat to your Home Screen (Share → Add to Home Screen), open it from there, then turn notifications on.
+- KoolKat must be opened over `https://` (or `localhost`).
+- Streak reminders are sent in the last 4 hours before your streak ends (midnight UTC).
+
+## GitHub Pages
+
+GitHub Pages can host KoolKat's **web app**, but it only serves static files, so it **can't run the backend**. The backend still has to run somewhere with a public `https://` address: a server, a hosting service like Render, Railway or Fly.io, or your own computer through a tunnel. Then:
+
+1. **Start the backend** and allow your Pages site to talk to it:
+   ```bash
+   ALLOWED_ORIGINS=https://<your-github-username>.github.io npm start
+   ```
+2. **Tell the Pages build where the backend is.** In the repo, go to *Settings → Secrets and variables → Actions → Variables* and add `KOOLKAT_API_URL`, for example `https://koolkat-api.example.com`.
+3. **Turn on Pages.** Go to *Settings → Pages* and set *Source* to **GitHub Actions**.
+4. **Deploy.** Push to the default branch, or run *Actions → Deploy to GitHub Pages → Run workflow*. The site appears at `https://<your-github-username>.github.io/koolkat/`.
+
+The workflow (`.github/workflows/pages.yml`) publishes the `public/` folder and writes the backend address into `js/config.js`. To host the frontend anywhere else, edit `public/js/config.js` by hand.
+
+> Free GitHub accounts can only use Pages on **public** repositories. A private repo needs GitHub Pro, Team or Enterprise.
+
 ## Project layout
 
 ```
@@ -64,6 +93,7 @@ server/
   app.js        Express app and REST API
   auth.js       auth-secret hashing, sessions, rate limiting
   streaks.js    streak rules
+  push.js       Web Push: subscriptions, notifications, streak reminders
   db.js         SQLite schema
 public/
   index.html, css/styles.css
@@ -71,6 +101,11 @@ public/
   js/crypto.js    end-to-end encryption (shared with the tests)
   js/api.js       API client
   js/keystore.js  IndexedDB storage for the unlocked private key
+  js/push.js      turning notifications on and off
+  js/config.js    backend address (for GitHub Pages / separate hosting)
+  js/theme.js     light / dark mode
+  sw.js           service worker that shows notifications
+.github/workflows/pages.yml  GitHub Pages deployment
 test/api.test.js  end-to-end API tests, including real encrypt/decrypt
 ```
 
@@ -94,3 +129,6 @@ All endpoints are under `/api` and take and return JSON. Authenticated endpoints
 | GET | `/snaps/sent` | Sent snaps and who has opened them |
 | GET | `/snaps/:id` | Download an unopened snap's ciphertext (recipient and friend only) |
 | POST | `/snaps/:id/viewed` | Mark as opened. The data is deleted once everyone has opened it |
+| GET | `/push/key` | The server's VAPID public key |
+| POST | `/push/subscribe` | Save this device's `PushSubscription` (as JSON) |
+| POST | `/push/unsubscribe` | `endpoint`: stop notifications for a device |

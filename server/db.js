@@ -64,7 +64,33 @@ CREATE TABLE IF NOT EXISTS snap_recipients (
   PRIMARY KEY (snap_id, recipient_id)
 );
 CREATE INDEX IF NOT EXISTS idx_snap_recipients_recipient ON snap_recipients(recipient_id);
+
+-- Web Push subscriptions (one per browser/device a user turned notifications on for).
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  endpoint    TEXT PRIMARY KEY,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  p256dh      TEXT NOT NULL,
+  auth        TEXT NOT NULL,
+  created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_push_user ON push_subscriptions(user_id);
+
+-- Server-wide key/value settings (e.g. generated VAPID keys).
+CREATE TABLE IF NOT EXISTS settings (
+  key    TEXT PRIMARY KEY,
+  value  TEXT NOT NULL
+);
 `;
+
+// Columns added after the first release. Each is added if an older database lacks it.
+const MIGRATIONS = [['friendships', 'streak_reminded_day', 'INTEGER']];
+
+function migrate(db) {
+  for (const [table, column, type] of MIGRATIONS) {
+    const exists = db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
+    if (!exists) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+  }
+}
 
 export function openDatabase(file = process.env.KOOLKAT_DB || 'data/koolkat.db') {
   if (file !== ':memory:') {
@@ -73,6 +99,7 @@ export function openDatabase(file = process.env.KOOLKAT_DB || 'data/koolkat.db')
   const db = new DatabaseSync(file);
   if (file !== ':memory:') db.exec('PRAGMA journal_mode = WAL;');
   db.exec(SCHEMA);
+  migrate(db);
   return db;
 }
 

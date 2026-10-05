@@ -12,6 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="css/styles.css">
   <script src="js/theme.js"></script>
+  <script src="js/config.js"></script>
   <script type="module" src="js/app.js"></script>
 </head>
 <body>
@@ -50,6 +51,10 @@
         </p>
         <button type="submit" class="btn primary wide" id="auth-submit">Sign in</button>
         <p id="auth-error" class="error" role="alert"></p>
+        <p id="auth-config-warning" class="error" hidden>
+          This copy of KoolKat isn't connected to a server yet. Set the backend address in
+          <code>js/config.js</code> (or the <code>KOOLKAT_API_URL</code> repository variable for GitHub Pages).
+        </p>
       </form>
       <div class="theme-picker">
         <p class="fineprint">Appearance</p>
@@ -144,6 +149,15 @@
       <button type="button" role="tab" class="tab active" data-inbox-tab="received">Received</button>
       <button type="button" role="tab" class="tab" data-inbox-tab="sent">Sent</button>
     </div>
+    <div class="notify-banner" id="notify-banner" hidden>
+      <span>🔔 Get notified when friends snap you</span>
+      <span class="item-actions">
+        <button type="button" class="btn small primary" id="btn-notify-banner">Turn on</button>
+        <button type="button" class="icon-btn plain" id="btn-notify-dismiss" aria-label="Dismiss">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12Z"/></svg>
+        </button>
+      </span>
+    </div>
     <ul class="list" id="inbox-list"></ul>
     <div class="empty" id="inbox-empty" hidden><img src="icons/logo.png" alt="" class="empty-logo"><span id="inbox-empty-text"></span></div>
   </section>
@@ -200,6 +214,13 @@
       <div class="theme-picker">
         <p class="fineprint">Appearance</p>
         <div class="tabs" role="radiogroup" aria-label="Appearance" data-theme-picker></div>
+      </div>
+      <div class="notify-row">
+        <span class="notify-text">
+          <strong>Notifications</strong>
+          <span class="fineprint" id="notify-status"></span>
+        </span>
+        <button type="button" class="btn small" id="btn-notify"></button>
       </div>
       <div class="row">
         <button class="btn" value="close">Close</button>

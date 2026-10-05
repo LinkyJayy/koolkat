@@ -1,5 +1,8 @@
 const TOKEN_KEY = 'koolkat.token';
 
+// Empty when the backend serves this page; set in js/config.js otherwise.
+export const API_BASE = String(window.KOOLKAT_CONFIG?.apiUrl || '').replace(/\/+$/, '');
+
 let onUnauthorized = () => {};
 
 export function getToken() {
@@ -30,7 +33,7 @@ export async function api(method, path, body) {
   if (body !== undefined) headers['content-type'] = 'application/json';
   let res;
   try {
-    res = await fetch(`/api${path}`, {
+    res = await fetch(`${API_BASE}/api${path}`, {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),

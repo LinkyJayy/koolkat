@@ -2,7 +2,8 @@ import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { openDatabase } from '../server/db.js';
 import { cleanup, createApp } from '../server/app.js';
-import { DAY_MS } from '../server/streaks.js';
+import { DAY_MS, dayNumber } from '../server/streaks.js';
+import { createPusher } from '../server/push.js';
 import {
   createIdentity,
   decryptSnap,
@@ -18,11 +19,27 @@ const clock = () => now;
 const db = openDatabase(':memory:');
 let server;
 let base;
+let origin;
+
+// Push notifications are captured here instead of going to a real push service.
+const pushes = [];
+let pushFailure = null;
+const pusher = createPusher({
+  db,
+  clock,
+  send: async (sub, payload) => {
+    if (pushFailure) throw pushFailure;
+    pushes.push({ endpoint: sub.endpoint, ...JSON.parse(payload) });
+  },
+});
+const flush = () => new Promise((r) => setTimeout(r, 20));
+const PAGES_ORIGIN = 'https://linkyjayy.github.io';
 
 before(async () => {
-  server = createApp({ db, clock, serveStatic: false }).listen(0);
+  server = createApp({ db, clock, serveStatic: false, pusher, allowedOrigins: [PAGES_ORIGIN] }).listen(0);
   await new Promise((r) => server.once('listening', r));
-  base = `http://127.0.0.1:${server.address().port}/api`;
+  origin = `http://127.0.0.1:${server.address().port}`;
+  base = `${origin}/api`;
 });
 after(() => server.close());
 
@@ -232,6 +249,112 @@ describe('streaks', () => {
     await sendSnap(erin, [frank]);
     await sendSnap(frank, [erin]);
     assert.equal((await streakFor(erin, frank.id)).count, 1);
+  });
+});
+
+const subscription = (name) => ({
+  endpoint: `https://fcm.googleapis.com/fcm/send/${name}`,
+  keys: { p256dh: Buffer.alloc(65, 4).toString('base64url'), auth: Buffer.alloc(16, 7).toString('base64url') },
+});
+
+describe('push notifications', () => {
+  let gina, hank;
+  before(async () => {
+    [gina, hank] = [await register('gina'), await register('hank')];
+  });
+
+  test('exposes the VAPID public key', async () => {
+    const { body } = await call('GET', '/push/key');
+    assert.equal(body.publicKey, pusher.publicKey);
+  });
+
+  test('only accepts subscriptions from real push services', async () => {
+    const bad = { ...subscription('x'), endpoint: 'https://evil.example.com/hook' };
+    assert.equal((await call('POST', '/push/subscribe', { token: gina.token, body: bad })).status, 400);
+    const http = { ...subscription('x'), endpoint: 'http://fcm.googleapis.com/x' };
+    assert.equal((await call('POST', '/push/subscribe', { token: gina.token, body: http })).status, 400);
+    assert.equal((await call('POST', '/push/subscribe', { body: subscription('x') })).status, 401);
+  });
+
+  test('notifies about friend requests, acceptances and snaps without revealing contents', async () => {
+    for (const [u, name] of [[gina, 'gina'], [hank, 'hank']]) {
+      assert.equal((await call('POST', '/push/subscribe', { token: u.token, body: subscription(name) })).status, 200);
+    }
+    pushes.length = 0;
+    await call('POST', '/friends/request', { token: gina.token, body: { username: 'hank' } });
+    await flush();
+    assert.deepEqual(pushes.map((p) => [p.endpoint.split('/').pop(), p.view]), [['hank', 'friends']]);
+    assert.match(pushes[0].body, /GINA/);
+
+    pushes.length = 0;
+    await call('POST', `/friends/${gina.id}/accept`, { token: hank.token });
+    await flush();
+    assert.deepEqual(pushes.map((p) => p.endpoint.split('/').pop()), ['gina']);
+    assert.match(pushes[0].body, /accepted/);
+
+    pushes.length = 0;
+    await sendSnap(gina, [hank], 'top secret caption');
+    await flush();
+    assert.equal(pushes.length, 1);
+    assert.equal(pushes[0].view, 'inbox');
+    assert.match(pushes[0].body, /GINA sent you a snap/);
+    assert.ok(!JSON.stringify(pushes).includes('top secret'));
+  });
+
+  test('expired subscriptions are removed', async () => {
+    pushFailure = Object.assign(new Error('gone'), { statusCode: 410 });
+    await pusher.notify(hank.id, { body: 'x' });
+    pushFailure = null;
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM push_subscriptions WHERE user_id = ?').get(hank.id).n, 0);
+    await call('POST', '/push/subscribe', { token: hank.token, body: subscription('hank') });
+  });
+
+  test('unsubscribing stops notifications', async () => {
+    await call('POST', '/push/unsubscribe', { token: gina.token, body: { endpoint: subscription('gina').endpoint } });
+    pushes.length = 0;
+    await pusher.notify(gina.id, { body: 'x' });
+    assert.equal(pushes.length, 0);
+    await call('POST', '/push/subscribe', { token: gina.token, body: subscription('gina') });
+  });
+
+  test('streak reminders go out near the end of the day, once', async () => {
+    // Keep a streak today (gina already snapped hank above)...
+    await sendSnap(hank, [gina]);
+    // ...then come back late tomorrow without having snapped.
+    const tomorrow = dayNumber(now) + 1;
+    now = tomorrow * DAY_MS + 12 * 60 * 60 * 1000;
+    pushes.length = 0;
+    assert.equal(await pusher.runStreakReminders(), 0, 'too early in the day');
+
+    now = tomorrow * DAY_MS + 21 * 60 * 60 * 1000;
+    await sendSnap(gina, [hank]); // gina keeps her side, so only hank is reminded
+    await flush();
+    pushes.length = 0;
+    await pusher.runStreakReminders();
+    // (Streaks from earlier tests are expiring too; only look at gina & hank.)
+    const ours = pushes.filter((p) => /\/(gina|hank)$/.test(p.endpoint));
+    assert.equal(ours.length, 1);
+    assert.equal(ours[0].endpoint.split('/').pop(), 'hank');
+    assert.match(ours[0].title, /streak/);
+    assert.match(ours[0].body, /GINA.*3 hours/);
+    assert.equal(await pusher.runStreakReminders(), 0, 'only once per day');
+  });
+});
+
+describe('cross-origin access (GitHub Pages)', () => {
+  test('allows the configured origin', async () => {
+    const res = await fetch(`${base}/friends`, {
+      method: 'OPTIONS',
+      headers: { origin: PAGES_ORIGIN, 'access-control-request-method': 'GET', 'access-control-request-headers': 'authorization' },
+    });
+    assert.equal(res.status, 204);
+    assert.equal(res.headers.get('access-control-allow-origin'), PAGES_ORIGIN);
+    assert.match(res.headers.get('access-control-allow-headers'), /authorization/);
+  });
+
+  test('ignores other origins', async () => {
+    const res = await fetch(`${base}/push/key`, { headers: { origin: 'https://evil.example.com' } });
+    assert.equal(res.headers.get('access-control-allow-origin'), null);
   });
 });
 

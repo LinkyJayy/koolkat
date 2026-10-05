@@ -3,11 +3,13 @@ import http from 'node:http';
 import https from 'node:https';
 import { openDatabase } from './db.js';
 import { cleanup, createApp } from './app.js';
+import { createPusher } from './push.js';
 
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || '0.0.0.0';
 const db = openDatabase();
-const app = createApp({ db });
+const pusher = createPusher({ db });
+const app = createApp({ db, pusher });
 
 // Browsers only allow camera access on https:// or http://localhost.
 // To use KoolKat from a phone on your network, provide a certificate.
@@ -19,6 +21,8 @@ const server =
 
 cleanup(db);
 setInterval(() => cleanup(db), 60 * 60 * 1000).unref();
+// Streak reminders go out in the last hours of each (UTC) day.
+setInterval(() => pusher.runStreakReminders().catch((err) => console.error(err)), 10 * 60 * 1000).unref();
 
 server.listen(port, host, () => {
   const scheme = TLS_CERT && TLS_KEY ? 'https' : 'http';

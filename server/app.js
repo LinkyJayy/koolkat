@@ -12,6 +12,7 @@ import {
   verifyAuthSecret,
 } from './auth.js';
 import { applySnapToStreak, describeStreak } from './streaks.js';
+import { createPusher, parseSubscription } from './push.js';
 
 const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 
@@ -59,7 +60,21 @@ function validatePublicKey(value, name = 'publicKey') {
 
 const pair = (a, b) => (a < b ? [a, b] : [b, a]);
 
-export function createApp({ db, clock = Date.now, serveStatic = true } = {}) {
+/** Origins (e.g. a GitHub Pages site) allowed to call the API from another domain. */
+export function parseAllowedOrigins(value = process.env.ALLOWED_ORIGINS || '') {
+  return value
+    .split(',')
+    .map((o) => o.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+}
+
+export function createApp({
+  db,
+  clock = Date.now,
+  serveStatic = true,
+  pusher = createPusher({ db, clock }),
+  allowedOrigins = parseAllowedOrigins(),
+} = {}) {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', process.env.TRUST_PROXY === '1');
@@ -79,6 +94,22 @@ export function createApp({ db, clock = Date.now, serveStatic = true } = {}) {
   });
 
   const api = express.Router();
+  // Cross-origin access for a separately hosted frontend. The API uses bearer
+  // tokens rather than cookies, so no credentials mode is needed.
+  api.use((req, res, next) => {
+    const origin = req.get('origin');
+    if (origin && allowedOrigins.includes(origin)) {
+      res.set({
+        'Access-Control-Allow-Origin': origin,
+        'Access-Control-Allow-Headers': 'authorization, content-type',
+        'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+        'Access-Control-Max-Age': '600',
+        Vary: 'Origin',
+      });
+      if (req.method === 'OPTIONS') return res.status(204).end();
+    }
+    next();
+  });
   api.use(express.json({ limit: '12mb' }));
   api.use((req, res, next) => {
     res.set('Cache-Control', 'no-store');
@@ -160,6 +191,13 @@ export function createApp({ db, clock = Date.now, serveStatic = true } = {}) {
     const [low, high] = pair(a, b);
     return q.friendship.get(low, high)?.status === 'accepted';
   };
+
+  const notifyAccepted = (requesterId, accepter) =>
+    pusher.notify(requesterId, {
+      body: `${accepter.displayName} accepted your friend request 🎉`,
+      tag: `accepted-${accepter.id}`,
+      view: 'friends',
+    });
 
   const wrap = (handler) => (req, res, next) => {
     try {
@@ -323,9 +361,15 @@ export function createApp({ db, clock = Date.now, serveStatic = true } = {}) {
       if (existing) {
         // They already asked us: adding them back accepts the request.
         q.acceptFriendship.run(now, low, high);
+        notifyAccepted(target.id, req.user);
         return { status: 'accepted', user: publicUser(target) };
       }
       q.insertFriendship.run(low, high, req.user.id, now);
+      pusher.notify(target.id, {
+        body: `${req.user.displayName} (@${req.user.username}) wants to be friends`,
+        tag: `request-${req.user.id}`,
+        view: 'friends',
+      });
       res.status(201);
       return { status: 'pending', user: publicUser(target) };
     })
@@ -348,6 +392,7 @@ export function createApp({ db, clock = Date.now, serveStatic = true } = {}) {
         fail(404, 'No pending request from that user');
       }
       q.acceptFriendship.run(clock(), low, high);
+      notifyAccepted(other, req.user);
       return { status: 'accepted' };
     })
   );
@@ -400,6 +445,13 @@ export function createApp({ db, clock = Date.now, serveStatic = true } = {}) {
           q.updateStreak.run(s.low_last_day, s.high_last_day, s.streak_count, s.streak_day, low, high);
         }
       });
+      for (const r of recipients) {
+        pusher.notify(Number(r.userId), {
+          body: `${req.user.displayName} sent you a snap 📸`,
+          tag: `snap-${me}`,
+          view: 'inbox',
+        });
+      }
       res.status(201);
       return { id, createdAt: now };
     })
@@ -472,6 +524,29 @@ export function createApp({ db, clock = Date.now, serveStatic = true } = {}) {
         // Once every recipient has opened it, the encrypted data is deleted for good.
         if (q.unviewedCount.get(id).n === 0) q.dropCiphertext.run(id);
       });
+      return { ok: true };
+    })
+  );
+
+  // ---------- push notifications ----------
+  api.get('/push/key', (req, res) => res.json({ publicKey: pusher.publicKey }));
+
+  api.post(
+    '/push/subscribe',
+    auth,
+    wrap((req) => {
+      const subscription = parseSubscription(req.body);
+      if (!subscription) fail(400, 'Invalid push subscription');
+      pusher.subscribe(req.user.id, subscription);
+      return { ok: true };
+    })
+  );
+
+  api.post(
+    '/push/unsubscribe',
+    auth,
+    wrap((req) => {
+      pusher.unsubscribe(req.user.id, req.body?.endpoint);
       return { ok: true };
     })
   );
