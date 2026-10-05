@@ -124,17 +124,36 @@ for (const tab of document.querySelectorAll('[data-auth-tab]')) {
   tab.addEventListener('click', () => setAuthMode(tab.dataset.authTab));
 }
 
+// Usernames can't contain spaces. Phone keyboards often add one after a word
+// suggestion, so strip them as you type instead of silently refusing the form.
+$('auth-form').username.addEventListener('input', (e) => {
+  const cleaned = e.target.value.replace(/\s+/g, '');
+  if (cleaned !== e.target.value) e.target.value = cleaned;
+});
+
+function authFormError(form, username, password) {
+  if (!username) return 'Enter your username';
+  if (!password) return 'Enter your password';
+  if (authMode !== 'register') return null;
+  if (!/^[A-Za-z0-9_.]{3,20}$/.test(username)) return 'Username must be 3-20 characters: letters, numbers, _ or .';
+  if (password.length < 8) return 'Password must be at least 8 characters';
+  if (password !== form.confirm.value) return "Passwords don't match";
+  return null;
+}
+
 $('auth-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const form = e.currentTarget;
-  const username = form.username.value.trim();
+  const username = form.username.value.replace(/\s+/g, '');
+  form.username.value = username;
   const password = form.password.value;
   const submit = $('auth-submit');
   const errorBox = $('auth-error');
   errorBox.textContent = '';
 
-  if (authMode === 'register' && password !== form.confirm.value) {
-    errorBox.textContent = "Passwords don't match";
+  const problem = authFormError(form, username, password);
+  if (problem) {
+    errorBox.textContent = problem;
     return;
   }
 

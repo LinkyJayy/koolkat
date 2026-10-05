@@ -260,12 +260,11 @@ export function createApp({
       if (!loginLimiter(`${req.ip}:${username.toLowerCase()}`)) {
         fail(429, 'Too many attempts, try again in a few minutes');
       }
-      const user = q.userByName.get(username);
-      // Hash even for unknown users so response time doesn't reveal which usernames exist.
-      let ok = false;
-      if (user) ok = verifyAuthSecret(authSecret, user.auth_salt, user.auth_hash);
-      else hashAuthSecret(authSecret);
-      if (!ok) fail(401, 'Wrong username or password');
+      // Usernames aren't secret (sign-up and friend search already reveal them),
+      // so say which part is wrong: it makes a lost or mistyped account obvious.
+      const user = q.userByName.get(username.trim());
+      if (!user) fail(401, 'There is no account with that username. Check the spelling, or sign up.');
+      if (!verifyAuthSecret(authSecret, user.auth_salt, user.auth_hash)) fail(401, 'Wrong password');
       return {
         token: createSession(db, user.id, clock()),
         user: publicUser(user),

@@ -32,9 +32,9 @@
         <button type="button" role="tab" class="tab active" data-auth-tab="login">Sign in</button>
         <button type="button" role="tab" class="tab" data-auth-tab="register">Sign up</button>
       </div>
-      <form id="auth-form" autocomplete="on">
+      <form id="auth-form" autocomplete="on" novalidate>
         <label>Username
-          <input name="username" required minlength="3" maxlength="20" pattern="[A-Za-z0-9_.]{3,20}"
+          <input name="username" required maxlength="30"
                  autocomplete="username" autocapitalize="none" spellcheck="false">
         </label>
         <label class="register-only" hidden>Display name

@@ -138,7 +138,12 @@ describe('accounts', () => {
     await unlockIdentity(good.vaultKey, res.body.encryptedPrivateKey, res.body.privateKeyIv);
 
     const bad = await deriveKeysFromPassword('alice', 'wrong password', ITER);
-    assert.equal((await call('POST', '/auth/login', { body: { username: 'alice', authSecret: bad.authSecret } })).status, 401);
+    const wrong = await call('POST', '/auth/login', { body: { username: 'alice', authSecret: bad.authSecret } });
+    assert.equal(wrong.status, 401);
+    assert.equal(wrong.body.error, 'Wrong password');
+    const missing = await call('POST', '/auth/login', { body: { username: 'nobody', authSecret: bad.authSecret } });
+    assert.equal(missing.status, 401);
+    assert.match(missing.body.error, /no account/);
     await assert.rejects(unlockIdentity(bad.vaultKey, res.body.encryptedPrivateKey, res.body.privateKeyIv));
   });
 
