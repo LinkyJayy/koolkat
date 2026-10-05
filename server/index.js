@@ -34,7 +34,8 @@ setInterval(() => pusher.runStreakReminders().catch((err) => console.error(err))
 
 server.listen(port, host, () => {
   const scheme = TLS_CERT && TLS_KEY ? 'https' : 'http';
-  console.log(`KoolKat is running at ${scheme}://localhost:${port}`);
+  const version = (process.env.RAILWAY_GIT_COMMIT_SHA || process.env.KOOLKAT_VERSION || 'dev').slice(0, 7);
+  console.log(`KoolKat ${version} is running at ${scheme}://localhost:${port}`);
 });
 
 for (const signal of ['SIGINT', 'SIGTERM']) {
