@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#7c3aed">
+  <meta name="description" content="KoolKat: private, end-to-end encrypted snaps for you and your friends.">
+  <title>KoolKat</title>
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="css/styles.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <!-- Loading -->
+  <section id="screen-loading" class="screen center">
+    <img src="icons/icon.svg" alt="" class="logo-big pulse">
+  </section>
+
+  <!-- Sign in / sign up -->
+  <section id="screen-auth" class="screen auth" hidden>
+    <div class="auth-card">
+      <img src="icons/icon.svg" alt="" class="logo-big">
+      <h1>KoolKat</h1>
+      <p class="muted">Snaps for friends only. End-to-end encrypted.</p>
+      <div class="tabs" role="tablist">
+        <button type="button" role="tab" class="tab active" data-auth-tab="login">Sign in</button>
+        <button type="button" role="tab" class="tab" data-auth-tab="register">Sign up</button>
+      </div>
+      <form id="auth-form" autocomplete="on">
+        <label>Username
+          <input name="username" required minlength="3" maxlength="20" pattern="[A-Za-z0-9_.]{3,20}"
+                 autocomplete="username" autocapitalize="none" spellcheck="false">
+        </label>
+        <label class="register-only" hidden>Display name
+          <input name="displayName" maxlength="40" autocomplete="nickname">
+        </label>
+        <label>Password
+          <input name="password" type="password" required minlength="8" autocomplete="current-password">
+        </label>
+        <label class="register-only" hidden>Confirm password
+          <input name="confirm" type="password" minlength="8" autocomplete="new-password">
+        </label>
+        <p class="register-only fineprint" hidden>
+          Your password also locks your encryption key. KoolKat never sees it, so it
+          <strong>can't be reset</strong>. Don't forget it!
+        </p>
+        <button type="submit" class="btn primary wide" id="auth-submit">Sign in</button>
+        <p id="auth-error" class="error" role="alert"></p>
+      </form>
+    </div>
+  </section>
+
+  <!-- Camera -->
+  <section id="screen-camera" class="screen camera" hidden>
+    <video id="camera-video" autoplay playsinline muted></video>
+    <div id="camera-message" class="camera-message" hidden>
+      <p id="camera-message-text"></p>
+      <button type="button" class="btn primary" id="camera-retry">Try again</button>
+    </div>
+    <header class="overlay-top">
+      <button type="button" class="icon-btn" id="btn-profile" aria-label="Profile">
+        <span class="avatar" id="my-avatar"></span>
+      </button>
+      <span class="brand">KoolKat</span>
+      <button type="button" class="icon-btn" id="btn-flip" aria-label="Switch camera">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7h-3.2l-1.6-2H8.8L7.2 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2Zm-8 11a5 5 0 0 1-4.6-3h2.1a3 3 0 0 0 5.2-1H13l2.5-3 2.5 3h-1.6A5 5 0 0 1 12 18Zm4.6-6h-2.1a3 3 0 0 0-5.2 1H11l-2.5 3L6 13h1.6a5 5 0 0 1 9-1Z"/></svg>
+      </button>
+    </header>
+    <footer class="overlay-bottom">
+      <button type="button" class="nav-btn" id="btn-friends" aria-label="Friends">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm-8 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm0 2c-2.7 0-8 1.3-8 4v3h10v-3c0-1 .4-1.9 1.1-2.6C10 13.2 8.8 13 8 13Zm8 0c-2.7 0-8 1.3-8 4v3h16v-3c0-2.7-5.3-4-8-4Z"/></svg>
+        <span class="badge" id="badge-friends" hidden></span>
+      </button>
+      <button type="button" class="shutter" id="btn-shutter" aria-label="Take photo"></button>
+      <button type="button" class="nav-btn" id="btn-inbox" aria-label="Snaps">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2Z"/></svg>
+        <span class="badge" id="badge-inbox" hidden></span>
+      </button>
+    </footer>
+  </section>
+
+  <!-- Preview + caption -->
+  <section id="screen-preview" class="screen dark" hidden>
+    <div class="stage" id="preview-stage">
+      <div class="frame" id="preview-frame">
+        <img id="preview-img" alt="Your snap">
+        <div class="caption-bar editing" id="caption-bar" hidden>
+          <input id="caption-input" maxlength="80" placeholder="Add a caption…" enterkeyhint="done" aria-label="Caption">
+        </div>
+      </div>
+    </div>
+    <header class="overlay-top">
+      <button type="button" class="icon-btn" id="btn-discard" aria-label="Discard">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12Z"/></svg>
+      </button>
+      <button type="button" class="icon-btn text" id="btn-caption" aria-label="Add caption">Aa</button>
+    </header>
+    <p class="hint" id="caption-hint">Tap the photo to add or move a caption</p>
+    <footer class="overlay-bottom end">
+      <button type="button" class="btn primary" id="btn-to-send">Send to
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3.4 20.4 17.4-7.5a1 1 0 0 0 0-1.8L3.4 3.6a.9.9 0 0 0-1.3.9L2 9.1c0 .5.4.9.9 1L17 12 2.9 13.9c-.5.1-.9.5-.9 1l.1 4.6a.9.9 0 0 0 1.3.9Z"/></svg>
+      </button>
+    </footer>
+  </section>
+
+  <!-- Choose recipients -->
+  <section id="screen-send" class="screen panel" hidden>
+    <header class="panel-header">
+      <button type="button" class="icon-btn plain" data-back="preview" aria-label="Back">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12Z"/></svg>
+      </button>
+      <h2>Send to…</h2>
+      <span></span>
+    </header>
+    <p class="lock-note"><span aria-hidden="true">🔒</span> Encrypted on this device. Only the friends you pick can open it.</p>
+    <ul class="list" id="send-list"></ul>
+    <p class="empty" id="send-empty" hidden>Add some friends first, then you can send them snaps.</p>
+    <footer class="send-bar" id="send-bar" hidden>
+      <span id="send-summary"></span>
+      <button type="button" class="btn primary" id="btn-send">Send</button>
+    </footer>
+  </section>
+
+  <!-- Inbox -->
+  <section id="screen-inbox" class="screen panel" hidden>
+    <header class="panel-header">
+      <button type="button" class="icon-btn plain" data-back="camera" aria-label="Back to camera">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12Z"/></svg>
+      </button>
+      <h2>Snaps</h2>
+      <button type="button" class="icon-btn plain" id="btn-inbox-refresh" aria-label="Refresh">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.7 6.3A8 8 0 1 0 19.7 14h-2.1a6 6 0 1 1-1.4-6.2L13 11h7V4Z"/></svg>
+      </button>
+    </header>
+    <div class="tabs inset" role="tablist">
+      <button type="button" role="tab" class="tab active" data-inbox-tab="received">Received</button>
+      <button type="button" role="tab" class="tab" data-inbox-tab="sent">Sent</button>
+    </div>
+    <ul class="list" id="inbox-list"></ul>
+    <p class="empty" id="inbox-empty" hidden></p>
+  </section>
+
+  <!-- Snap viewer -->
+  <section id="screen-viewer" class="screen dark" hidden>
+    <div class="stage" id="viewer-stage">
+      <div class="frame" id="viewer-frame">
+        <img id="viewer-img" alt="Snap">
+        <div class="caption-bar" id="viewer-caption" hidden></div>
+      </div>
+    </div>
+    <header class="overlay-top viewer-top">
+      <div>
+        <strong id="viewer-from"></strong>
+        <span class="muted" id="viewer-time"></span>
+      </div>
+      <span class="timer" id="viewer-timer"></span>
+    </header>
+    <p class="hint">Tap to close. This snap disappears after you view it.</p>
+  </section>
+
+  <!-- Friends -->
+  <section id="screen-friends" class="screen panel" hidden>
+    <header class="panel-header">
+      <button type="button" class="icon-btn plain" data-back="camera" aria-label="Back to camera">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12Z"/></svg>
+      </button>
+      <h2>Friends</h2>
+      <span></span>
+    </header>
+    <form id="search-form" class="search" role="search">
+      <input id="search-input" placeholder="Add friends by username" autocapitalize="none" spellcheck="false" aria-label="Search usernames">
+    </form>
+    <ul class="list" id="search-results"></ul>
+    <h3 class="section-title" id="incoming-title" hidden>Friend requests</h3>
+    <ul class="list" id="incoming-list"></ul>
+    <h3 class="section-title" id="friends-title">My friends</h3>
+    <ul class="list" id="friends-list"></ul>
+    <p class="empty" id="friends-empty" hidden>No friends yet. Search for a username above to add someone.</p>
+    <h3 class="section-title" id="outgoing-title" hidden>Sent requests</h3>
+    <ul class="list" id="outgoing-list"></ul>
+  </section>
+
+  <!-- Profile dialog -->
+  <dialog id="dialog-profile">
+    <form method="dialog">
+      <span class="avatar large" id="profile-avatar"></span>
+      <h2 id="profile-name"></h2>
+      <p class="muted" id="profile-username"></p>
+      <p class="fineprint">Your safety code</p>
+      <code class="fingerprint" id="profile-fingerprint"></code>
+      <p class="fineprint">Friends can compare this with the code they see for you to make sure nobody is in the middle.</p>
+      <div class="row">
+        <button class="btn" value="close">Close</button>
+        <button class="btn danger" value="logout" id="btn-logout">Log out</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Friend details dialog -->
+  <dialog id="dialog-friend">
+    <form method="dialog">
+      <span class="avatar large" id="friend-avatar"></span>
+      <h2 id="friend-name"></h2>
+      <p class="muted" id="friend-username"></p>
+      <p class="streak-line" id="friend-streak"></p>
+      <p class="fineprint">Safety code</p>
+      <code class="fingerprint" id="friend-fingerprint"></code>
+      <p class="fineprint">If this matches the code on your friend's profile screen, your snaps to them are encrypted to the right person.</p>
+      <div class="row">
+        <button class="btn" value="close">Close</button>
+        <button class="btn danger" value="remove">Remove friend</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>
