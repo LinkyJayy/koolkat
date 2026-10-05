@@ -77,7 +77,10 @@ export function createApp({
 } = {}) {
   const app = express();
   app.disable('x-powered-by');
-  app.set('trust proxy', process.env.TRUST_PROXY === '1');
+  // Number of reverse proxies in front of the server (so rate limiting sees the
+  // real client IP). Railway has one.
+  const proxyHops = Number(process.env.TRUST_PROXY ?? (process.env.RAILWAY_ENVIRONMENT ? 1 : 0));
+  app.set('trust proxy', Number.isInteger(proxyHops) && proxyHops > 0 ? proxyHops : false);
 
   app.use((req, res, next) => {
     res.set({
@@ -207,6 +210,8 @@ export function createApp({
       next(err);
     }
   };
+
+  api.get('/health', (req, res) => res.json({ ok: true }));
 
   // ---------- accounts ----------
   api.post(

@@ -92,7 +92,17 @@ function migrate(db) {
   }
 }
 
-export function openDatabase(file = process.env.KOOLKAT_DB || 'data/koolkat.db') {
+/**
+ * Where the database lives: KOOLKAT_DB if set, otherwise on the Railway volume
+ * when one is attached (Railway sets RAILWAY_VOLUME_MOUNT_PATH), otherwise ./data.
+ */
+export function defaultDatabasePath(env = process.env) {
+  if (env.KOOLKAT_DB) return env.KOOLKAT_DB;
+  if (env.RAILWAY_VOLUME_MOUNT_PATH) return path.join(env.RAILWAY_VOLUME_MOUNT_PATH, 'koolkat.db');
+  return 'data/koolkat.db';
+}
+
+export function openDatabase(file = defaultDatabasePath()) {
   if (file !== ':memory:') {
     fs.mkdirSync(path.dirname(path.resolve(file)), { recursive: true });
   }

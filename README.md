@@ -44,12 +44,25 @@ Configuration (environment variables):
 | --- | --- | --- |
 | `PORT` | `3000` | HTTP port |
 | `HOST` | `0.0.0.0` | Bind address |
-| `KOOLKAT_DB` | `data/koolkat.db` | SQLite database file |
+| `KOOLKAT_DB` | `data/koolkat.db` | SQLite database file. On Railway, defaults to the attached volume |
 | `TLS_CERT` / `TLS_KEY` | – | Serve HTTPS directly with this certificate and key |
-| `TRUST_PROXY` | – | Set to `1` when running behind a reverse proxy, so rate limiting sees real client IPs |
+| `TRUST_PROXY` | `1` on Railway, else off | Number of reverse proxies in front of the server, so rate limiting sees real client IPs |
 | `ALLOWED_ORIGINS` | – | Comma-separated sites allowed to use the API from another domain, e.g. `https://linkyjayy.github.io` for GitHub Pages |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | generated | Web Push keys. If you don't set them, a key pair is generated once and saved in the database. Generate your own with `npx web-push generate-vapid-keys` |
 | `VAPID_SUBJECT` | repo URL | Contact URL or `mailto:` address sent to push services |
+
+## Deploying to Railway
+
+[Railway](https://railway.com) runs the backend **and** serves the app, so you get one `https://` link that works on phones (camera and notifications included). The repo already has a `railway.json`, so there's nothing to configure in code.
+
+1. **Create the service.** Sign in at railway.com, then go to **New Project → Deploy from GitHub repo** and pick `LinkyJayy/koolkat`. Railway installs and starts it automatically.
+2. **Attach a volume. Don't skip this.** Without one, every deploy or restart **deletes all accounts, friends and snaps**. In the project, right-click the KoolKat service (or press ⌘K / Ctrl+K and type *volume*), choose **Attach volume**, and use the mount path `/data`. KoolKat finds the volume and stores its database there automatically.
+3. **Get a link.** Open the service → **Settings → Networking → Generate Domain**. Your app is now at something like `https://koolkat-production.up.railway.app`.
+4. **Optional:** in the service's **Variables**, set `VAPID_SUBJECT` to `mailto:you@example.com` so push services can contact you.
+
+Every push to the deployed branch redeploys automatically. The deploy logs show `Database: /data/koolkat.db` once the volume is attached. If you see a WARNING about a missing volume, go back to step 2.
+
+With Railway serving the app, you don't need GitHub Pages. You can turn it off under *Settings → Pages*.
 
 ### Using it on your phone
 
@@ -69,9 +82,9 @@ Notifications use the standard Web Push API, so they work without any third-part
 - KoolKat must be opened over `https://` (or `localhost`).
 - Streak reminders are sent in the last 4 hours before your streak ends (midnight UTC).
 
-## GitHub Pages
+## GitHub Pages (optional)
 
-GitHub Pages can host KoolKat's **web app**, but it only serves static files, so it **can't run the backend**. The backend still has to run somewhere with a public `https://` address: a server, a hosting service like Render, Railway or Fly.io, or your own computer through a tunnel. Then:
+You only need this if you want the app on `github.io` while the backend runs elsewhere. With Railway (above) you can skip it. GitHub Pages can host KoolKat's **web app**, but it only serves static files, so it **can't run the backend**. The backend still has to run somewhere with a public `https://` address: a server, a hosting service like Render, Railway or Fly.io, or your own computer through a tunnel. Then:
 
 1. **Start the backend** and allow your Pages site to talk to it:
    ```bash
@@ -89,7 +102,7 @@ The workflow (`.github/workflows/pages.yml`) publishes the `public/` folder and 
 
 ```
 server/
-  index.js      HTTP(S) server entry point and periodic cleanup
+  index.js      HTTP(S) server entry point and periodic jobs
   app.js        Express app and REST API
   auth.js       auth-secret hashing, sessions, rate limiting
   streaks.js    streak rules
@@ -106,6 +119,7 @@ public/
   js/theme.js     light / dark mode
   sw.js           service worker that shows notifications
 .github/workflows/pages.yml  GitHub Pages deployment
+railway.json                 Railway build / start / health-check settings
 test/api.test.js  end-to-end API tests, including real encrypt/decrypt
 ```
 

@@ -1,6 +1,6 @@
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { openDatabase } from '../server/db.js';
+import { defaultDatabasePath, openDatabase } from '../server/db.js';
 import { cleanup, createApp } from '../server/app.js';
 import { DAY_MS, dayNumber } from '../server/streaks.js';
 import { createPusher } from '../server/push.js';
@@ -88,6 +88,16 @@ async function sendSnap(from, to, caption = 'hi') {
   const payload = await encryptSnap(image, { caption, captionY: 0.3 }, recipients);
   return call('POST', '/snaps', { token: from.token, body: payload });
 }
+
+test('health check', async () => {
+  assert.deepEqual((await call('GET', '/health')).body, { ok: true });
+});
+
+test('database path prefers KOOLKAT_DB, then a Railway volume', () => {
+  assert.equal(defaultDatabasePath({ KOOLKAT_DB: '/x/a.db', RAILWAY_VOLUME_MOUNT_PATH: '/data' }), '/x/a.db');
+  assert.equal(defaultDatabasePath({ RAILWAY_VOLUME_MOUNT_PATH: '/data' }), '/data/koolkat.db');
+  assert.equal(defaultDatabasePath({}), 'data/koolkat.db');
+});
 
 describe('accounts', () => {
   let alice;
