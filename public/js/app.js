@@ -256,43 +256,121 @@ async function refresh() {
 }
 
 // ---------- camera ----------
-async function startCamera() {
-  const video = $('camera-video');
-  const message = $('camera-message');
-  message.hidden = true;
-  if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
-    $('camera-message-text').textContent =
-      'The camera only works over HTTPS (or on localhost). Open KoolKat from a secure address.';
-    message.hidden = false;
-    return;
-  }
-  stopCamera();
-  const facing = state.facing;
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: false,
-      video: { facingMode: { ideal: facing }, width: { ideal: 1920 }, height: { ideal: 1920 } },
-    });
-    // The user may have left the camera (or flipped again) while we waited.
-    if (state.screen !== 'camera' || state.facing !== facing) {
-      stream.getTracks().forEach((t) => t.stop());
-      return;
-    }
-    state.stream = stream;
-    video.srcObject = stream;
-    video.classList.toggle('mirrored', facing === 'user');
-  } catch (err) {
-    const reasons = {
-      NotAllowedError: 'KoolKat needs camera access. Allow it in your browser settings, then try again.',
-      NotFoundError: 'No camera was found on this device.',
-      NotReadableError: 'Your camera is being used by another app.',
-    };
-    $('camera-message-text').textContent = reasons[err.name] || `Couldn't start the camera (${err.message}).`;
-    message.hidden = false;
-  }
+// Each start gets a number; anything that finishes for an older start is thrown
+// away, so overlapping starts (flip, retry, leaving the screen) never leave a
+// stale stream holding the camera.
+let cameraRun = 0;
+let cameraRetryAction = null;
+
+function showCameraMessage(text, { button = 'Try again', action = startCamera } = {}) {
+  $('camera-message-text').textContent = text;
+  const retry = $('camera-retry');
+  retry.hidden = !button;
+  retry.textContent = button || '';
+  cameraRetryAction = action;
+  $('camera-message').hidden = false;
 }
 
-function stopCamera() {
+function hideCameraMessage() {
+  $('camera-message').hidden = true;
+}
+
+const CAMERA_ERRORS = {
+  NotAllowedError: 'KoolKat needs camera access. Tap the lock icon next to the address, allow Camera, then try again.',
+  SecurityError: 'Camera access is blocked on this page.',
+  NotFoundError: 'No camera was found on this device.',
+  NotReadableError: 'Your camera is being used by another app. Close it and try again.',
+  AbortError: 'The camera could not be started. Close other apps using it and try again.',
+};
+
+async function startCamera() {
+  const run = ++cameraRun;
+  releaseCamera();
+  hideCameraMessage();
+  const video = $('camera-video');
+  if (!window.isSecureContext) {
+    showCameraMessage('The camera only works over HTTPS (or on localhost). Open KoolKat from a secure address.', { button: null });
+    return;
+  }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    showCameraMessage(
+      "This browser doesn't allow camera access. If you opened KoolKat from inside another app, open it in Chrome or Safari instead.",
+      { button: null }
+    );
+    return;
+  }
+
+  // If nothing happens for a moment, the browser is probably asking for permission.
+  const waiting = setTimeout(() => {
+    if (run === cameraRun && !state.stream) {
+      showCameraMessage('Starting the camera… If your browser asks for permission, tap Allow.', { button: null });
+    }
+  }, 1500);
+
+  const facing = state.facing;
+  // Try the best quality first, then simpler requests for cameras that refuse it.
+  const attempts = [
+    { facingMode: { ideal: facing }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+    { facingMode: { ideal: facing } },
+    true,
+  ];
+  let stream = null;
+  let error = null;
+  for (const constraints of attempts) {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: constraints });
+      break;
+    } catch (err) {
+      error = err;
+      if (err.name === 'NotAllowedError' || err.name === 'SecurityError') break;
+    }
+  }
+  clearTimeout(waiting);
+
+  if (run !== cameraRun || state.screen !== 'camera') {
+    stream?.getTracks().forEach((t) => t.stop());
+    return;
+  }
+  if (!stream) {
+    const reason = CAMERA_ERRORS[error?.name] || "Couldn't start the camera.";
+    showCameraMessage(`${reason} (${error?.name || 'unknown error'})`);
+    return;
+  }
+
+  state.stream = stream;
+  hideCameraMessage();
+  const [track] = stream.getVideoTracks();
+  const actualFacing = track?.getSettings?.().facingMode;
+  video.classList.toggle('mirrored', (actualFacing || facing) === 'user');
+  track?.addEventListener('ended', () => {
+    if (state.stream === stream && state.screen === 'camera') showCameraMessage('The camera stopped.');
+  });
+
+  video.srcObject = stream;
+  // Safety net: the stream is "on" but no picture ever arrives. (Set up before
+  // play(), which never settles in that case.)
+  setTimeout(() => {
+    if (run === cameraRun && state.stream === stream && state.screen === 'camera' && !video.videoWidth) {
+      const details = `track ${track?.readyState}${track?.muted ? ', muted' : ''}, video ${video.readyState}`;
+      showCameraMessage(`The camera isn't showing a picture. Try again, or flip to the other camera. (${details})`);
+    }
+  }, 4000);
+  try {
+    await video.play();
+  } catch {
+    // Some browsers only start video after a tap.
+    if (run === cameraRun) {
+      showCameraMessage('Tap to turn on the camera.', {
+        button: 'Start camera',
+        action: () => video.play().then(hideCameraMessage, startCamera),
+      });
+    }
+    return;
+  }
+
+}
+
+function releaseCamera() {
   if (state.stream) {
     state.stream.getTracks().forEach((t) => t.stop());
     state.stream = null;
@@ -300,10 +378,22 @@ function stopCamera() {
   $('camera-video').srcObject = null;
 }
 
-$('camera-retry').addEventListener('click', startCamera);
+function stopCamera() {
+  cameraRun++; // cancel any start still waiting on the browser
+  releaseCamera();
+}
+
+$('camera-retry').addEventListener('click', () => (cameraRetryAction || startCamera)());
 $('btn-flip').addEventListener('click', () => {
   state.facing = state.facing === 'user' ? 'environment' : 'user';
   startCamera();
+});
+
+// Phones turn the camera off when you switch apps; turn it back on when you return.
+document.addEventListener('visibilitychange', () => {
+  if (state.screen !== 'camera') return;
+  if (document.visibilityState === 'hidden') stopCamera();
+  else startCamera();
 });
 
 $('btn-shutter').addEventListener('click', () => {
