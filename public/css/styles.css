@@ -417,7 +417,7 @@ dialog {
 }
 dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
 dialog h2 { margin-top: 8px; }
-dialog .row { display: flex; gap: 8px; justify-content: center; margin-top: 16px; }
+dialog .row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 16px; }
 .fingerprint {
   display: block;
   font: 600 15px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -872,3 +872,85 @@ input[type="color"] { width: 44px; height: 32px; padding: 0; border: 1px solid v
 }
 .messages[data-bg]:not([data-bg="default"]) .message:not(.mine) .bubble,
 .chat-preview[data-bg]:not([data-bg="default"]) .bubble.theirs { background: rgba(255, 255, 255, 0.92); color: #0f172a; }
+
+/* ---------- Kat Map ---------- */
+.katmap-screen { background: var(--bg); }
+.katmap-screen .panel-header { flex: none; }
+.katmap { flex: 1; min-height: 0; background: var(--surface); z-index: 0; }
+.katmap-locked { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 24px; text-align: center; }
+.katmap-sheet {
+  flex: none;
+  max-height: 40%;
+  overflow-y: auto;
+  padding: 12px 0 calc(12px + var(--safe-bottom));
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+.katmap-sheet .tabs { margin: 0 16px; }
+#katmap-status { margin: 8px 16px 0; }
+.katmap-list { margin-top: 4px; }
+.kat-pin { background: none; border: none; }
+.kat-pin .pin-avatar {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 3px solid #fff;
+  background: var(--brand);
+  color: #fff;
+  font-weight: 800;
+  font-size: 18px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+.kat-pin.me .pin-avatar { background: #10b981; }
+.kat-pin .pin-name {
+  position: absolute;
+  top: 44px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.85);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+.leaflet-container { font: inherit; }
+.leaflet-control-attribution { font-size: 10px; }
+
+/* ---------- Rich Presence ---------- */
+.now-playing {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0 8px;
+  padding: 8px;
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+  text-align: left;
+}
+#presence-now .now-playing { background: var(--bg); }
+.now-playing img, .now-playing .np-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: var(--border);
+  font-size: 22px;
+}
+.np-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.np-text strong, .np-text span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.np-text span { font-size: 13px; color: var(--muted); }
+.np-source { flex: none; font-size: 11px; font-weight: 700; color: var(--muted); }
+.presence-editor { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.presence-editor .fineprint { margin: 0; }
+.presence-editor .inline-form { width: 100%; }
+.btn.spotify { background: #1db954; border-color: #1db954; color: #000; }
+.music-bubble { background: rgba(29, 185, 84, 0.18); }

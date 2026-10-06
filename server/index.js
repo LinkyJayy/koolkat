@@ -38,6 +38,8 @@ cleanup(db);
 setInterval(() => cleanup(db), 60 * 60 * 1000).unref();
 // Streak reminders go out in the last hours of each (UTC) day.
 setInterval(() => pusher.runStreakReminders().catch((err) => console.error(err)), 10 * 60 * 1000).unref();
+// Rich Presence: check what connected Spotify / Last.fm accounts are playing.
+setInterval(() => app.locals.pollPresence().catch((err) => console.error(err)), 45 * 1000).unref();
 
 server.listen(port, host, () => {
   const scheme = TLS_CERT && TLS_KEY ? 'https' : 'http';

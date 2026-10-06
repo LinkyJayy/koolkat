@@ -28,6 +28,8 @@ const PRECACHE = [
   'js/theme.js',
   'vendor/qrcode.mjs',
   'vendor/jsQR.js',
+  'vendor/leaflet/leaflet.js',
+  'vendor/leaflet/leaflet.css',
   'icons/logo.png',
   'icons/kool-badge.png',
   'icons/bff-heart.png',

@@ -227,7 +227,9 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12Z"/></svg>
       </button>
       <h2><img src="icons/logo.png" alt="" class="logo">Friends</h2>
-      <span></span>
+      <button type="button" class="icon-btn plain" id="btn-katmap" aria-label="Kat Map">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m20.5 3-.2.1L15 5.1 9 3 3.4 4.9c-.2.1-.4.3-.4.5v15.1c0 .3.2.5.5.5l.2-.1L9 18.9l6 2.1 5.6-1.9c.2-.1.4-.3.4-.5V3.5c0-.3-.2-.5-.5-.5ZM15 19l-6-2.1V5l6 2.1V19Z"/></svg>
+      </button>
     </header>
     <div class="add-ways">
       <button type="button" class="btn small" id="btn-my-qr">🔳 My QR code</button>
@@ -365,6 +367,33 @@
     <ul class="list" id="nearby-list"></ul>
   </section>
 
+  <section id="screen-katmap" class="screen katmap-screen" hidden>
+    <header class="panel-header">
+      <button type="button" class="icon-btn plain" data-back="friends" aria-label="Back to friends">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12Z"/></svg>
+      </button>
+      <h2><img src="icons/logo.png" alt="" class="logo">Kat Map</h2>
+      <button type="button" class="icon-btn plain" id="btn-katmap-me" aria-label="Show me">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm9 3h-2.1A7 7 0 0 0 13 5.1V3h-2v2.1A7 7 0 0 0 5.1 11H3v2h2.1a7 7 0 0 0 5.9 5.9V21h2v-2.1a7 7 0 0 0 5.9-5.9H21v-2Zm-9 6a5 5 0 1 1 0-10 5 5 0 0 1 0 10Z"/></svg>
+      </button>
+    </header>
+    <div class="katmap" id="katmap" aria-label="Map of you and your friends"></div>
+    <div class="katmap-locked" id="katmap-locked" hidden>
+      <img src="icons/logo.png" alt="" class="empty-logo">
+      <p><strong>Kat Map is part of KoolKat Unlimited.</strong></p>
+      <p class="fineprint">See where your friends are and share where you are. KoolKat Unlimited is free: get it from an admin, a code in News, or ask in your profile.</p>
+    </div>
+    <div class="katmap-sheet" id="katmap-sheet">
+      <div class="tabs" role="radiogroup" aria-label="Who can see you" id="katmap-modes">
+        <button type="button" class="tab" data-mode="off" role="radio">👻 Ghost</button>
+        <button type="button" class="tab" data-mode="bffs" role="radio">💙 BFFs</button>
+        <button type="button" class="tab" data-mode="friends" role="radio">👥 Friends</button>
+      </div>
+      <p class="fineprint" id="katmap-status"></p>
+      <ul class="list katmap-list" id="katmap-list"></ul>
+    </div>
+  </section>
+
   <section id="screen-chat" class="screen chat-screen" hidden>
     <header class="panel-header">
       <button type="button" class="icon-btn plain" data-back="chats" aria-label="Back to chats">
@@ -444,16 +473,17 @@
       </div>
     </form>
 
-    <h3 class="section-title">Reset badge or icon</h3>
+    <h3 class="section-title">Reset badge, icon or activity</h3>
     <form id="reset-form" class="admin-form" novalidate>
       <label>Username
         <input name="username" required autocapitalize="none" spellcheck="false">
       </label>
-      <p class="fineprint">Puts their custom badge and/or custom app icon back to the default. Their uploaded picture is deleted.</p>
+      <p class="fineprint">Puts their custom badge and/or custom app icon back to the default (their uploaded picture is deleted), or clears their Activity Bubble.</p>
       <div class="row wrap">
         <button type="button" class="btn" data-reset="badge">Reset badge</button>
         <button type="button" class="btn" data-reset="icon">Reset icon</button>
-        <button type="button" class="btn danger" data-reset="both">Reset both</button>
+        <button type="button" class="btn" data-reset="activity">Reset activity</button>
+        <button type="button" class="btn danger" data-reset="all">Reset all</button>
       </div>
     </form>
 
@@ -487,6 +517,7 @@
       <p class="muted" id="profile-username"></p>
       <p class="flair-line" id="profile-flair" hidden></p>
       <p class="activity-bubble" id="profile-activity" hidden></p>
+      <div id="profile-now-playing"></div>
       <button type="button" class="btn small" id="btn-profile-qr">🔳 My QR code</button>
 
       <p class="storage-warning" id="storage-warning" role="alert" hidden></p>
@@ -509,6 +540,8 @@
             <li><img src="icons/bff-heart.png" alt="" class="bff-heart"> BFFs pinned to the top of your friends and chats</li>
             <li>💬 Chat themes: your own background and bubble colour</li>
             <li>🫧 Activity Bubbles: show friends what you're up to</li>
+            <li>🗺 Kat Map: see where your friends are</li>
+            <li>🎵 Rich Presence: show what you're listening to</li>
           </ul>
           <div id="request-area">
             <button type="button" class="btn primary wide" id="btn-request-open">🎁 Ask an admin for KoolKat Unlimited</button>
@@ -590,6 +623,19 @@
             <span class="bubble theirs">Nice Klick! 😺</span>
             <span class="bubble mine">Thanks, new theme 🎨</span>
           </div>
+
+          <p class="fineprint extras-title">Rich Presence</p>
+          <div class="presence-editor" id="presence-editor">
+            <p class="fineprint" id="presence-status">Show your friends what you're listening to.</p>
+            <div id="presence-now"></div>
+            <button type="button" class="btn small spotify" id="btn-spotify-connect" hidden>Connect Spotify</button>
+            <div class="inline-form" id="lastfm-form" hidden>
+              <input id="lastfm-input" placeholder="Last.fm username" autocapitalize="none" spellcheck="false" maxlength="15" aria-label="Last.fm username" enterkeyhint="go">
+              <button type="button" class="btn small" id="btn-lastfm-connect">Connect Last.fm</button>
+            </div>
+            <button type="button" class="btn small" id="btn-presence-disconnect" hidden>Disconnect</button>
+            <p class="fineprint" id="presence-help">Apple Music: connect a scrobbler app (like Marvis Pro or QuietScrob) to Last.fm, then enter your Last.fm username here. Spotify can also send to Last.fm.</p>
+          </div>
         </div>
         <div class="inline-form redeem">
           <input id="redeem-input" placeholder="Have a code?" autocapitalize="characters" spellcheck="false" aria-label="Redeem code" enterkeyhint="go">
@@ -654,6 +700,7 @@
       <p class="muted" id="friend-username"></p>
       <p class="flair-line" id="friend-flair" hidden></p>
       <p class="activity-bubble" id="friend-activity" hidden></p>
+      <div id="friend-now-playing"></div>
       <p class="streak-line" id="friend-streak"></p>
       <p class="fineprint">Safety code</p>
       <code class="fingerprint" id="friend-fingerprint"></code>

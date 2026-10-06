@@ -219,6 +219,21 @@ const MIGRATIONS = [
   // KoolKat Unlimited chat theme (JSON) and its optional background picture.
   ['users', 'chat_theme', 'TEXT'],
   ['users', 'chat_background', 'BLOB'],
+  // Kat Map: who can see you ('friends' | 'bffs', NULL = off) and your last location.
+  ['users', 'map_mode', 'TEXT'],
+  ['users', 'map_lat', 'REAL'],
+  ['users', 'map_lng', 'REAL'],
+  ['users', 'map_accuracy', 'REAL'],
+  ['users', 'map_at', 'INTEGER'],
+  // Rich Presence: 'spotify' | 'lastfm', the account, and the song last seen playing (JSON).
+  ['users', 'presence_source', 'TEXT'],
+  ['users', 'lastfm_user', 'TEXT'],
+  ['users', 'spotify_refresh', 'TEXT'],
+  ['users', 'spotify_access', 'TEXT'],
+  ['users', 'spotify_expires', 'INTEGER'],
+  ['users', 'presence_track', 'TEXT'],
+  ['users', 'presence_at', 'INTEGER'],
+  ['users', 'presence_retry_at', 'INTEGER'],
 ];
 
 function migrate(db) {

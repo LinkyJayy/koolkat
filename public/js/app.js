@@ -125,6 +125,7 @@ function show(name) {
   if (state.screen === 'chat' && name !== 'chat') stopChatPolling();
   if (state.screen === 'scan' && name !== 'scan') stopScanner();
   if (state.screen === 'nearby' && name !== 'nearby') stopNearby();
+  if (state.screen === 'katmap' && name !== 'katmap') stopKatMap();
   for (const s of document.querySelectorAll('.screen')) s.hidden = s.id !== `screen-${name}`;
   state.screen = name;
   if (name === 'camera') startCamera();
@@ -243,6 +244,7 @@ async function logout() {
 }
 
 function signedOut() {
+  stopMapSharing();
   applyAppIcon(null);
   setToken(null);
   clearIdentity();
@@ -274,7 +276,9 @@ function enterApp() {
     if (document.visibilityState === 'visible') refresh();
   }, 10000);
   resyncPush();
-  refreshMe().catch(() => {});
+  refreshMe()
+    .then(() => resumeMapSharing())
+    .catch(() => {});
   // Opened from a notification: jump to what it was about.
   const view = location.hash.slice(1);
   if (view) {
@@ -290,6 +294,19 @@ function openView(view) {
     const code = parseFriendCode(`#${view}`);
     if (code) addByCode(code).catch((err) => toast(err.message, { error: true }));
     else toast("That friend link isn't valid", { error: true });
+    return;
+  }
+  // Back from connecting Spotify.
+  if (view.startsWith('presence/')) {
+    const result = view.slice('presence/'.length);
+    const messages = {
+      spotify: ['🎵 Spotify connected! Friends can see what you play.', false],
+      cancelled: ['Spotify was not connected', true],
+      expired: ['That took too long. Try connecting Spotify again.', true],
+      failed: ["Couldn't connect Spotify. Try again.", true],
+    };
+    const [text, error] = messages[result] ?? messages.failed;
+    toast(text, { error });
     return;
   }
   if (view === 'inbox') openInbox();
@@ -1239,7 +1256,8 @@ function renderChatHeader() {
     c.kind === 'group' ? `You, ${others.map((m) => m.displayName).join(', ')}` : others[0]?.flair || `@${others[0]?.username ?? ''}`;
   $('btn-chat-menu').hidden = c.kind !== 'group';
   const friend = c.kind === 'group' ? null : state.friends.find((f) => f.id === others[0]?.id);
-  showActivity($('chat-activity'), friend?.activity);
+  if (friend?.activity) showActivity($('chat-activity'), friend.activity);
+  else showActivity($('chat-activity'), friend?.nowPlaying && { emoji: '🎵', text: musicLabel(friend.nowPlaying).slice(3) });
 }
 
 async function decryptAll(messages) {
@@ -1496,7 +1514,8 @@ function friendRow(f) {
         { class: 'item-main' },
         nameEl(f),
         el('div', { class: 'item-sub', text: sub }),
-        f.activity ? el('div', { class: 'activity-bubble small', text: activityLabel(f.activity) }) : null
+        f.activity ? el('div', { class: 'activity-bubble small', text: activityLabel(f.activity) }) : null,
+        f.nowPlaying ? el('div', { class: 'activity-bubble small music-bubble', text: musicLabel(f.nowPlaying) }) : null
       ),
       bffImg(f),
       streakBadge(f.streak)
@@ -1549,6 +1568,7 @@ async function openFriend(friend) {
   $('friend-flair').textContent = friend.flair || '';
   $('friend-flair').hidden = !friend.flair;
   showActivity($('friend-activity'), friend.activity);
+  $('friend-now-playing').replaceChildren(...nodes(friend.nowPlaying && nowPlayingCard(friend.nowPlaying)));
   $('friend-streak').textContent =
     friend.streak.count > 0 ? `🔥 ${friend.streak.count} day streak${friend.streak.expiring ? ' ⌛' : ''}` : 'No streak yet. Send each other Klicks every day to start one!';
   $('friend-fingerprint').textContent = await fingerprint(friend.publicKey);
@@ -1861,18 +1881,25 @@ for (const button of document.querySelectorAll('#reset-form [data-reset]')) {
       const username = $('reset-form').username.value.trim();
       if (!username) throw new Error('Type a username');
       const which = button.dataset.reset;
-      const label = { badge: 'custom badge', icon: 'custom app icon', both: 'custom badge and app icon' }[which];
-      if (!confirm(`Reset ${username}'s ${label} to the default?`)) return;
+      const label = {
+        badge: 'custom badge',
+        icon: 'custom app icon',
+        activity: 'Activity Bubble',
+        all: 'custom badge, app icon and Activity Bubble',
+      }[which];
+      if (!confirm(`Reset ${username}'s ${label}?`)) return;
       const res = await api('POST', '/admin/reset-customization', {
         username,
-        badge: which !== 'icon',
-        icon: which !== 'badge',
+        badge: which === 'badge' || which === 'all',
+        icon: which === 'icon' || which === 'all',
+        activity: which === 'activity' || which === 'all',
       });
-      const done = res.reset;
+      const names = { badge: 'badge', icon: 'app icon', activity: 'Activity Bubble' };
+      const done = res.reset.map((r) => names[r]);
       toast(
         done.length === 0
-          ? `${res.user.displayName} wasn't using a custom ${which === 'both' ? 'badge or icon' : which}`
-          : `Reset ${res.user.displayName}'s ${done.length === 2 ? 'badge and icon' : done[0]} to the default`
+          ? `${res.user.displayName} had nothing to reset`
+          : `Reset ${res.user.displayName}'s ${done.join(', ')}`
       );
       if (res.user.id === state.me.userId) refreshMe().catch(() => {});
     })
@@ -1946,6 +1973,7 @@ function renderPersonalisation(plan) {
   $('btn-badge-reset').disabled = !plan.customBadge;
   renderActivityEditor(plan);
   renderChatThemeEditor(plan);
+  loadPresence();
 }
 
 async function loadImageFile(file) {
@@ -2640,6 +2668,329 @@ $('chat-bg-file').addEventListener('change', async (e) => {
 });
 $('chat-bubble-color').addEventListener('change', (e) => saveChatTheme({ bubble: e.target.value }).catch(reportError));
 $('btn-bubble-reset').addEventListener('click', () => saveChatTheme({ bubble: null }).catch(reportError));
+
+// ---------- KoolKat Unlimited: Kat Map ----------
+let leafletLoading = null;
+/** Leaflet (the map library) is only downloaded when Kat Map is opened. */
+function loadLeaflet() {
+  if (window.L) return Promise.resolve(window.L);
+  leafletLoading ??= new Promise((resolve, reject) => {
+    document.head.append(el('link', { rel: 'stylesheet', href: 'vendor/leaflet/leaflet.css' }));
+    const script = el('script', { src: 'vendor/leaflet/leaflet.js' });
+    script.onload = () => resolve(window.L);
+    script.onerror = () => {
+      leafletLoading = null;
+      reject(new Error("The map couldn't be loaded. Check your connection."));
+    };
+    document.head.append(script);
+  });
+  return leafletLoading;
+}
+
+const katmap = { map: null, markers: new Map(), timer: null, data: null, fitted: 0, run: 0 };
+
+// Sending your location while KoolKat is open (browsers pause this when it's in the background).
+const mapShare = { watch: null, last: null, sentAt: 0, sending: false };
+
+function shareDistance(a, b) {
+  const rad = (d) => (d * Math.PI) / 180;
+  const x = rad(b.longitude - a.longitude) * Math.cos(rad((a.latitude + b.latitude) / 2));
+  const y = rad(b.latitude - a.latitude);
+  return Math.sqrt(x * x + y * y) * 6_371_000;
+}
+
+function startMapSharing() {
+  if (mapShare.watch != null || !navigator.geolocation) return;
+  mapShare.watch = navigator.geolocation.watchPosition(
+    (pos) => sendMapLocation(pos.coords),
+    (err) => {
+      if (err.code === err.PERMISSION_DENIED) {
+        stopMapSharing();
+        if (state.screen === 'katmap') $('katmap-status').textContent = 'Allow location for KoolKat in your browser settings to share where you are.';
+      }
+    },
+    { enableHighAccuracy: true, maximumAge: 15_000, timeout: 30_000 }
+  );
+}
+
+function stopMapSharing() {
+  if (mapShare.watch != null) navigator.geolocation.clearWatch(mapShare.watch);
+  mapShare.watch = null;
+  mapShare.last = null;
+}
+
+async function sendMapLocation(coords, { force = false } = {}) {
+  const now = Date.now();
+  const moved = mapShare.last ? shareDistance(mapShare.last, coords) : Infinity;
+  // Send when you've moved a bit, or at least every 30 seconds.
+  if (!force && moved < 25 && now - mapShare.sentAt < 30_000) return;
+  if (mapShare.sending || document.visibilityState !== 'visible') return;
+  mapShare.sending = true;
+  try {
+    await api('POST', '/map/location', { lat: coords.latitude, lng: coords.longitude, accuracy: Math.round(coords.accuracy || 0) });
+    mapShare.last = { latitude: coords.latitude, longitude: coords.longitude };
+    mapShare.sentAt = now;
+    if (state.screen === 'katmap') loadKatMap().catch(() => {});
+  } catch (err) {
+    if (err.status === 409 || err.status === 403) stopMapSharing();
+  } finally {
+    mapShare.sending = false;
+  }
+}
+
+/** After signing in: keep sharing if it was on and location is already allowed (never asks by itself). */
+async function resumeMapSharing() {
+  if (!state.plan || state.plan.mapMode === 'off' || state.plan.plan !== 'unlimited') return;
+  try {
+    const status = await navigator.permissions?.query({ name: 'geolocation' });
+    if (status?.state === 'granted') startMapSharing();
+  } catch {
+    // No Permissions API: wait until Kat Map is opened.
+  }
+}
+
+async function openKatMap() {
+  show('katmap');
+  const run = ++katmap.run;
+  const unlimited = state.plan?.plan === 'unlimited';
+  $('katmap').hidden = !unlimited;
+  $('katmap-sheet').hidden = !unlimited;
+  $('katmap-locked').hidden = unlimited;
+  $('btn-katmap-me').hidden = !unlimited;
+  if (!unlimited) return;
+  renderMapModes(state.plan.mapMode);
+  $('katmap-status').textContent = 'Loading the map…';
+  try {
+    const L = await loadLeaflet();
+    if (run !== katmap.run) return;
+    if (!katmap.map) {
+      katmap.map = L.map('katmap', { zoomControl: false, worldCopyJump: true }).setView([20, 0], 2);
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        // OpenStreetMap asks apps to say where tile requests come from.
+        referrerPolicy: 'strict-origin-when-cross-origin',
+        attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>',
+      }).addTo(katmap.map);
+    }
+    katmap.fitted = 0;
+    // The map was hidden while its size changed.
+    setTimeout(() => katmap.map?.invalidateSize(), 50);
+    await loadKatMap();
+    if (state.plan.mapMode !== 'off') startMapSharing();
+  } catch (err) {
+    if (run === katmap.run) $('katmap-status').textContent = err.message;
+  }
+  clearInterval(katmap.timer);
+  katmap.timer = setInterval(() => document.visibilityState === 'visible' && loadKatMap().catch(() => {}), 10_000);
+}
+
+function stopKatMap() {
+  katmap.run++;
+  clearInterval(katmap.timer);
+}
+
+function renderMapModes(mode) {
+  for (const tab of document.querySelectorAll('#katmap-modes .tab')) {
+    const on = tab.dataset.mode === mode;
+    tab.classList.toggle('active', on);
+    tab.setAttribute('aria-checked', String(on));
+  }
+}
+
+function pinIcon(me = false) {
+  return window.L.divIcon({
+    className: `kat-pin${me ? ' me' : ''}`,
+    iconSize: [40, 40],
+    iconAnchor: [20, 20],
+    html: '',
+  });
+}
+
+function placeMarker(key, user, location, me) {
+  const L = window.L;
+  let marker = katmap.markers.get(key);
+  if (!marker) {
+    marker = L.marker([location.lat, location.lng], { icon: pinIcon(me), keyboard: false }).addTo(katmap.map);
+    katmap.markers.set(key, marker);
+  } else {
+    marker.setLatLng([location.lat, location.lng]);
+  }
+  // Built with DOM nodes so names are never treated as HTML.
+  const node = marker.getElement();
+  if (node) {
+    node.replaceChildren(
+      el('span', { class: 'pin-avatar', text: me ? '😺' : (user.displayName || user.username)[0] }),
+      el('span', { class: 'pin-name', text: me ? 'You' : user.displayName })
+    );
+  }
+  return marker;
+}
+
+async function loadKatMap() {
+  const run = katmap.run;
+  const data = await api('GET', '/map');
+  if (run !== katmap.run || !katmap.map) return;
+  katmap.data = data;
+  state.plan.mapMode = data.mode;
+  renderMapModes(data.mode);
+  const seen = new Set();
+  const points = [];
+  if (data.location) {
+    placeMarker('me', state.me, data.location, true);
+    seen.add('me');
+    points.push([data.location.lat, data.location.lng]);
+  }
+  for (const f of data.friends) {
+    placeMarker(f.id, f, f.location, false).off('click').on('click', () => openFriendFromMap(f));
+    seen.add(f.id);
+    points.push([f.location.lat, f.location.lng]);
+  }
+  for (const [key, marker] of katmap.markers) {
+    if (!seen.has(key)) {
+      marker.remove();
+      katmap.markers.delete(key);
+    }
+  }
+  // Zoom to fit everyone, again whenever someone new (or you) appears.
+  if (points.length > katmap.fitted) {
+    katmap.fitted = points.length;
+    if (points.length === 1) katmap.map.setView(points[0], 15);
+    else katmap.map.fitBounds(points, { padding: [48, 48], maxZoom: 16 });
+  }
+  const sharing = {
+    off: "👻 Ghost mode: nobody can see where you are.",
+    bffs: '💙 Your BFFs can see where you are while KoolKat is open.',
+    friends: '👥 Your friends can see where you are while KoolKat is open.',
+  }[data.mode];
+  $('katmap-status').textContent = sharing;
+  $('katmap-list').replaceChildren(
+    ...(data.friends.length
+      ? data.friends.map((f) =>
+          el(
+            'li',
+            {},
+            el(
+              'button',
+              { type: 'button', class: 'item', onclick: () => katmap.map.flyTo([f.location.lat, f.location.lng], 16) },
+              avatar(f),
+              el(
+                'span',
+                { class: 'item-main' },
+                nameEl(f),
+                el('div', { class: 'item-sub', text: `${timeAgo(f.location.at)}${f.activity ? ` · ${activityLabel(f.activity)}` : ''}` })
+              )
+            )
+          )
+        )
+      : [el('li', { class: 'empty', text: 'None of your friends are sharing their location right now.' })])
+  );
+}
+
+function openFriendFromMap(f) {
+  const friend = state.friends.find((x) => x.id === f.id);
+  if (friend) openFriend(friend);
+}
+
+$('btn-katmap').addEventListener('click', openKatMap);
+$('btn-katmap-me').addEventListener('click', () => {
+  const loc = katmap.data?.location;
+  if (loc) katmap.map?.flyTo([loc.lat, loc.lng], 16);
+  else toast('Turn on BFFs or Friends sharing to put yourself on the map');
+});
+$('katmap-modes').addEventListener('click', async (e) => {
+  const tab = e.target.closest('.tab');
+  if (!tab) return;
+  const mode = tab.dataset.mode;
+  try {
+    await api('POST', '/map/settings', { mode });
+    state.plan.mapMode = mode;
+    renderMapModes(mode);
+    if (mode === 'off') {
+      stopMapSharing();
+      toast('👻 Ghost mode on. Your location was deleted.');
+    } else {
+      startMapSharing();
+      // Send straight away instead of waiting for the next move.
+      navigator.geolocation?.getCurrentPosition(
+        (pos) => sendMapLocation(pos.coords, { force: true }),
+        () => {},
+        { enableHighAccuracy: true, timeout: 20_000 }
+      );
+      toast(mode === 'bffs' ? '💙 Sharing your location with your BFFs' : '👥 Sharing your location with your friends');
+    }
+    await loadKatMap();
+  } catch (err) {
+    toast(err.message, { error: true });
+  }
+});
+
+// ---------- KoolKat Unlimited: Rich Presence ----------
+const musicLabel = (np) => `🎵 ${np.title}${np.artist ? ` · ${np.artist}` : ''}`;
+
+function nowPlayingCard(np) {
+  const parts = [
+    np.art ? el('img', { src: np.art, alt: '', referrerpolicy: 'no-referrer' }) : el('span', { class: 'np-icon', text: '🎵' }),
+    el('span', { class: 'np-text' }, el('strong', { text: np.title }), el('span', { text: [np.artist, np.album].filter(Boolean).join(' · ') })),
+    el('span', { class: 'np-source', text: np.source === 'spotify' ? 'Spotify' : 'Last.fm' }),
+  ];
+  return np.url
+    ? el('a', { class: 'now-playing', href: np.url, target: '_blank', rel: 'noopener noreferrer' }, ...parts)
+    : el('div', { class: 'now-playing' }, ...parts);
+}
+
+function renderPresence(p) {
+  state.presence = p;
+  const connected = p.source;
+  $('presence-status').textContent = !connected
+    ? p.spotifyAvailable || p.lastfmAvailable
+      ? "Show your friends what you're listening to."
+      : "Rich Presence isn't set up on this server yet (an admin needs to add the Spotify or Last.fm keys)."
+    : p.source === 'spotify'
+      ? `Connected to Spotify. ${p.nowPlaying ? 'Your friends see:' : 'Nothing playing right now.'}`
+      : `Connected to Last.fm as ${p.lastfmUser}. ${p.nowPlaying ? 'Your friends see:' : 'Nothing playing right now.'}`;
+  $('presence-now').replaceChildren(...nodes(p.nowPlaying && nowPlayingCard(p.nowPlaying)));
+  $('btn-spotify-connect').hidden = connected || !p.spotifyAvailable;
+  $('lastfm-form').hidden = connected || !p.lastfmAvailable;
+  $('presence-help').hidden = connected || !p.lastfmAvailable;
+  $('btn-presence-disconnect').hidden = !connected;
+  $('profile-now-playing').replaceChildren(...nodes(p.nowPlaying && nowPlayingCard(p.nowPlaying)));
+}
+
+async function loadPresence() {
+  try {
+    const p = await api('POST', '/presence/refresh');
+    renderPresence(p);
+  } catch {
+    // Not Unlimited, or offline.
+  }
+}
+
+$('btn-spotify-connect').addEventListener('click', (e) =>
+  withBusy(e.currentTarget, async () => {
+    const { url } = await api('POST', '/presence/spotify/start', { returnTo: location.origin + location.pathname });
+    location.href = url;
+  })
+);
+$('btn-lastfm-connect').addEventListener('click', (e) =>
+  withBusy(e.currentTarget, async () => {
+    const username = $('lastfm-input').value.trim();
+    if (!username) throw new Error('Type your Last.fm username');
+    renderPresence(await api('POST', '/presence/lastfm', { username }));
+    toast('🎵 Last.fm connected');
+  })
+);
+$('lastfm-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    $('btn-lastfm-connect').click();
+  }
+});
+$('btn-presence-disconnect').addEventListener('click', (e) =>
+  withBusy(e.currentTarget, async () => {
+    renderPresence(await api('DELETE', '/presence'));
+    toast('Rich Presence turned off');
+  })
+);
 
 async function boot() {
   setAuthMode('login');

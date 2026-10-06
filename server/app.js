@@ -36,6 +36,8 @@ import { registerChatRoutes } from './chats.js';
 import { registerNewsRoutes } from './news.js';
 import { manifestHandler, registerCustomizeRoutes } from './customize.js';
 import { activityOf, chatThemeOf, cleanupFriendCodes, registerSocialRoutes } from './social.js';
+import { registerKatMapRoutes } from './katmap.js';
+import { presenceOf, registerPresenceRoutes } from './presence.js';
 
 const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 
@@ -66,6 +68,9 @@ export function createApp({
   // Whether the database survives updates (see storageStatus in db.js).
   storage = { persistent: true, reason: 'unknown' },
   admins = adminUsernames(),
+  // Rich Presence settings (Spotify / Last.fm keys) and the fetch used to reach them.
+  env = process.env,
+  fetchImpl = fetch,
 } = {}) {
   const app = express();
   app.disable('x-powered-by');
@@ -88,12 +93,14 @@ export function createApp({
   app.use((req, res, next) => {
     res.set({
       'Content-Security-Policy':
-        "default-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; " +
+        // Map tiles (OpenStreetMap) and album art (Spotify, Last.fm) are the only outside images.
+        "default-src 'self'; img-src 'self' blob: data: https://tile.openstreetmap.org https://i.scdn.co " +
+        "https://lastfm.freetls.fastly.net; media-src 'self' blob:; " +
         "style-src 'self'; script-src 'self'; connect-src 'self'; object-src 'none'; " +
         "base-uri 'none'; frame-ancestors 'none'",
       'X-Content-Type-Options': 'nosniff',
       'Referrer-Policy': 'no-referrer',
-      'Permissions-Policy': 'camera=(self), microphone=()',
+      'Permissions-Policy': 'camera=(self), microphone=(), geolocation=(self)',
       'Cross-Origin-Opener-Policy': 'same-origin',
     });
     next();
@@ -137,7 +144,8 @@ export function createApp({
     friendship: db.prepare('SELECT * FROM friendships WHERE user_low = ? AND user_high = ?'),
     friendshipsOf: db.prepare(`
       SELECT f.*, u.id AS other_id, u.username, u.display_name, u.public_key,
-             u.plan_until, u.flair, u.badge_id, u.activity_emoji, u.activity_text, u.activity_until
+             u.plan_until, u.flair, u.badge_id, u.activity_emoji, u.activity_text, u.activity_until,
+             u.presence_track, u.presence_at
       FROM friendships f
       JOIN users u ON u.id = CASE WHEN f.user_low = ? THEN f.user_high ELSE f.user_low END
       WHERE f.user_low = ? OR f.user_high = ?`),
@@ -269,6 +277,7 @@ export function createApp({
       customBadge: Boolean(u.badge_id),
       activity: activityOf(u, now, () => unlimited),
       chatTheme: unlimited ? chatThemeOf(u) : null,
+      mapMode: unlimited ? u.map_mode || 'off' : 'off',
     };
   };
 
@@ -315,6 +324,21 @@ export function createApp({
   const { bffSet } = registerCustomizeRoutes({ api, db, clock, auth, wrap, hasUnlimitedUser, areFriends });
   // ---------- QR / Nearby friending, Activity Bubbles, chat themes ----------
   registerSocialRoutes({ api, db, clock, auth, wrap, publicUser, hasUnlimitedUser, pusher, rateLimiter });
+  registerKatMapRoutes({ api, db, clock, auth, wrap, publicUser, hasUnlimitedUser, rateLimiter, activityOf });
+  const { pollAll: pollPresence } = registerPresenceRoutes({
+    api,
+    db,
+    clock,
+    auth,
+    wrap,
+    hasUnlimitedUser,
+    allowedOrigins,
+    canonicalHost,
+    env,
+    fetchImpl,
+  });
+  // The server checks Spotify / Last.fm on a timer (see index.js).
+  app.locals.pollPresence = pollPresence;
 
   const version = (process.env.RAILWAY_GIT_COMMIT_SHA || process.env.KOOLKAT_VERSION || 'dev').slice(0, 7);
   api.get('/health', (req, res) =>
@@ -512,7 +536,7 @@ export function createApp({
     })
   );
 
-  // Reset someone's custom badge, custom app icon, or both (e.g. an inappropriate picture).
+  // Reset someone's custom badge, custom app icon and/or Activity Bubble (e.g. something inappropriate).
   api.post(
     '/admin/reset-customization',
     auth,
@@ -522,7 +546,8 @@ export function createApp({
       if (!target) fail(404, 'No user with that username');
       const badge = Boolean(req.body?.badge);
       const icon = Boolean(req.body?.icon);
-      if (!badge && !icon) fail(400, 'Choose the badge, the icon, or both');
+      const activity = Boolean(req.body?.activity);
+      if (!badge && !icon && !activity) fail(400, 'Choose the badge, the icon, the activity, or all of them');
       const reset = [];
       transaction(db, () => {
         if (badge && target.badge_id) {
@@ -535,11 +560,19 @@ export function createApp({
           ).run(target.id);
           reset.push('icon');
         }
+        if (activity && (target.activity_text || target.activity_emoji)) {
+          db.prepare('UPDATE users SET activity_emoji = NULL, activity_text = NULL, activity_until = NULL WHERE id = ?').run(
+            target.id
+          );
+          reset.push('activity');
+        }
       });
       if (reset.length) {
-        const what = reset.length === 2 ? 'badge and app icon were' : reset[0] === 'badge' ? 'badge was' : 'app icon was';
+        const names = { badge: 'badge', icon: 'app icon', activity: 'Activity Bubble' };
+        const parts = reset.map((r) => names[r]);
+        const list = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts[0];
         pusher.notify(target.id, {
-          body: `An admin reset your KoolKat ${what} to the default.`,
+          body: `An admin reset your KoolKat ${list}.`,
           tag: 'customization-reset',
           view: 'camera',
         });
@@ -602,6 +635,7 @@ export function createApp({
             streak: describeStreak(row, me, now),
             bff: bffs.has(row.other_id),
             activity: activityOf({ ...row, id: row.other_id }, now, hasUnlimitedUser),
+            nowPlaying: presenceOf({ ...row, id: row.other_id }, now, hasUnlimitedUser),
           });
         } else if (row.requester_id === me) {
           outgoing.push({ ...user, requestedAt: row.created_at });

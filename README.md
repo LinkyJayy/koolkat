@@ -41,6 +41,8 @@ KoolKat is completely free, and so is **KoolKat Unlimited**. Unlimited isn't sol
 | BFFs 💙: heart friends to pin them to the top of your friends and chats | – | ✓ |
 | Chat themes: background (presets, any colour, or your own picture) and bubble colour | – | ✓ |
 | Activity Bubbles 🫧: show friends what you're up to | – | ✓ |
+| Kat Map 🗺: see where your friends are | – | ✓ |
+| Rich Presence 🎵: show what you're listening to (Spotify or Last.fm) | – | ✓ |
 | QR friending, Nearby, KatCam | ✓ | ✓ |
 
 Storage counts the Klicks you've sent that still exist. Deleting a sent Klick (it's removed for everyone) frees the space. When it's full, KoolKat asks you to delete some. Badges and flair are shown to your friends in their friend list, your profile, your Klicks and chats.
@@ -51,6 +53,11 @@ Storage counts the Klicks you've sent that still exist. Deleting a sent Klick (i
 - **Kool badge.** *Choose from gallery* replaces the crown next to your name with your own picture, for everyone who sees your name. *Reset Badge to Default* brings the crown back. Uploaded badge and icon pictures are served from unguessable links so browsers can show them.
 - **Chat themes.** Pick a background (Midnight, Sunset, Ocean, Forest, Candy, any colour, or a picture from your gallery) and the colour of your own message bubbles. The text colour adjusts automatically so it stays readable. Themes change how chats look for you; your background picture is only ever sent to you.
 - **Activity Bubbles.** Choose an emoji, write what you're doing (up to 40 characters), and show it until you clear it or for 1, 4, 8 or 24 hours. Your friends see it in their friends list, on your friend card, and at the top of your chat; you see it on your profile. People who aren't your friends never see it.
+- **Kat Map.** *Friends → 🗺* shows you and your friends on a map (OpenStreetMap). Sharing is **off (👻 Ghost)** until you pick **💙 BFFs** (only friends you've made BFFs) or **👥 Friends**. Tap a friend in the list to fly to them, or their pin to open their card. KoolKat sends your location while it's open on your screen (every 30 seconds, or sooner when you move); friends see your last spot with how long ago it was, and spots older than 24 hours disappear. Going back to Ghost deletes your location from the server. Both people need Unlimited. **Background:** websites and installed web apps can't get your location while they're in the background or closed (browsers block it), so your friends see where you were when you last had KoolKat open. Live background tracking would need a native app from the app stores.
+- **Rich Presence.** *Profile → Rich Presence* shows friends what you're listening to: in their friends list, on your friend card, and at the top of your chat, with the album art and a link to the song. Songs disappear when you stop playing.
+  - **Spotify:** tap *Connect Spotify* and approve. The server checks every 45 seconds, so it keeps working when KoolKat is closed. KoolKat only asks Spotify for *what's currently playing*.
+  - **Apple Music (and others) via Last.fm:** Apple doesn't let other apps see what you're playing in Apple Music. Instead, connect a scrobbler app (like Marvis Pro or QuietScrob on iPhone) to Last.fm, then enter your Last.fm username. Spotify users can link Last.fm too (in Spotify's settings).
+  - The admin has to set this up first (see *Rich Presence setup* below).
 - **BFFs.** Open a friend's card and tap **Make BFF**. BFFs get their own section at the top of *Friends*, and their chats are pinned to the top of *Chats*, with the 💙 heart. Only you see who your BFFs are. Unfriending someone removes the heart.
 
 There are three ways to get Unlimited:
@@ -66,11 +73,18 @@ The account **`zalith9`** is the admin. Capitalisation doesn't matter, and usern
 - **create redeemable codes** with their own text (or a random `KOOL-XXXX-XXXX`), a **usage limit**, an **expiry date**, and how many days of Unlimited they give (or forever). Each person can use a code once;
 - see how many times each code has been used, and copy or delete codes;
 - **give KoolKat Unlimited to any user** for a number of days, or forever, and take a gift back;
-- **reset someone's badge, app icon, or both** back to the default (*Reset badge or icon*), for example if they upload an inappropriate picture. Their uploaded picture is deleted, and they get a notification;
+- **reset someone's badge, app icon, Activity Bubble, or all of them** (*Reset badge, icon or activity*), for example if they upload an inappropriate picture or write something rude. Uploaded pictures are deleted, and they get a notification;
 - **approve or decline requests** for Unlimited (the button shows how many are waiting);
 - **post to News** (title, text, an optional code, and optionally a notification to everyone), and delete posts.
 
 > Admin rights come from the username. If the database is ever lost (for example, Railway without a volume), whoever registers `zalith9` first becomes admin. Keep a volume attached.
+
+### Rich Presence setup
+
+Both are free. Put the keys in Railway → your service → **Variables** (never in the code or a chat):
+
+- **Spotify:** go to [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard), *Create app*, choose *Web API*, and add the redirect URI `https://kool-kat.com/api/presence/spotify/callback`. Copy the *Client ID* and *Client secret* into `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET`. **Limit:** new Spotify apps are in *Development mode*, where only up to 25 people you add under *User Management* (their Spotify email) can connect. Spotify only lifts that limit for large companies, so for everyone else Last.fm is the way.
+- **Last.fm:** create an API account at [last.fm/api/account/create](https://www.last.fm/api/account/create) and put the *API key* in `LASTFM_API_KEY`. There's no user limit.
 
 ## End-to-end encryption
 
@@ -110,6 +124,9 @@ Configuration (environment variables):
 | `CANONICAL_HOST` | – | The app's own domain, e.g. `kool-kat.com`. Visits to the `….up.railway.app` address redirect there |
 | `KOOLKAT_ADMINS` | `zalith9` | Usernames (any capitalisation, comma-separated) that get admin tools |
 | `VAPID_SUBJECT` | repo URL | Contact URL or `mailto:` address sent to push services |
+| `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` | – | Turns on *Connect Spotify* for Rich Presence |
+| `SPOTIFY_REDIRECT_URI` | `https://<CANONICAL_HOST>/api/presence/spotify/callback` | Only needed if it differs from that |
+| `LASTFM_API_KEY` | – | Turns on Last.fm (Apple Music) for Rich Presence |
 
 ## Deploying to Railway
 
@@ -188,6 +205,8 @@ server/
   news.js       News posts (admins write, everyone reads)
   customize.js  Unlimited app icons, custom badges, BFFs, per-icon manifest
   social.js     QR friend codes, Nearby, Activity Bubbles, chat themes
+  katmap.js     Kat Map sharing settings and friends' locations
+  presence.js   Rich Presence: Spotify / Last.fm connections and polling
   chats.js      direct and group chats (end-to-end encrypted messages)
   http.js       shared request validation helpers
   db.js         SQLite schema
@@ -197,7 +216,7 @@ public/
   js/crypto.js    end-to-end encryption (shared with the tests)
   js/qr.js        drawing and scanning friend QR codes
   js/katcam.js    KatCam: both cameras in one Klick
-  vendor/         qrcode-generator (MIT) and jsQR (Apache-2.0), served locally
+  vendor/         qrcode-generator (MIT), jsQR (Apache-2.0) and Leaflet (BSD-2), served locally
   js/api.js       API client
   js/keystore.js  IndexedDB storage for the unlocked private key
   js/push.js      turning notifications on and off
@@ -257,6 +276,14 @@ All endpoints are under `/api` and take and return JSON. Authenticated endpoints
 | POST / DELETE | `/me/activity` | Unlimited: set (`emoji, text, hours?`) / clear your Activity Bubble |
 | POST | `/me/chat-theme` | Unlimited: `background, color?, bubble?, image?` (JPEG base64) |
 | GET | `/me/chat-background` | Your own chat background picture |
+| POST | `/map/settings` | Unlimited: `mode` = `off` (deletes your location), `bffs` or `friends` |
+| POST | `/map/location` | Unlimited: `lat, lng, accuracy` while sharing |
+| GET | `/map` | Unlimited: your sharing mode and location, and friends sharing with you |
+| GET / DELETE | `/presence` | Your Rich Presence connection / disconnect |
+| POST | `/presence/spotify/start` | Unlimited: `returnTo`; returns the Spotify approval link |
+| GET | `/presence/spotify/callback` | Where Spotify sends you back |
+| POST | `/presence/lastfm` | Unlimited: `username` |
+| POST | `/presence/refresh` | Check what you're playing now |
 | GET | `/news` / `/news/unread` | News posts / unread count |
 | POST | `/news/seen` | Mark News as read |
 | POST / DELETE | `/news` / `/news/:id` | Admin: post (`title, body?, code?, notify?`) / delete |
