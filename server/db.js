@@ -234,6 +234,8 @@ const MIGRATIONS = [
   ['users', 'presence_track', 'TEXT'],
   ['users', 'presence_at', 'INTEGER'],
   ['users', 'presence_retry_at', 'INTEGER'],
+  // Why the last check failed in a way the person can fix (e.g. 'not_allowed' by Spotify).
+  ['users', 'presence_error', 'TEXT'],
 ];
 
 function migrate(db) {

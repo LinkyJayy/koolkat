@@ -72,11 +72,12 @@ export function presenceOf(u, now, hasUnlimitedUser) {
 }
 
 class RemoteError extends Error {
-  constructor(message, { status, retryAfter, revoked } = {}) {
+  constructor(message, { status, retryAfter, revoked, reason } = {}) {
     super(message);
     this.status = status;
     this.retryAfter = retryAfter;
     this.revoked = revoked;
+    this.reason = reason;
   }
 }
 
@@ -108,18 +109,20 @@ export function registerPresenceRoutes({
       WHERE (f.user_low = ? OR f.user_high = ?) AND f.status = 'accepted' AND u.presence_track IS NOT NULL`),
     setSpotify: db.prepare(`
       UPDATE users SET presence_source = 'spotify', lastfm_user = NULL, spotify_refresh = ?, spotify_access = ?,
-             spotify_expires = ?, presence_track = NULL, presence_at = NULL, presence_retry_at = NULL
+             spotify_expires = ?, presence_track = NULL, presence_at = NULL, presence_retry_at = NULL, presence_error = NULL
       WHERE id = ?`),
     setTokens: db.prepare('UPDATE users SET spotify_access = ?, spotify_expires = ?, spotify_refresh = ? WHERE id = ?'),
     setLastfm: db.prepare(`
       UPDATE users SET presence_source = 'lastfm', lastfm_user = ?, spotify_refresh = NULL, spotify_access = NULL,
-             spotify_expires = NULL, presence_track = NULL, presence_at = NULL, presence_retry_at = NULL
+             spotify_expires = NULL, presence_track = NULL, presence_at = NULL, presence_retry_at = NULL, presence_error = NULL
       WHERE id = ?`),
     setTrack: db.prepare('UPDATE users SET presence_track = ?, presence_at = ?, presence_retry_at = ? WHERE id = ?'),
     setRetry: db.prepare('UPDATE users SET presence_retry_at = ? WHERE id = ?'),
+    setError: db.prepare('UPDATE users SET presence_error = ?, presence_track = NULL WHERE id = ?'),
+    clearError: db.prepare('UPDATE users SET presence_error = NULL WHERE id = ? AND presence_error IS NOT NULL'),
     disconnect: db.prepare(`
       UPDATE users SET presence_source = NULL, lastfm_user = NULL, spotify_refresh = NULL, spotify_access = NULL,
-             spotify_expires = NULL, presence_track = NULL, presence_at = NULL, presence_retry_at = NULL
+             spotify_expires = NULL, presence_track = NULL, presence_at = NULL, presence_retry_at = NULL, presence_error = NULL
       WHERE id = ?`),
   };
 
@@ -180,6 +183,15 @@ export function registerPresenceRoutes({
     if (res.status === 204 || res.status === 202) return null;
     if (res.status === 429) {
       throw new RemoteError('Spotify rate limit', { status: 429, retryAfter: Number(res.headers.get('retry-after')) || 60 });
+    }
+    if (res.status === 403) {
+      // Spotify apps in Development mode only work for accounts added under
+      // User Management on developer.spotify.com (up to 25).
+      throw new RemoteError('Spotify refused this account (not on the app\'s User Management list)', {
+        status: 403,
+        reason: 'not_allowed',
+        retryAfter: 30 * 60,
+      });
     }
     if (!res.ok) throw new RemoteError(`Spotify error ${res.status}`, { status: res.status });
     const body = await res.json().catch(() => null);
@@ -254,6 +266,8 @@ export function registerPresenceRoutes({
         if (!tokens.refresh_token) return back('failed');
         q.setSpotify.run(tokens.refresh_token, tokens.access_token, clock() + (Number(tokens.expires_in) || 3600) * 1000, login.userId);
         await pollUser(q.user.get(login.userId)).catch(() => {});
+        // Connected, but Spotify won't share this account's music with the app yet.
+        if (q.user.get(login.userId).presence_error === 'not_allowed') return back('not_allowed');
         return back('spotify');
       } catch (err) {
         console.error('Spotify connect failed:', err.message);
@@ -366,6 +380,7 @@ export function registerPresenceRoutes({
         next = now + (recent ? CHECK_RECENTLY_IDLE : CHECK_IDLE);
       }
       q.setTrack.run(track ? JSON.stringify(track) : null, now, next, user.id);
+      q.clearError.run(user.id);
     } catch (err) {
       if (err.revoked) {
         // They removed KoolKat from their Spotify account.
@@ -373,6 +388,11 @@ export function registerPresenceRoutes({
         return;
       }
       q.setRetry.run(clock() + (err.retryAfter ?? 60) * 1000, user.id);
+      if (err.reason) {
+        if (user.presence_error !== err.reason) console.error(`Rich Presence: ${err.message} for KoolKat user ${user.username}`);
+        q.setError.run(err.reason, user.id);
+        return;
+      }
       throw err;
     }
   }
@@ -382,6 +402,7 @@ export function registerPresenceRoutes({
     lastfmAvailable,
     source: u.presence_source ?? null,
     lastfmUser: u.lastfm_user ?? null,
+    error: u.presence_error ?? null,
     nowPlaying: presenceOf(u, clock(), () => true),
   });
 

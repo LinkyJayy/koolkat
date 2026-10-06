@@ -306,6 +306,7 @@ function openView(view) {
       cancelled: ['Spotify was not connected', true],
       expired: ['That took too long. Try connecting Spotify again.', true],
       failed: ["Couldn't connect Spotify. Try again.", true],
+      not_allowed: ["Spotify connected, but Spotify won't share your music yet. See Profile → Rich Presence.", true],
     };
     const [text, error] = messages[result] ?? messages.failed;
     toast(text, { error });
@@ -2992,6 +2993,11 @@ function renderPresence(p) {
     : p.source === 'spotify'
       ? `Connected to Spotify. ${p.nowPlaying ? 'Your friends see:' : 'Nothing playing right now.'}`
       : `Connected to Last.fm as ${p.lastfmUser}. ${p.nowPlaying ? 'Your friends see:' : 'Nothing playing right now.'}`;
+  if (p.error === 'not_allowed') {
+    $('presence-status').textContent =
+      "Connected, but Spotify won't share your music with KoolKat yet. KoolKat's Spotify app only works for people the admin has added: ask an admin to add the email address of your Spotify account, then tap Try again.";
+  }
+  $('btn-presence-retry').hidden = p.error !== 'not_allowed';
   $('presence-now').replaceChildren(...nodes(p.nowPlaying && nowPlayingCard(p.nowPlaying)));
   $('btn-spotify-connect').hidden = connected || !p.spotifyAvailable;
   // Last.fm is an optional extra: tucked away under Spotify, or open when it's the only choice.
@@ -3030,6 +3036,13 @@ $('lastfm-input').addEventListener('keydown', (e) => {
     $('btn-lastfm-connect').click();
   }
 });
+$('btn-presence-retry').addEventListener('click', (e) =>
+  withBusy(e.currentTarget, async () => {
+    const p = await api('POST', '/presence/refresh');
+    renderPresence(p);
+    toast(p.error ? 'Spotify still says no. Ask an admin to add your Spotify email.' : '🎵 Working now!', { error: Boolean(p.error) });
+  })
+);
 $('btn-presence-disconnect').addEventListener('click', (e) =>
   withBusy(e.currentTarget, async () => {
     renderPresence(await api('DELETE', '/presence'));

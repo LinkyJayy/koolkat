@@ -59,6 +59,7 @@ before(async () => {
 const json = (status, body, headers = {}) => new Response(body == null ? null : JSON.stringify(body), { status, headers });
 let spotifyPlaying = null;
 let spotifyLeft = 1000;
+let spotifyAllowsUnlisted = false;
 const lastfmLookups = [];
 let lastfmPlaying = true;
 const spotifyCalls = [];
@@ -68,6 +69,7 @@ async function fakeFetch(url, init = {}) {
     const params = new URLSearchParams(init.body);
     spotifyCalls.push(params.get('grant_type'));
     if (params.get('grant_type') === 'authorization_code') {
+      if (params.get('code') === 'unlisted-code') return json(200, { access_token: 'unlisted', refresh_token: 'ref-unlisted', expires_in: 3600 });
       if (params.get('code') !== 'good-code') return json(400, { error: 'invalid_grant' });
       return json(200, { access_token: 'acc1', refresh_token: 'ref1', expires_in: 3600 });
     }
@@ -75,6 +77,9 @@ async function fakeFetch(url, init = {}) {
     return json(200, { access_token: 'acc2', expires_in: 3600 });
   }
   if (u.href === 'https://api.spotify.com/v1/me/player/currently-playing') {
+    if (init.headers?.authorization === 'Bearer unlisted' && !spotifyAllowsUnlisted) {
+      return new Response('Check settings on developer.spotify.com/dashboard, the user may not be registered.', { status: 403 });
+    }
     if (!spotifyPlaying) return json(204, null);
     return json(200, {
       is_playing: true,
@@ -249,6 +254,29 @@ describe('Rich Presence', () => {
     db.prepare("UPDATE users SET spotify_refresh = 'revoked', spotify_expires = 0 WHERE id = ?").run(ann.id);
     await app.locals.pollPresence();
     assert.equal((await call('GET', '/presence', { token: ann.token })).body.source, null);
+  });
+
+  test("people Spotify won't allow (not on User Management) are told so", async () => {
+    spotifyPlaying = 'Around the World';
+    const start = await call('POST', '/presence/spotify/start', { token: ben.token, body: {} });
+    const state = new URL(start.body.url).searchParams.get('state');
+    const cb = await fetch(`${base}/api/presence/spotify/callback?code=unlisted-code&state=${state}`, { redirect: 'manual' });
+    assert.equal(cb.headers.get('location'), '/#presence/not_allowed');
+    const info = (await call('GET', '/presence', { token: ben.token })).body;
+    assert.equal(info.source, 'spotify');
+    assert.equal(info.error, 'not_allowed');
+    assert.equal(info.nowPlaying, null);
+    // Not retried every minute: the next try is in 30 minutes (or when they tap Try again).
+    const due = db.prepare('SELECT presence_retry_at FROM users WHERE id = ?').get(ben.id).presence_retry_at - now;
+    assert.equal(due, 30 * 60 * 1000);
+
+    // The admin adds their Spotify email, they tap Try again.
+    spotifyAllowsUnlisted = true;
+    now += 6_000;
+    const retry = (await call('POST', '/presence/refresh', { token: ben.token })).body;
+    assert.equal(retry.error, null);
+    assert.equal(retry.nowPlaying.title, 'Around the World');
+    await call('DELETE', '/presence', { token: ben.token });
   });
 
   test('Last.fm by username (Apple Music and others)', async () => {
