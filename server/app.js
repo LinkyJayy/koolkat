@@ -57,6 +57,9 @@ export function createApp({
   serveStatic = true,
   pusher = createPusher({ db, clock }),
   allowedOrigins = parseAllowedOrigins(),
+  // The app's own domain (e.g. www.kool-kat.com). Visits to the Railway
+  // address are sent there, so everyone uses the same site.
+  canonicalHost = (process.env.CANONICAL_HOST || '').trim().toLowerCase() || null,
   admins = adminUsernames(),
 } = {}) {
   const app = express();
@@ -65,6 +68,17 @@ export function createApp({
   // real client IP). Railway has one.
   const proxyHops = Number(process.env.TRUST_PROXY ?? (process.env.RAILWAY_ENVIRONMENT ? 1 : 0));
   app.set('trust proxy', Number.isInteger(proxyHops) && proxyHops > 0 ? proxyHops : false);
+
+  if (canonicalHost) {
+    app.use((req, res, next) => {
+      const host = (req.hostname || '').toLowerCase();
+      // Only the Railway address is redirected; the health check must keep working there.
+      if (host.endsWith('.up.railway.app') && host !== canonicalHost && req.path !== '/api/health') {
+        return res.redirect(308, `https://${canonicalHost}${req.originalUrl}`);
+      }
+      next();
+    });
+  }
 
   app.use((req, res, next) => {
     res.set({

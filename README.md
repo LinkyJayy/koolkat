@@ -87,6 +87,7 @@ Configuration (environment variables):
 | `TRUST_PROXY` | `1` on Railway, else off | Number of reverse proxies in front of the server, so rate limiting sees real client IPs |
 | `ALLOWED_ORIGINS` | – | Comma-separated sites allowed to use the API from another domain, e.g. `https://linkyjayy.github.io` for GitHub Pages |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | generated | Web Push keys. If you don't set them, a key pair is generated once and saved in the database. Generate your own with `npx web-push generate-vapid-keys` |
+| `CANONICAL_HOST` | – | The app's own domain, e.g. `www.kool-kat.com`. Visits to the `….up.railway.app` address redirect there |
 | `KOOLKAT_ADMINS` | `zalith9` | Usernames (any capitalisation, comma-separated) that get admin tools |
 | `VAPID_SUBJECT` | repo URL | Contact URL or `mailto:` address sent to push services |
 
@@ -102,6 +103,20 @@ Configuration (environment variables):
 Every push to the deployed branch redeploys automatically. The deploy logs show `Database: /data/koolkat.db` once the volume is attached. If you see a WARNING about a missing volume, go back to step 2.
 
 With Railway serving the app, you don't need GitHub Pages. You can turn it off under *Settings → Pages*.
+
+### Custom domain (kool-kat.com on Squarespace)
+
+Squarespace DNS can't point the bare domain (`kool-kat.com`) at Railway, because that needs a CNAME on the bare domain. So the app lives at **`www.kool-kat.com`**, and `kool-kat.com` forwards there.
+
+1. **Railway:** open the KoolKat service → **Settings → Networking → Custom Domain**, enter `www.kool-kat.com`, and use port `8080` if it asks (or the port in your deploy logs). Railway shows the DNS record(s) to add: a **CNAME** (and sometimes a **TXT** record for verification).
+2. **Squarespace:** go to **Domains → kool-kat.com → DNS** (DNS Settings). If the *Squarespace Defaults* include a `www` record, delete it. Then add a **custom record** of type **CNAME** with host `www` and the value Railway showed you. Add the TXT record too if Railway gave one.
+3. **Forward the bare domain:** in Squarespace's domain settings, set up **domain forwarding** from `kool-kat.com` to `https://www.kool-kat.com`.
+4. **Wait** a few minutes (up to a few hours) until Railway shows the domain as active with a ✓. Railway sets up HTTPS automatically.
+5. **Railway variables:** add `CANONICAL_HOST=www.kool-kat.com`. Visits to the old `….up.railway.app` address are then redirected to the new domain.
+
+Sign-ins, saved keys and notification settings are stored per website address, so people who used the old Railway address sign in once more on the new domain (and turn notifications on again).
+
+To use the bare `kool-kat.com` as the main address instead, move the domain's DNS to a provider that supports CNAME flattening (for example, Cloudflare's free plan) and add the custom domain there.
 
 ### Using it on your phone
 

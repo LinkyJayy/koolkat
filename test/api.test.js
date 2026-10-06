@@ -768,6 +768,28 @@ describe('free Unlimited: requests, and News', () => {
   });
 });
 
+test('visits to the Railway address are sent to the custom domain', async () => {
+  const http = await import('node:http');
+  const srv = createApp({ db, clock, serveStatic: false, pusher, canonicalHost: 'www.kool-kat.com' }).listen(0);
+  await new Promise((r) => srv.once('listening', r));
+  const get = (host, path) =>
+    new Promise((resolve, reject) => {
+      http
+        .get({ port: srv.address().port, path, headers: { host } }, (res) => {
+          res.resume();
+          resolve({ status: res.statusCode, location: res.headers.location });
+        })
+        .on('error', reject);
+    });
+  try {
+    assert.deepEqual(await get('koolkat.up.railway.app', '/?x=1'), { status: 308, location: 'https://www.kool-kat.com/?x=1' });
+    assert.equal((await get('koolkat.up.railway.app', '/api/health')).status, 200, 'health check keeps working');
+    assert.equal((await get('www.kool-kat.com', '/api/health')).status, 200);
+  } finally {
+    srv.close();
+  }
+});
+
 test('cleanup removes expired sessions but keeps snaps', () => {
   const snapsBefore = db.prepare('SELECT COUNT(*) AS n FROM snaps').get().n;
   cleanup(db, now + 365 * DAY_MS);
