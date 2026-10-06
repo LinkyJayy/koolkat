@@ -55,7 +55,7 @@ Storage counts the Klicks you've sent that still exist. Deleting a sent Klick (i
 - **Activity Bubbles.** Choose an emoji, write what you're doing (up to 40 characters), and show it until you clear it or for 1, 4, 8 or 24 hours. Your friends see it in their friends list, on your friend card, and at the top of your chat; you see it on your profile. People who aren't your friends never see it.
 - **Kat Map.** *Friends → 🗺* shows you and your friends on a map (OpenStreetMap). Sharing is **off (👻 Ghost)** until you pick **💙 BFFs** (only friends you've made BFFs) or **👥 Friends**. Tap a friend in the list to fly to them, or their pin to open their card. KoolKat sends your location while it's open on your screen (every 30 seconds, or sooner when you move); friends see your last spot with how long ago it was, and spots older than 24 hours disappear. Going back to Ghost deletes your location from the server. Both people need Unlimited. **Background:** websites and installed web apps can't get your location while they're in the background or closed (browsers block it), so your friends see where you were when you last had KoolKat open. Live background tracking would need a native app from the app stores.
 - **Rich Presence.** *Profile → Rich Presence* shows friends what you're listening to: in their friends list, on your friend card, and at the top of your chat, with the album art and a link to the song. Songs disappear when you stop playing.
-  - **Spotify:** tap *Connect Spotify* and approve. The server checks every 45 seconds, so it keeps working when KoolKat is closed. KoolKat only asks Spotify for *what's currently playing*.
+  - **Spotify:** tap *Connect Spotify* and approve. The server keeps checking even when KoolKat is closed: about every 5 seconds while music plays (and right when a song ends), every 10 seconds just after you stop, and every 30 seconds when you haven't played anything for a while. Friends looking at their friends list or your chat see changes within about 4 more seconds. KoolKat only asks Spotify for *what's currently playing*.
   - **Apple Music (and others) via Last.fm:** Apple doesn't let other apps see what you're playing in Apple Music. Instead, connect a scrobbler app (like Marvis Pro or QuietScrob on iPhone) to Last.fm, then enter your Last.fm username. Spotify users can link Last.fm too (in Spotify's settings).
   - The admin has to set this up first (see *Rich Presence setup* below).
 - **BFFs.** Open a friend's card and tap **Make BFF**. BFFs get their own section at the top of *Friends*, and their chats are pinned to the top of *Chats*, with the 💙 heart. Only you see who your BFFs are. Unfriending someone removes the heart.
@@ -284,6 +284,7 @@ All endpoints are under `/api` and take and return JSON. Authenticated endpoints
 | GET | `/presence/spotify/callback` | Where Spotify sends you back |
 | POST | `/presence/lastfm` | Unlimited: `username` |
 | POST | `/presence/refresh` | Check what you're playing now |
+| GET | `/presence/friends` | What your friends are playing (the app checks this every 4 seconds) |
 | GET | `/news` / `/news/unread` | News posts / unread count |
 | POST | `/news/seen` | Mark News as read |
 | POST / DELETE | `/news` / `/news/:id` | Admin: post (`title, body?, code?, notify?`) / delete |

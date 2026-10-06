@@ -245,6 +245,7 @@ async function logout() {
 
 function signedOut() {
   stopMapSharing();
+  clearInterval(presenceWatch.timer);
   applyAppIcon(null);
   setToken(null);
   clearIdentity();
@@ -276,6 +277,7 @@ function enterApp() {
     if (document.visibilityState === 'visible') refresh();
   }, 10000);
   resyncPush();
+  watchFriendsPresence();
   refreshMe()
     .then(() => resumeMapSharing())
     .catch(() => {});
@@ -1560,8 +1562,11 @@ async function runSearch() {
   }
 }
 
+let openFriendId = null;
+
 async function openFriend(friend) {
   const dialog = $('dialog-friend');
+  openFriendId = friend.id;
   $('friend-avatar').textContent = friend.displayName[0];
   $('friend-name').replaceChildren(...nodes(friend.displayName, badgeImg(friend)));
   $('friend-username').textContent = `@${friend.username}`;
@@ -2936,6 +2941,45 @@ function nowPlayingCard(np) {
   return np.url
     ? el('a', { class: 'now-playing', href: np.url, target: '_blank', rel: 'noopener noreferrer' }, ...parts)
     : el('div', { class: 'now-playing' }, ...parts);
+}
+
+// Friends' songs change often, so while you're looking at friends or a chat
+// they're checked every few seconds (the rest of the app refreshes every 10).
+const presenceWatch = { timer: null, busy: false };
+
+function presenceVisible() {
+  return state.screen === 'friends' || state.screen === 'chat' || $('dialog-friend').open;
+}
+
+async function refreshFriendsPresence() {
+  if (presenceWatch.busy || document.visibilityState !== 'visible' || !state.me || !presenceVisible()) return;
+  presenceWatch.busy = true;
+  try {
+    const { playing } = await api('GET', '/presence/friends');
+    let changed = false;
+    for (const f of state.friends) {
+      const np = playing[f.id] ?? null;
+      if (JSON.stringify(np) !== JSON.stringify(f.nowPlaying ?? null)) {
+        f.nowPlaying = np;
+        changed = true;
+        if ($('dialog-friend').open && openFriendId === f.id) {
+          $('friend-now-playing').replaceChildren(...nodes(np && nowPlayingCard(np)));
+        }
+      }
+    }
+    if (!changed) return;
+    if (state.screen === 'friends') renderFriends();
+    if (state.screen === 'chat' && chat.current) renderChatHeader();
+  } catch {
+    // Offline: try again next time.
+  } finally {
+    presenceWatch.busy = false;
+  }
+}
+
+function watchFriendsPresence() {
+  clearInterval(presenceWatch.timer);
+  presenceWatch.timer = setInterval(refreshFriendsPresence, 4000);
 }
 
 function renderPresence(p) {

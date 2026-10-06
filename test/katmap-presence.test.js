@@ -58,6 +58,7 @@ before(async () => {
 // ---------- fake Spotify / Last.fm ----------
 const json = (status, body, headers = {}) => new Response(body == null ? null : JSON.stringify(body), { status, headers });
 let spotifyPlaying = null;
+let spotifyLeft = 1000;
 let lastfmPlaying = true;
 const spotifyCalls = [];
 async function fakeFetch(url, init = {}) {
@@ -77,8 +78,10 @@ async function fakeFetch(url, init = {}) {
     return json(200, {
       is_playing: true,
       currently_playing_type: 'track',
+      progress_ms: 100_000,
       item: {
         name: spotifyPlaying,
+        duration_ms: 100_000 + spotifyLeft,
         artists: [{ name: 'Daft Punk' }],
         album: { name: 'Discovery', images: [{ url: 'https://i.scdn.co/image/640', width: 640 }, { url: 'https://i.scdn.co/image/300', width: 300 }, { url: 'https://evil.example/x', width: 64 }] },
         external_urls: { spotify: 'https://open.spotify.com/track/1' },
@@ -191,9 +194,38 @@ describe('Rich Presence', () => {
     assert.ok(spotifyCalls.includes('refresh_token'));
     assert.equal((await call('GET', '/presence', { token: ann.token })).body.nowPlaying, null, 'nothing playing');
 
-    // Stale songs disappear if checks stop.
+    // Nothing has played for hours, so it's only checked every 30 seconds.
     spotifyPlaying = 'Digital Love';
+    now += 10_000;
     await app.locals.pollPresence();
+    assert.equal((await call('GET', '/presence', { token: ann.token })).body.nowPlaying, null, 'not due yet');
+    now += 20_000;
+    await app.locals.pollPresence();
+    assert.equal((await call('GET', '/presence', { token: ann.token })).body.nowPlaying.title, 'Digital Love');
+    // The cheap endpoint friends' apps check every few seconds.
+    const quick = (await call('GET', '/presence/friends', { token: ben.token })).body.playing;
+    assert.equal(quick[ann.id].title, 'Digital Love');
+    assert.equal(quick[ann.id].msLeft, undefined, 'time left is not stored');
+    assert.deepEqual((await call('GET', '/presence/friends', { token: cat.token })).body.playing, {}, 'not friends');
+
+    // While playing, it's checked again within 5 seconds, or when the song ends if sooner.
+    const due = () => db.prepare('SELECT presence_retry_at FROM users WHERE id = ?').get(ann.id).presence_retry_at - now;
+    assert.equal(due(), 2000, 'song ends in 1s (+1s)');
+    spotifyLeft = 60_000;
+    now += 2_000;
+    await app.locals.pollPresence();
+    assert.equal(due(), 5000);
+
+    // Right after music stops, it's checked every 10 seconds (not 30).
+    spotifyPlaying = null;
+    now += 5_000;
+    await app.locals.pollPresence();
+    assert.equal(due(), 10_000);
+    spotifyPlaying = 'Digital Love';
+    now += 10_000;
+    await app.locals.pollPresence();
+
+    // Stale songs disappear if checks stop.
     assert.equal((await call('GET', '/friends', { token: ben.token })).body.friends.find((f) => f.username === 'ann').nowPlaying.title, 'Digital Love');
     now += 5 * 60 * 1000;
     assert.equal((await call('GET', '/friends', { token: ben.token })).body.friends.find((f) => f.username === 'ann').nowPlaying, null);

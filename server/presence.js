@@ -10,7 +10,18 @@ import { fail } from './http.js';
 //    Apple Music and anything else that scrobbles to Last.fm.
 
 /** A song only shows while the last check is this recent. */
-export const PRESENCE_FRESH = 3 * 60 * 1000;
+export const PRESENCE_FRESH = 2 * 60 * 1000;
+
+// How soon to check again. Checks are quick while music plays (and, on Spotify,
+// right when the song ends), and slow down when nothing has played for a while
+// so idle accounts don't use up Spotify's and Last.fm's request limits.
+export const CHECK_PLAYING = 5 * 1000;
+export const CHECK_LASTFM_PLAYING = 6 * 1000;
+export const CHECK_RECENTLY_IDLE = 10 * 1000;
+export const CHECK_IDLE = 30 * 1000;
+const RECENTLY = 10 * 60 * 1000;
+// At most this many requests per second to each service, however many people are connected.
+const PER_SECOND = { spotify: 4, lastfm: 4 };
 const STATE_TTL = 10 * 60 * 1000;
 const LASTFM_USER_RE = /^[A-Za-z][A-Za-z0-9_-]{1,14}$/;
 const ART_HOSTS = ['i.scdn.co', 'lastfm.freetls.fastly.net'];
@@ -75,9 +86,14 @@ export function registerPresenceRoutes({
 
   const q = {
     user: db.prepare('SELECT * FROM users WHERE id = ?'),
-    connected: db.prepare(
-      'SELECT * FROM users WHERE presence_source IS NOT NULL AND (presence_retry_at IS NULL OR presence_retry_at <= ?)'
-    ),
+    // presence_retry_at is when to check that account next.
+    due: db.prepare(`
+      SELECT * FROM users WHERE presence_source IS NOT NULL AND (presence_retry_at IS NULL OR presence_retry_at <= ?)
+      ORDER BY COALESCE(presence_retry_at, 0) LIMIT 200`),
+    friendsPresence: db.prepare(`
+      SELECT u.id, u.username, u.plan_until, u.presence_track, u.presence_at FROM friendships f
+      JOIN users u ON u.id = CASE WHEN f.user_low = ? THEN f.user_high ELSE f.user_low END
+      WHERE (f.user_low = ? OR f.user_high = ?) AND f.status = 'accepted' AND u.presence_track IS NOT NULL`),
     setSpotify: db.prepare(`
       UPDATE users SET presence_source = 'spotify', lastfm_user = NULL, spotify_refresh = ?, spotify_access = ?,
              spotify_expires = ?, presence_track = NULL, presence_at = NULL, presence_retry_at = NULL
@@ -87,7 +103,7 @@ export function registerPresenceRoutes({
       UPDATE users SET presence_source = 'lastfm', lastfm_user = ?, spotify_refresh = NULL, spotify_access = NULL,
              spotify_expires = NULL, presence_track = NULL, presence_at = NULL, presence_retry_at = NULL
       WHERE id = ?`),
-    setTrack: db.prepare('UPDATE users SET presence_track = ?, presence_at = ?, presence_retry_at = NULL WHERE id = ?'),
+    setTrack: db.prepare('UPDATE users SET presence_track = ?, presence_at = ?, presence_retry_at = ? WHERE id = ?'),
     setRetry: db.prepare('UPDATE users SET presence_retry_at = ? WHERE id = ?'),
     disconnect: db.prepare(`
       UPDATE users SET presence_source = NULL, lastfm_user = NULL, spotify_refresh = NULL, spotify_access = NULL,
@@ -158,7 +174,10 @@ export function registerPresenceRoutes({
     const item = body?.item;
     if (!body?.is_playing || !item) return null;
     const episode = body.currently_playing_type === 'episode';
+    const left = Number(item.duration_ms) - Number(body.progress_ms);
     return {
+      // Not stored: used to check again right when the song ends.
+      msLeft: Number.isFinite(left) && left > 0 ? left : null,
       source: 'spotify',
       title: clip(item.name),
       artist: clip(episode ? item.show?.name : (item.artists ?? []).map((a) => a.name).join(', ')),
@@ -279,18 +298,39 @@ export function registerPresenceRoutes({
   );
 
   // ---------- shared ----------
+  // When each account last had something playing (to decide how often to check).
+  const lastPlaying = new Map();
+
+  function nextCheck(user, track, now) {
+    if (track) {
+      lastPlaying.set(user.id, now);
+      if (user.presence_source === 'lastfm') return now + CHECK_LASTFM_PLAYING;
+      // Check again just after the song ends, if that's sooner.
+      const end = track.msLeft != null ? track.msLeft + 1000 : CHECK_PLAYING;
+      return now + Math.max(1000, Math.min(CHECK_PLAYING, end));
+    }
+    const recent = now - (lastPlaying.get(user.id) ?? 0) < RECENTLY;
+    return now + (recent ? CHECK_RECENTLY_IDLE : CHECK_IDLE);
+  }
+
   async function pollUser(user) {
     if (!user?.presence_source) return;
     try {
-      const track = user.presence_source === 'spotify' ? await spotifyNowPlaying(user) : await lastfmNowPlaying(user);
-      q.setTrack.run(track ? JSON.stringify(track) : null, clock(), user.id);
+      const found = user.presence_source === 'spotify' ? await spotifyNowPlaying(user) : await lastfmNowPlaying(user);
+      const now = clock();
+      let track = null;
+      if (found) {
+        const { msLeft, ...rest } = found;
+        track = rest;
+      }
+      q.setTrack.run(track ? JSON.stringify(track) : null, now, nextCheck(user, found, now), user.id);
     } catch (err) {
       if (err.revoked) {
         // They removed KoolKat from their Spotify account.
         q.disconnect.run(user.id);
         return;
       }
-      q.setRetry.run(clock() + (err.retryAfter ?? 120) * 1000, user.id);
+      q.setRetry.run(clock() + (err.retryAfter ?? 60) * 1000, user.id);
       throw err;
     }
   }
@@ -316,11 +356,27 @@ export function registerPresenceRoutes({
     wrap(async (req) => {
       const user = requireUnlimited(req);
       const now = clock();
-      if (user.presence_source && (refreshed.get(user.id) ?? 0) < now - 15_000) {
+      if (user.presence_source && (refreshed.get(user.id) ?? 0) < now - 5000) {
         refreshed.set(user.id, now);
         await pollUser(user).catch(() => {});
       }
       return describe(q.user.get(user.id));
+    })
+  );
+
+  // Just your friends' songs: cheap enough for the app to ask every few seconds.
+  api.get(
+    '/presence/friends',
+    auth,
+    wrap((req) => {
+      const me = req.user.id;
+      const now = clock();
+      const playing = {};
+      for (const f of q.friendsPresence.all(me, me, me)) {
+        const np = presenceOf(f, now, hasUnlimitedUser);
+        if (np) playing[f.id] = np;
+      }
+      return { playing };
     })
   );
 
@@ -334,15 +390,21 @@ export function registerPresenceRoutes({
   );
 
   let polling = false;
-  /** Check what everyone connected is playing. Run by the server every 45 seconds. */
+  /** Check every account that's due. Run by the server every second. */
   async function pollAll() {
     if (polling) return;
     polling = true;
     try {
-      for (const user of q.connected.all(clock())) {
-        if (!hasUnlimitedUser(user)) continue;
-        await pollUser(user).catch((err) => console.error(`Rich Presence (${user.presence_source}):`, err.message));
+      const budget = { ...PER_SECOND };
+      const batch = [];
+      for (const user of q.due.all(clock())) {
+        if (!hasUnlimitedUser(user) || !(budget[user.presence_source] > 0)) continue;
+        budget[user.presence_source] -= 1;
+        batch.push(
+          pollUser(user).catch((err) => console.error(`Rich Presence (${user.presence_source}):`, err.message))
+        );
       }
+      await Promise.all(batch);
     } finally {
       polling = false;
     }
