@@ -953,4 +953,7 @@ input[type="color"] { width: 44px; height: 32px; padding: 0; border: 1px solid v
 .presence-editor .fineprint { margin: 0; }
 .presence-editor .inline-form { width: 100%; }
 .btn.spotify { background: #1db954; border-color: #1db954; color: #000; }
+.lastfm-option { width: 100%; }
+.lastfm-option summary { cursor: pointer; font-size: 14px; font-weight: 600; color: var(--muted); }
+.lastfm-option .fineprint { margin: 6px 0; }
 .music-bubble { background: rgba(29, 185, 84, 0.18); }

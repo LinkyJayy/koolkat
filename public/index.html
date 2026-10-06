@@ -629,12 +629,15 @@
             <p class="fineprint" id="presence-status">Show your friends what you're listening to.</p>
             <div id="presence-now"></div>
             <button type="button" class="btn small spotify" id="btn-spotify-connect" hidden>Connect Spotify</button>
-            <div class="inline-form" id="lastfm-form" hidden>
-              <input id="lastfm-input" placeholder="Last.fm username" autocapitalize="none" spellcheck="false" maxlength="15" aria-label="Last.fm username" enterkeyhint="go">
-              <button type="button" class="btn small" id="btn-lastfm-connect">Connect Last.fm</button>
-            </div>
+            <details class="lastfm-option" id="lastfm-option" hidden>
+              <summary>Use Last.fm instead (optional, for Apple Music)</summary>
+              <p class="fineprint">Only if you want it: connect a scrobbler app (like Marvis Pro or QuietScrob) to Last.fm, then enter your Last.fm username here. Spotify can also send to Last.fm.</p>
+              <div class="inline-form">
+                <input id="lastfm-input" placeholder="Last.fm username" autocapitalize="none" spellcheck="false" maxlength="15" aria-label="Last.fm username" enterkeyhint="go">
+                <button type="button" class="btn small" id="btn-lastfm-connect">Connect Last.fm</button>
+              </div>
+            </details>
             <button type="button" class="btn small" id="btn-presence-disconnect" hidden>Disconnect</button>
-            <p class="fineprint" id="presence-help">Apple Music: connect a scrobbler app (like Marvis Pro or QuietScrob) to Last.fm, then enter your Last.fm username here. Spotify can also send to Last.fm.</p>
           </div>
         </div>
         <div class="inline-form redeem">

@@ -273,6 +273,39 @@ describe('Rich Presence', () => {
     assert.equal((await call('GET', '/presence', { token: ann.token })).body.source, null);
   });
 
+  test('Last.fm is optional: with only Spotify keys it is switched off', async () => {
+    let lastfmCalls = 0;
+    const spotifyOnly = createApp({
+      db,
+      admins: ['boss'],
+      clock: () => now,
+      env: { SPOTIFY_CLIENT_ID: 'cid', SPOTIFY_CLIENT_SECRET: 'secret' },
+      fetchImpl: (url, init) => {
+        if (String(url).includes('audioscrobbler')) lastfmCalls += 1;
+        return fakeFetch(url, init);
+      },
+    });
+    const srv = spotifyOnly.listen(0);
+    await new Promise((r) => srv.once('listening', r));
+    const at = (path, init = {}) =>
+      fetch(`http://127.0.0.1:${srv.address().port}/api${path}`, {
+        ...init,
+        headers: { authorization: `Bearer ${ann.token}`, 'content-type': 'application/json' },
+      });
+    const info = await (await at('/presence')).json();
+    assert.equal(info.spotifyAvailable, true);
+    assert.equal(info.lastfmAvailable, false);
+    assert.equal((await at('/presence/lastfm', { method: 'POST', body: JSON.stringify({ username: 'annmusic' }) })).status, 503);
+
+    // Someone connected to Last.fm before its key was removed: they're left alone, not retried.
+    db.prepare("UPDATE users SET presence_source = 'lastfm', lastfm_user = 'annmusic', presence_retry_at = NULL WHERE id = ?").run(ann.id);
+    await spotifyOnly.locals.pollPresence();
+    await at('/presence/refresh', { method: 'POST' });
+    assert.equal(lastfmCalls, 0);
+    await at('/presence', { method: 'DELETE' });
+    srv.close();
+  });
+
   test('without keys the server says it is not set up', async () => {
     const plain = createApp({ db, admins: ['boss'], env: {} }).listen(0);
     await new Promise((r) => plain.once('listening', r));

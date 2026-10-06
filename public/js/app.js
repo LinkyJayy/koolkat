@@ -2994,8 +2994,9 @@ function renderPresence(p) {
       : `Connected to Last.fm as ${p.lastfmUser}. ${p.nowPlaying ? 'Your friends see:' : 'Nothing playing right now.'}`;
   $('presence-now').replaceChildren(...nodes(p.nowPlaying && nowPlayingCard(p.nowPlaying)));
   $('btn-spotify-connect').hidden = connected || !p.spotifyAvailable;
-  $('lastfm-form').hidden = connected || !p.lastfmAvailable;
-  $('presence-help').hidden = connected || !p.lastfmAvailable;
+  // Last.fm is an optional extra: tucked away under Spotify, or open when it's the only choice.
+  $('lastfm-option').hidden = connected || !p.lastfmAvailable;
+  if (!p.spotifyAvailable && p.lastfmAvailable) $('lastfm-option').open = true;
   $('btn-presence-disconnect').hidden = !connected;
   $('profile-now-playing').replaceChildren(...nodes(p.nowPlaying && nowPlayingCard(p.nowPlaying)));
 }

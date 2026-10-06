@@ -345,8 +345,11 @@ export function registerPresenceRoutes({
     return length ? now + Math.min(length, MAX_WAIT) : null;
   }
 
+  // A service is switched off when its keys are removed; accounts using it are then left alone.
+  const serviceOn = (user) => (user.presence_source === 'lastfm' ? lastfmAvailable : spotifyAvailable);
+
   async function pollUser(user) {
-    if (!user?.presence_source) return;
+    if (!user?.presence_source || !serviceOn(user)) return;
     try {
       const found = user.presence_source === 'spotify' ? await spotifyNowPlaying(user) : await lastfmNowPlaying(user);
       const now = clock();
@@ -437,7 +440,7 @@ export function registerPresenceRoutes({
       const budget = { ...PER_SECOND };
       const batch = [];
       for (const user of q.due.all(clock())) {
-        if (!hasUnlimitedUser(user) || !(budget[user.presence_source] > 0)) continue;
+        if (!hasUnlimitedUser(user) || !serviceOn(user) || !(budget[user.presence_source] > 0)) continue;
         budget[user.presence_source] -= 1;
         batch.push(
           pollUser(user).catch((err) => console.error(`Rich Presence (${user.presence_source}):`, err.message))

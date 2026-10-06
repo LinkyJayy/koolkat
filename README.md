@@ -56,7 +56,7 @@ Storage counts the Klicks you've sent that still exist. Deleting a sent Klick (i
 - **Kat Map.** *Friends → 🗺* shows you and your friends on a map (OpenStreetMap). Sharing is **off (👻 Ghost)** until you pick **💙 BFFs** (only friends you've made BFFs) or **👥 Friends**. Tap a friend in the list to fly to them, or their pin to open their card. KoolKat sends your location while it's open on your screen (every 30 seconds, or sooner when you move); friends see your last spot with how long ago it was, and spots older than 24 hours disappear. Going back to Ghost deletes your location from the server. Both people need Unlimited. **Background:** websites and installed web apps can't get your location while they're in the background or closed (browsers block it), so your friends see where you were when you last had KoolKat open. Live background tracking would need a native app from the app stores.
 - **Rich Presence.** *Profile → Rich Presence* shows friends what you're listening to: in their friends list, on your friend card, and at the top of your chat, with the album art and a link to the song. Songs disappear when you stop playing.
   - **Spotify:** tap *Connect Spotify* and approve. The server keeps checking even when KoolKat is closed. While a song plays it works out when the song ends and doesn't ask Spotify again until then, so there's about one request per song. When nothing is playing it checks every 10 seconds just after you stop, then every 30 seconds. Friends never see how far into a song you are. If you skip or pause partway through, friends see the change when the old song would have ended, or straight away when you open your own profile. Friends looking at their friends list or your chat see changes within about 4 seconds of the server.
-  - **Apple Music (and others) via Last.fm:** Apple doesn't let other apps see what you're playing in Apple Music. Instead, connect a scrobbler app (like Marvis Pro or QuietScrob on iPhone) to Last.fm, then enter your Last.fm username. Spotify users can link Last.fm too (in Spotify's settings). KoolKat looks up each song's length on Last.fm once, then waits for it to end in the same way.
+  - **Apple Music (and others) via Last.fm (optional):** Apple doesn't let other apps see what you're playing in Apple Music. Instead, connect a scrobbler app (like Marvis Pro or QuietScrob on iPhone) to Last.fm, then enter your Last.fm username. Spotify users can link Last.fm too (in Spotify's settings). KoolKat looks up each song's length on Last.fm once, then waits for it to end in the same way.
   - The admin has to set this up first (see *Rich Presence setup* below).
 - **BFFs.** Open a friend's card and tap **Make BFF**. BFFs get their own section at the top of *Friends*, and their chats are pinned to the top of *Chats*, with the 💙 heart. Only you see who your BFFs are. Unfriending someone removes the heart.
 
@@ -81,10 +81,10 @@ The account **`zalith9`** is the admin. Capitalisation doesn't matter, and usern
 
 ### Rich Presence setup
 
-Both are free. Put the keys in Railway → your service → **Variables** (never in the code or a chat):
+Both are free, and you can set up either one, both, or neither. Put the keys in Railway → your service → **Variables** (never in the code or a chat):
 
 - **Spotify:** go to [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard), *Create app*, choose *Web API*, and add the redirect URI `https://kool-kat.com/api/presence/spotify/callback`. Copy the *Client ID* and *Client secret* into `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET`. **Limit:** new Spotify apps are in *Development mode*, where only up to 25 people you add under *User Management* (their Spotify email) can connect. Spotify only lifts that limit for large companies, so for everyone else Last.fm is the way.
-- **Last.fm:** create an API account at [last.fm/api/account/create](https://www.last.fm/api/account/create) and put the *API key* in `LASTFM_API_KEY`. There's no user limit.
+- **Last.fm (optional):** skip this and Rich Presence is Spotify-only; the Last.fm option doesn't appear in the app. If you set it up, it shows as a folded *Use Last.fm instead* option under *Connect Spotify*. Removing the key later switches it off again (people connected through Last.fm just stop showing a song). To set it up, create an API account at [last.fm/api/account/create](https://www.last.fm/api/account/create) and put the *API key* in `LASTFM_API_KEY`. There's no user limit.
 
 ## End-to-end encryption
 
@@ -126,7 +126,7 @@ Configuration (environment variables):
 | `VAPID_SUBJECT` | repo URL | Contact URL or `mailto:` address sent to push services |
 | `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` | – | Turns on *Connect Spotify* for Rich Presence |
 | `SPOTIFY_REDIRECT_URI` | `https://<CANONICAL_HOST>/api/presence/spotify/callback` | Only needed if it differs from that |
-| `LASTFM_API_KEY` | – | Turns on Last.fm (Apple Music) for Rich Presence |
+| `LASTFM_API_KEY` | – | Optional: turns on Last.fm (Apple Music) for Rich Presence |
 
 ## Deploying to Railway
 
