@@ -57,7 +57,7 @@ export function createApp({
   serveStatic = true,
   pusher = createPusher({ db, clock }),
   allowedOrigins = parseAllowedOrigins(),
-  // The app's own domain (e.g. www.kool-kat.com). Visits to the Railway
+  // The app's own domain (e.g. kool-kat.com). Visits to the Railway
   // address are sent there, so everyone uses the same site.
   canonicalHost = (process.env.CANONICAL_HOST || '').trim().toLowerCase() || null,
   admins = adminUsernames(),
