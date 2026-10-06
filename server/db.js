@@ -173,6 +173,15 @@ CREATE TABLE IF NOT EXISTS bffs (
   PRIMARY KEY (user_id, friend_id)
 );
 
+-- Short-lived codes shown as a QR code to add friends in person.
+CREATE TABLE IF NOT EXISTS friend_codes (
+  token       TEXT PRIMARY KEY,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at  INTEGER NOT NULL,
+  expires_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS friend_codes_user ON friend_codes (user_id, expires_at);
+
 -- Server-wide key/value settings (e.g. generated VAPID keys).
 CREATE TABLE IF NOT EXISTS settings (
   key    TEXT PRIMARY KEY,
@@ -203,6 +212,13 @@ const MIGRATIONS = [
   // Lets the sender open their own snaps (the snap key wrapped for the sender).
   ['snaps', 'sender_wrapped_key', 'TEXT'],
   ['snaps', 'sender_wrap_iv', 'TEXT'],
+  // KoolKat Unlimited Activity Bubble (what you're up to, shown to friends).
+  ['users', 'activity_emoji', 'TEXT'],
+  ['users', 'activity_text', 'TEXT'],
+  ['users', 'activity_until', 'INTEGER'],
+  // KoolKat Unlimited chat theme (JSON) and its optional background picture.
+  ['users', 'chat_theme', 'TEXT'],
+  ['users', 'chat_background', 'BLOB'],
 ];
 
 function migrate(db) {

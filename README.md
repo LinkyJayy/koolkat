@@ -8,8 +8,11 @@ Photos taken in KoolKat are called **Klicks**.
 
 - **Accounts.** Sign up and sign in with a username and password. Sessions persist across reloads.
 - **Friends.** Search by username, send, accept, ignore or cancel requests, and remove friends. Adding someone who already added you accepts their request.
+- **QR code friending.** 🔳 *Friends → My QR code* (or *Profile → My QR code*) shows your code. A friend taps *Friends → Scan QR*, or points their phone's normal camera at it, and you're friends straight away, with no request to accept. The code changes every few minutes and stops working after 10, so an old screenshot can't be used to add you.
+- **Nearby.** 📍 *Friends → Nearby* lists people about 150 m from you who have Nearby open at the same moment; tap **Add** to send a request. It uses your phone's location (Bluetooth isn't available to web apps). Your location is only sent while the screen is open, is held in the server's memory for at most 2 minutes, is never saved, and is never shown to anyone: others only see your name.
 - **Friends-only.** The server refuses to deliver a Klick to anyone who isn't an accepted friend. It also refuses to let a recipient download a Klick after the two of them stop being friends.
 - **Camera.** Uses the front or rear camera with a flip button. Selfies are mirrored like a normal selfie camera.
+- **KatCam.** 😺 The two-camera button on the camera screen puts both cameras in one Klick: the back camera fills the picture and your selfie sits in the corner (flip swaps them). If the phone can run both cameras at once you see both live. Most phones can't, so KatCam takes the second picture right after the first ("Now smile! 📸"). It's sent as one normal, end-to-end encrypted Klick.
 - **Captions.** Tap the photo to add a caption, and tap somewhere else to move it. The caption is encrypted along with the photo.
 - **Saved Klicks.** Klicks you receive stay in your inbox, so you can open them again whenever you like. They stay end-to-end encrypted, and only the friends a Klick was sent to can open it. If you unfriend someone, their Klicks are hidden until you're friends again.
 - **View your own Klicks.** Each Klick is also encrypted for you, so you can open it again from *Klicks → Sent*. As the sender, deleting a Klick removes it for everyone.
@@ -36,6 +39,9 @@ KoolKat is completely free, and so is **KoolKat Unlimited**. Unlimited isn't sol
 | Custom app icon: Classic, Crown, Glow, or your own picture | – | ✓ |
 | Custom badge picture (with *Reset Badge to Default*) | – | ✓ |
 | BFFs 💙: heart friends to pin them to the top of your friends and chats | – | ✓ |
+| Chat themes: background (presets, any colour, or your own picture) and bubble colour | – | ✓ |
+| Activity Bubbles 🫧: show friends what you're up to | – | ✓ |
+| QR friending, Nearby, KatCam | ✓ | ✓ |
 
 Storage counts the Klicks you've sent that still exist. Deleting a sent Klick (it's removed for everyone) frees the space. When it's full, KoolKat asks you to delete some. Badges and flair are shown to your friends in their friend list, your profile, your Klicks and chats.
 
@@ -43,6 +49,8 @@ Storage counts the Klicks you've sent that still exist. Deleting a sent Klick (i
 
 - **App icon.** Pick *Crown* or *Glow*, or *Upload a picture from your gallery* (cropped to a square). The browser tab icon changes straight away, and installing KoolKat uses your icon. Browsers don't let a website change an icon that's already on the home screen, so to switch there, remove KoolKat and install it again. (Chrome on Android may also update it by itself after a while.)
 - **Kool badge.** *Choose from gallery* replaces the crown next to your name with your own picture, for everyone who sees your name. *Reset Badge to Default* brings the crown back. Uploaded badge and icon pictures are served from unguessable links so browsers can show them.
+- **Chat themes.** Pick a background (Midnight, Sunset, Ocean, Forest, Candy, any colour, or a picture from your gallery) and the colour of your own message bubbles. The text colour adjusts automatically so it stays readable. Themes change how chats look for you; your background picture is only ever sent to you.
+- **Activity Bubbles.** Choose an emoji, write what you're doing (up to 40 characters), and show it until you clear it or for 1, 4, 8 or 24 hours. Your friends see it in their friends list, on your friend card, and at the top of your chat; you see it on your profile. People who aren't your friends never see it.
 - **BFFs.** Open a friend's card and tap **Make BFF**. BFFs get their own section at the top of *Friends*, and their chats are pinned to the top of *Chats*, with the 💙 heart. Only you see who your BFFs are. Unfriending someone removes the heart.
 
 There are three ways to get Unlimited:
@@ -179,6 +187,7 @@ server/
   plans.js      KoolKat Free / Unlimited, codes, admins
   news.js       News posts (admins write, everyone reads)
   customize.js  Unlimited app icons, custom badges, BFFs, per-icon manifest
+  social.js     QR friend codes, Nearby, Activity Bubbles, chat themes
   chats.js      direct and group chats (end-to-end encrypted messages)
   http.js       shared request validation helpers
   db.js         SQLite schema
@@ -186,6 +195,9 @@ public/
   index.html, css/styles.css
   js/app.js       UI: camera, captions, inbox, viewer, friends
   js/crypto.js    end-to-end encryption (shared with the tests)
+  js/qr.js        drawing and scanning friend QR codes
+  js/katcam.js    KatCam: both cameras in one Klick
+  vendor/         qrcode-generator (MIT) and jsQR (Apache-2.0), served locally
   js/api.js       API client
   js/keystore.js  IndexedDB storage for the unlocked private key
   js/push.js      turning notifications on and off
@@ -239,6 +251,12 @@ All endpoints are under `/api` and take and return JSON. Authenticated endpoints
 | POST | `/unlimited/request` | `message?`: ask the admins for KoolKat Unlimited |
 | GET | `/admin/requests` | Admin: pending requests |
 | POST | `/admin/requests/:id/approve` / `/decline` | Admin: approve (`days?`, blank = forever) or decline |
+| GET | `/friend-code` | Your current QR friend code (`code, expiresAt`) |
+| POST | `/friends/qr` | `code`: become friends with the code's owner |
+| POST / DELETE | `/nearby` | `lat, lng, accuracy`: check in and list people nearby / leave Nearby |
+| POST / DELETE | `/me/activity` | Unlimited: set (`emoji, text, hours?`) / clear your Activity Bubble |
+| POST | `/me/chat-theme` | Unlimited: `background, color?, bubble?, image?` (JPEG base64) |
+| GET | `/me/chat-background` | Your own chat background picture |
 | GET | `/news` / `/news/unread` | News posts / unread count |
 | POST | `/news/seen` | Mark News as read |
 | POST / DELETE | `/news` / `/news/:id` | Admin: post (`title, body?, code?, notify?`) / delete |

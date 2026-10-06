@@ -35,6 +35,7 @@ import { HttpError, base64Field, fail, pair, parseUserId, validatePublicKey } fr
 import { registerChatRoutes } from './chats.js';
 import { registerNewsRoutes } from './news.js';
 import { manifestHandler, registerCustomizeRoutes } from './customize.js';
+import { activityOf, chatThemeOf, cleanupFriendCodes, registerSocialRoutes } from './social.js';
 
 const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 
@@ -136,7 +137,7 @@ export function createApp({
     friendship: db.prepare('SELECT * FROM friendships WHERE user_low = ? AND user_high = ?'),
     friendshipsOf: db.prepare(`
       SELECT f.*, u.id AS other_id, u.username, u.display_name, u.public_key,
-             u.plan_until, u.flair, u.badge_id
+             u.plan_until, u.flair, u.badge_id, u.activity_emoji, u.activity_text, u.activity_until
       FROM friendships f
       JOIN users u ON u.id = CASE WHEN f.user_low = ? THEN f.user_high ELSE f.user_low END
       WHERE f.user_low = ? OR f.user_high = ?`),
@@ -266,6 +267,8 @@ export function createApp({
       storageWarning: isAdmin(u.username, admins) && !storage.persistent ? storage.reason : null,
       appIcon: { icon: unlimited ? u.app_icon || 'default' : 'default', customId: u.app_icon_id ?? null },
       customBadge: Boolean(u.badge_id),
+      activity: activityOf(u, now, () => unlimited),
+      chatTheme: unlimited ? chatThemeOf(u) : null,
     };
   };
 
@@ -310,6 +313,8 @@ export function createApp({
   // ---------- KoolKat Unlimited personalisation (app icons, badges, BFFs) ----------
   const hasUnlimitedUser = (u) => hasUnlimited(u, clock(), admins);
   const { bffSet } = registerCustomizeRoutes({ api, db, clock, auth, wrap, hasUnlimitedUser, areFriends });
+  // ---------- QR / Nearby friending, Activity Bubbles, chat themes ----------
+  registerSocialRoutes({ api, db, clock, auth, wrap, publicUser, hasUnlimitedUser, pusher, rateLimiter });
 
   const version = (process.env.RAILWAY_GIT_COMMIT_SHA || process.env.KOOLKAT_VERSION || 'dev').slice(0, 7);
   api.get('/health', (req, res) =>
@@ -596,6 +601,7 @@ export function createApp({
             friendsSince: row.accepted_at,
             streak: describeStreak(row, me, now),
             bff: bffs.has(row.other_id),
+            activity: activityOf({ ...row, id: row.other_id }, now, hasUnlimitedUser),
           });
         } else if (row.requester_id === me) {
           outgoing.push({ ...user, requestedAt: row.created_at });
@@ -1089,4 +1095,5 @@ export function appFilesVersion(dir = PUBLIC_DIR) {
 /** Delete expired sessions. Called periodically by the server. (Snaps are kept.) */
 export function cleanup(db, now = Date.now()) {
   db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(now);
+  cleanupFriendCodes(db, now);
 }

@@ -73,6 +73,11 @@
   <!-- Camera -->
   <section id="screen-camera" class="screen camera" hidden>
     <video id="camera-video" autoplay playsinline muted></video>
+    <div class="katcam-inset" id="katcam-inset" hidden>
+      <video id="katcam-video" autoplay playsinline muted></video>
+      <span class="katcam-later" id="katcam-later" hidden>🤳<br>Selfie after</span>
+    </div>
+    <p class="katcam-status" id="katcam-status" hidden></p>
     <div id="camera-message" class="camera-message" hidden>
       <p id="camera-message-text"></p>
       <button type="button" class="btn primary" id="camera-retry">Try again</button>
@@ -86,6 +91,9 @@
       <button type="button" class="icon-btn" id="btn-news" aria-label="News">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 11v2h4v-2h-4Zm-2 6.6c1 .7 2.2 1.6 3.2 2.4l1.2-1.6c-1-.8-2.3-1.7-3.2-2.4L16 17.6ZM20.4 5.6 19.2 4c-1 .8-2.2 1.7-3.2 2.4L17.2 8c1-.7 2.2-1.6 3.2-2.4ZM4 9a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h1v4h2v-4h1l5 3V6L8 9H4Zm11.5 3c0-1.3-.6-2.5-1.5-3.4v6.8c.9-.8 1.5-2 1.5-3.4Z"/></svg>
         <span class="badge" id="badge-news" hidden></span>
+      </button>
+      <button type="button" class="icon-btn katcam-btn" id="btn-katcam" aria-label="KatCam: both cameras" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h11a2 2 0 0 1 2 2v3h-2V6H4v9h3v2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm7 6h9a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2Zm4.5 2.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Z"/></svg>
       </button>
       <button type="button" class="icon-btn" id="btn-flip" aria-label="Switch camera">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7h-3.2l-1.6-2H8.8L7.2 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2Zm-8 11a5 5 0 0 1-4.6-3h2.1a3 3 0 0 0 5.2-1H13l2.5-3 2.5 3h-1.6A5 5 0 0 1 12 18Zm4.6-6h-2.1a3 3 0 0 0-5.2 1H11l-2.5 3L6 13h1.6a5 5 0 0 1 9-1Z"/></svg>
@@ -221,6 +229,11 @@
       <h2><img src="icons/logo.png" alt="" class="logo">Friends</h2>
       <span></span>
     </header>
+    <div class="add-ways">
+      <button type="button" class="btn small" id="btn-my-qr">🔳 My QR code</button>
+      <button type="button" class="btn small" id="btn-scan-qr">📷 Scan QR</button>
+      <button type="button" class="btn small" id="btn-nearby">📍 Nearby</button>
+    </div>
     <form id="search-form" class="search" role="search">
       <input id="search-input" placeholder="Add friends by username" autocapitalize="none" spellcheck="false" aria-label="Search usernames">
     </form>
@@ -323,6 +336,35 @@
   </section>
 
   <!-- A chat -->
+  <section id="screen-scan" class="screen camera scan-screen" hidden>
+    <video id="scan-video" autoplay playsinline muted></video>
+    <div class="scan-frame" aria-hidden="true"></div>
+    <header class="overlay-top">
+      <button type="button" class="icon-btn" data-back="friends" aria-label="Back to friends">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12Z"/></svg>
+      </button>
+      <span class="brand">Scan a KoolKat QR code</span>
+      <span></span>
+    </header>
+    <p class="scan-status" id="scan-status">Point your camera at a friend's KoolKat QR code</p>
+    <footer class="overlay-bottom scan-actions">
+      <button type="button" class="btn" id="btn-scan-my-qr">🔳 Show my code instead</button>
+    </footer>
+  </section>
+
+  <section id="screen-nearby" class="screen panel" hidden>
+    <header class="panel-header">
+      <button type="button" class="icon-btn plain" data-back="friends" aria-label="Back to friends">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12Z"/></svg>
+      </button>
+      <h2><img src="icons/logo.png" alt="" class="logo">Nearby</h2>
+      <span></span>
+    </header>
+    <p class="nearby-note">Everyone close to you with this screen open shows up here. Your location is only used while it's open: it's never saved, and nobody else sees it, just your name.</p>
+    <p class="nearby-status" id="nearby-status" role="status"></p>
+    <ul class="list" id="nearby-list"></ul>
+  </section>
+
   <section id="screen-chat" class="screen chat-screen" hidden>
     <header class="panel-header">
       <button type="button" class="icon-btn plain" data-back="chats" aria-label="Back to chats">
@@ -331,6 +373,7 @@
       <div class="chat-title">
         <h2 id="chat-name"></h2>
         <span class="fineprint" id="chat-members"></span>
+        <span class="activity-bubble small" id="chat-activity" hidden></span>
       </div>
       <button type="button" class="icon-btn plain" id="btn-chat-menu" aria-label="Group options" hidden>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm0 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z"/></svg>
@@ -443,6 +486,8 @@
       <h2 id="profile-name"></h2>
       <p class="muted" id="profile-username"></p>
       <p class="flair-line" id="profile-flair" hidden></p>
+      <p class="activity-bubble" id="profile-activity" hidden></p>
+      <button type="button" class="btn small" id="btn-profile-qr">🔳 My QR code</button>
 
       <p class="storage-warning" id="storage-warning" role="alert" hidden></p>
       <section class="plan-card" aria-labelledby="plan-name">
@@ -462,6 +507,8 @@
             <li>✨ Kool flair: a line of your own under your name</li>
             <li>🎨 Custom app icons and your own badge picture</li>
             <li><img src="icons/bff-heart.png" alt="" class="bff-heart"> BFFs pinned to the top of your friends and chats</li>
+            <li>💬 Chat themes: your own background and bubble colour</li>
+            <li>🫧 Activity Bubbles: show friends what you're up to</li>
           </ul>
           <div id="request-area">
             <button type="button" class="btn primary wide" id="btn-request-open">🎁 Ask an admin for KoolKat Unlimited</button>
@@ -499,6 +546,50 @@
             <button type="button" class="btn small" id="btn-badge-reset">Reset Badge to Default</button>
           </div>
           <input type="file" accept="image/*" id="badge-file" hidden>
+
+          <p class="fineprint extras-title">Activity Bubble</p>
+          <div class="activity-editor">
+            <div class="emoji-row" id="activity-emojis" role="radiogroup" aria-label="Activity emoji"></div>
+            <div class="inline-form">
+              <input id="activity-emoji" class="emoji-input" maxlength="8" aria-label="Emoji" placeholder="🙂">
+              <input id="activity-text" maxlength="40" placeholder="What are you up to?" aria-label="Activity" enterkeyhint="done">
+            </div>
+            <div class="inline-form">
+              <select id="activity-hours" aria-label="Show it for">
+                <option value="">Until I clear it</option>
+                <option value="1">For 1 hour</option>
+                <option value="4">For 4 hours</option>
+                <option value="8">For 8 hours</option>
+                <option value="24">For a day</option>
+              </select>
+              <button type="button" class="btn small primary" id="btn-activity-save">Show</button>
+              <button type="button" class="btn small" id="btn-activity-clear">Clear</button>
+            </div>
+            <p class="fineprint">Your friends see it on your profile and in their friends list.</p>
+          </div>
+
+          <p class="fineprint extras-title">Chat theme</p>
+          <div class="theme-swatches" id="chat-backgrounds" role="radiogroup" aria-label="Chat background">
+            <button type="button" class="swatch" data-bg="default" role="radio"><span class="swatch-fill bg-default"></span><span>Normal</span></button>
+            <button type="button" class="swatch" data-bg="midnight" role="radio"><span class="swatch-fill bg-midnight"></span><span>Midnight</span></button>
+            <button type="button" class="swatch" data-bg="sunset" role="radio"><span class="swatch-fill bg-sunset"></span><span>Sunset</span></button>
+            <button type="button" class="swatch" data-bg="ocean" role="radio"><span class="swatch-fill bg-ocean"></span><span>Ocean</span></button>
+            <button type="button" class="swatch" data-bg="forest" role="radio"><span class="swatch-fill bg-forest"></span><span>Forest</span></button>
+            <button type="button" class="swatch" data-bg="candy" role="radio"><span class="swatch-fill bg-candy"></span><span>Candy</span></button>
+            <button type="button" class="swatch" data-bg="color" role="radio"><span class="swatch-fill" id="swatch-color"></span><span>Colour</span></button>
+            <button type="button" class="swatch" data-bg="image" role="radio"><span class="swatch-fill swatch-image" id="swatch-image">＋</span><span>Picture</span></button>
+          </div>
+          <input type="color" id="chat-bg-color" value="#1e3a5f" hidden>
+          <input type="file" accept="image/*" id="chat-bg-file" hidden>
+          <div class="inline-form bubble-row">
+            <label class="fineprint" for="chat-bubble-color">Your bubble colour</label>
+            <input type="color" id="chat-bubble-color" value="#1e90ff">
+            <button type="button" class="btn small" id="btn-bubble-reset">Default</button>
+          </div>
+          <div class="chat-preview" id="chat-preview" aria-hidden="true">
+            <span class="bubble theirs">Nice Klick! 😺</span>
+            <span class="bubble mine">Thanks, new theme 🎨</span>
+          </div>
         </div>
         <div class="inline-form redeem">
           <input id="redeem-input" placeholder="Have a code?" autocapitalize="characters" spellcheck="false" aria-label="Redeem code" enterkeyhint="go">
@@ -540,6 +631,21 @@
     </form>
   </dialog>
 
+  <!-- My QR code -->
+  <dialog id="dialog-qr">
+    <form method="dialog">
+      <h2>My KoolKat code</h2>
+      <p class="muted" id="qr-username"></p>
+      <div class="qr-box"><canvas id="qr-canvas" width="296" height="296" aria-label="Your QR code"></canvas></div>
+      <p class="fineprint" id="qr-note">Friends scan this with KoolKat (Friends → Scan QR) or their phone's camera to add you straight away. It changes every few minutes, so old screenshots stop working.</p>
+      <div class="row">
+        <button class="btn" value="close">Close</button>
+        <button type="button" class="btn" id="btn-qr-share">Share link</button>
+        <button type="button" class="btn primary" id="btn-qr-scan">Scan a code</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- Friend details dialog -->
   <dialog id="dialog-friend">
     <form method="dialog">
@@ -547,6 +653,7 @@
       <h2 id="friend-name"></h2>
       <p class="muted" id="friend-username"></p>
       <p class="flair-line" id="friend-flair" hidden></p>
+      <p class="activity-bubble" id="friend-activity" hidden></p>
       <p class="streak-line" id="friend-streak"></p>
       <p class="fineprint">Safety code</p>
       <code class="fingerprint" id="friend-fingerprint"></code>

@@ -27,6 +27,9 @@ test('every file the service worker saves for offline use exists', () => {
   const html = fs.readFileSync(path.join(PUBLIC, 'index.html'), 'utf8');
   for (const [, src] of html.matchAll(/<script[^>]+src="([^"]+)"/g)) assert.ok(list.includes(src), `${src} not precached`);
   for (const file of fs.readdirSync(path.join(PUBLIC, 'js'))) assert.ok(list.includes(`js/${file}`), `js/${file} not precached`);
+  for (const file of fs.readdirSync(path.join(PUBLIC, 'vendor')).filter((f) => /\.m?js$/.test(f))) {
+    assert.ok(list.includes(`vendor/${file}`), `vendor/${file} not precached`);
+  }
 });
 
 test('the manifest is complete and everything it points to exists', () => {

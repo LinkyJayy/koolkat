@@ -21,6 +21,8 @@ import {
   fingerprint,
   unlockIdentity,
 } from './crypto.js';
+import { drawQr, friendLink, parseFriendCode, scanVideo } from './qr.js';
+import { compose, grabFrame, openCamera, stopStream, waitForPicture } from './katcam.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -38,6 +40,12 @@ const state = {
   inbox: [],
   facing: 'user',
   stream: null,
+  // KatCam: both cameras in one Klick. insetStream is the second camera when the
+  // phone can run both at once; otherwise the selfie is taken right after.
+  katcam: false,
+  insetStream: null,
+  katcamOneAtATime: false,
+  capturing: false,
   capture: null, // { blob, url, width, height }
   caption: { y: 0.5 },
   selected: new Set(),
@@ -115,6 +123,8 @@ function streakBadge(streak) {
 function show(name) {
   if (state.screen === 'camera' && name !== 'camera') stopCamera();
   if (state.screen === 'chat' && name !== 'chat') stopChatPolling();
+  if (state.screen === 'scan' && name !== 'scan') stopScanner();
+  if (state.screen === 'nearby' && name !== 'nearby') stopNearby();
   for (const s of document.querySelectorAll('.screen')) s.hidden = s.id !== `screen-${name}`;
   state.screen = name;
   if (name === 'camera') startCamera();
@@ -125,6 +135,7 @@ document.addEventListener('click', (e) => {
   if (!back) return;
   // Going back to the chat list reloads it (new messages, order, BFF pins).
   if (back.dataset.back === 'chats') openChats();
+  else if (back.dataset.back === 'friends') openFriends();
   else show(back.dataset.back);
 });
 
@@ -274,6 +285,13 @@ function enterApp() {
 
 function openView(view) {
   if (!state.me) return;
+  // A friend's QR code opened with the phone's own camera app.
+  if (view.startsWith('add/')) {
+    const code = parseFriendCode(`#${view}`);
+    if (code) addByCode(code).catch((err) => toast(err.message, { error: true }));
+    else toast("That friend link isn't valid", { error: true });
+    return;
+  }
   if (view === 'inbox') openInbox();
   else if (view === 'friends') openFriends();
   else if (view === 'chats') openChats();
@@ -431,7 +449,7 @@ async function startCamera() {
     }
     return;
   }
-
+  if (state.katcam) startInset(run);
 }
 
 function releaseCamera() {
@@ -440,6 +458,120 @@ function releaseCamera() {
     state.stream = null;
   }
   $('camera-video').srcObject = null;
+  stopStream(state.insetStream);
+  state.insetStream = null;
+  $('katcam-video').srcObject = null;
+}
+
+// ---------- KatCam ----------
+const otherFacing = () => (state.facing === 'user' ? 'environment' : 'user');
+
+function renderKatcam() {
+  const on = state.katcam;
+  $('btn-katcam').setAttribute('aria-pressed', String(on));
+  $('katcam-inset').hidden = !on;
+  const live = on && Boolean(state.insetStream);
+  $('katcam-video').hidden = !live;
+  $('katcam-later').hidden = !on || live;
+  $('katcam-later').replaceChildren(otherFacing() === 'user' ? '🤳' : '📷', el('br'), otherFacing() === 'user' ? 'Selfie after' : 'Back camera after');
+}
+
+function setKatcamStatus(text) {
+  $('katcam-status').textContent = text || '';
+  $('katcam-status').hidden = !text;
+}
+
+/** Try to run the second camera alongside the first. Many phones can't; then KatCam takes them one after the other. */
+async function startInset(run) {
+  renderKatcam();
+  if (state.katcamOneAtATime) return;
+  const main = state.stream?.getVideoTracks()[0];
+  let stream;
+  try {
+    stream = await openCamera(otherFacing(), { exact: true });
+  } catch {
+    state.katcamOneAtATime = true;
+    renderKatcam();
+    return;
+  }
+  if (run !== cameraRun || state.screen !== 'camera' || !state.katcam) {
+    stopStream(stream);
+    return;
+  }
+  const video = $('katcam-video');
+  video.srcObject = stream;
+  video.classList.toggle('mirrored', otherFacing() === 'user');
+  video.play().catch(() => {});
+  const showing = await waitForPicture(video, 2500);
+  // Opening a second camera often silently stops the first one.
+  await new Promise((r) => setTimeout(r, 300));
+  const sameCamera = stream.getVideoTracks()[0]?.getSettings().deviceId === main?.getSettings().deviceId;
+  const mainAlive = main?.readyState === 'live' && !main.muted && state.stream?.getVideoTracks()[0] === main;
+  if (run !== cameraRun || !state.katcam) {
+    stopStream(stream);
+    return;
+  }
+  if (!showing || !mainAlive || sameCamera) {
+    stopStream(stream);
+    video.srcObject = null;
+    state.katcamOneAtATime = true;
+    renderKatcam();
+    if (!mainAlive) startCamera();
+    return;
+  }
+  state.insetStream = stream;
+  renderKatcam();
+}
+
+$('btn-katcam').addEventListener('click', () => {
+  state.katcam = !state.katcam;
+  try {
+    localStorage.setItem('koolkat-katcam', state.katcam ? '1' : '');
+  } catch {
+    // Remembering it is only a convenience.
+  }
+  if (state.katcam) {
+    // The back camera fills the Klick, with your selfie in the corner (flip swaps them).
+    state.facing = 'environment';
+    toast('😺 KatCam on: both cameras in one Klick');
+  }
+  setKatcamStatus('');
+  startCamera();
+  renderKatcam();
+});
+try {
+  state.katcam = localStorage.getItem('koolkat-katcam') === '1';
+  if (state.katcam) state.facing = 'environment';
+} catch {
+  // Private mode: start with KatCam off.
+}
+renderKatcam();
+
+/** Take the second picture straight after the first, for phones that only run one camera at a time. */
+async function takeOtherPicture() {
+  const facing = otherFacing();
+  stopCamera();
+  const video = $('katcam-video');
+  $('katcam-later').hidden = true;
+  video.hidden = false;
+  setKatcamStatus(facing === 'user' ? 'Now smile! 📸' : 'Now the back camera… 📸');
+  let stream;
+  try {
+    stream = await openCamera(facing, { exact: true });
+    video.srcObject = stream;
+    video.classList.toggle('mirrored', facing === 'user');
+    await video.play().catch(() => {});
+    if (!(await waitForPicture(video, 3000))) return null;
+    // Give the camera a moment to adjust to the light.
+    await new Promise((r) => setTimeout(r, 600));
+    return grabFrame(video, { mirror: facing === 'user', max: 960 });
+  } catch {
+    return null;
+  } finally {
+    stopStream(stream);
+    video.srcObject = null;
+    setKatcamStatus('');
+  }
 }
 
 function stopCamera() {
@@ -460,29 +592,38 @@ document.addEventListener('visibilitychange', () => {
   else startCamera();
 });
 
-$('btn-shutter').addEventListener('click', () => {
+$('btn-shutter').addEventListener('click', async () => {
   const video = $('camera-video');
+  if (state.capturing) return;
   if (!state.stream || !video.videoWidth) {
     toast('The camera is not ready yet', { error: true });
     return;
   }
-  const MAX = 1440;
-  const scale = Math.min(1, MAX / Math.max(video.videoWidth, video.videoHeight));
-  const width = Math.round(video.videoWidth * scale);
-  const height = Math.round(video.videoHeight * scale);
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext('2d');
-  if (state.facing === 'user') {
-    // Save selfies the way they looked in the preview.
-    ctx.translate(width, 0);
-    ctx.scale(-1, 1);
+  // Save selfies the way they looked in the preview.
+  let canvas = grabFrame(video, { mirror: video.classList.contains('mirrored') });
+  if (state.katcam) {
+    state.capturing = true;
+    try {
+      const insetVideo = $('katcam-video');
+      let inset = null;
+      if (state.insetStream && insetVideo.videoWidth) {
+        inset = grabFrame(insetVideo, { mirror: insetVideo.classList.contains('mirrored'), max: 960 });
+      } else {
+        inset = await takeOtherPicture();
+      }
+      if (inset) canvas = compose(canvas, inset);
+      else toast("Couldn't use your other camera, so this Klick only has one picture", { error: true });
+    } finally {
+      state.capturing = false;
+    }
   }
-  ctx.drawImage(video, 0, 0, width, height);
+  const { width, height } = canvas;
   canvas.toBlob(
     (blob) => {
-      if (!blob) return toast('Could not take the photo', { error: true });
+      if (!blob) {
+        if (state.screen === 'camera' && !state.stream) startCamera();
+        return toast('Could not take the photo', { error: true });
+      }
       discardCapture();
       state.capture = { blob, url: URL.createObjectURL(blob), width, height };
       openPreview();
@@ -1074,6 +1215,7 @@ function openChat(c) {
   chat.messages = [];
   chat.hasMore = false;
   renderChatHeader();
+  applyChatTheme($('messages'), state.plan?.chatTheme);
   $('message-list').replaceChildren();
   $('btn-older-messages').hidden = true;
   show('chat');
@@ -1096,6 +1238,8 @@ function renderChatHeader() {
   $('chat-members').textContent =
     c.kind === 'group' ? `You, ${others.map((m) => m.displayName).join(', ')}` : others[0]?.flair || `@${others[0]?.username ?? ''}`;
   $('btn-chat-menu').hidden = c.kind !== 'group';
+  const friend = c.kind === 'group' ? null : state.friends.find((f) => f.id === others[0]?.id);
+  showActivity($('chat-activity'), friend?.activity);
 }
 
 async function decryptAll(messages) {
@@ -1347,7 +1491,13 @@ function friendRow(f) {
       'button',
       { type: 'button', class: 'item', onclick: () => openFriend(f) },
       avatar(f),
-      el('span', { class: 'item-main' }, nameEl(f), el('div', { class: 'item-sub', text: sub })),
+      el(
+        'span',
+        { class: 'item-main' },
+        nameEl(f),
+        el('div', { class: 'item-sub', text: sub }),
+        f.activity ? el('div', { class: 'activity-bubble small', text: activityLabel(f.activity) }) : null
+      ),
       bffImg(f),
       streakBadge(f.streak)
     )
@@ -1398,6 +1548,7 @@ async function openFriend(friend) {
   $('friend-username').textContent = `@${friend.username}`;
   $('friend-flair').textContent = friend.flair || '';
   $('friend-flair').hidden = !friend.flair;
+  showActivity($('friend-activity'), friend.activity);
   $('friend-streak').textContent =
     friend.streak.count > 0 ? `🔥 ${friend.streak.count} day streak${friend.streak.expiring ? ' ⌛' : ''}` : 'No streak yet. Send each other Klicks every day to start one!';
   $('friend-fingerprint').textContent = await fingerprint(friend.publicKey);
@@ -1462,6 +1613,7 @@ function renderPlan() {
   $('profile-name').replaceChildren(...nodes(state.me.displayName, badgeImg(state.me)));
   $('profile-flair').textContent = plan?.flair || '';
   $('profile-flair').hidden = !plan?.flair;
+  showActivity($('profile-activity'), plan?.activity);
   if (!plan) return;
   const unlimited = plan.plan === 'unlimited';
   $('plan-name').replaceChildren(...nodes(unlimited ? 'KoolKat Unlimited' : 'KoolKat Free', unlimited && badgeImg({ badge: true })));
@@ -1792,6 +1944,8 @@ function renderPersonalisation(plan) {
   if (id) $('custom-icon-preview').src = `${API_BASE}/api/app-icons/${id}/192.png`;
   $('badge-preview').src = badgeSrc(state.me);
   $('btn-badge-reset').disabled = !plan.customBadge;
+  renderActivityEditor(plan);
+  renderChatThemeEditor(plan);
 }
 
 async function loadImageFile(file) {
@@ -2089,6 +2243,404 @@ function renderThemePickers() {
 renderThemePickers();
 
 // ---------- boot ----------
+
+// ---------- adding friends in person: QR codes ----------
+let qrTimer = null;
+
+async function addByCode(code) {
+  const res = await api('POST', '/friends/qr', { code });
+  toast(res.status === 'already' ? `You and ${res.user.displayName} are already friends` : `🎉 You and ${res.user.displayName} are now friends!`);
+  openFriends();
+  return res;
+}
+
+async function openMyQr() {
+  const dialog = $('dialog-qr');
+  const canvas = $('qr-canvas');
+  $('qr-username').textContent = `@${state.me.username}`;
+  canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+  let current = null;
+  const draw = async () => {
+    try {
+      const { code } = await api('GET', '/friend-code');
+      if (code !== current) {
+        current = code;
+        drawQr(canvas, friendLink(code));
+      }
+    } catch (err) {
+      toast(err.message, { error: true });
+    }
+  };
+  clearInterval(qrTimer);
+  // The server swaps the code before it runs out; check every minute while it's on screen.
+  qrTimer = setInterval(() => document.visibilityState === 'visible' && draw(), 60_000);
+  dialog.onclose = () => clearInterval(qrTimer);
+  $('btn-qr-share').onclick = async () => {
+    if (!current) return;
+    const url = friendLink(current);
+    try {
+      if (navigator.share) await navigator.share({ title: 'Add me on KoolKat', text: `Add me on KoolKat: @${state.me.username}`, url });
+      else await copyText(url);
+    } catch {
+      // Sharing was cancelled.
+    }
+  };
+  $('btn-qr-scan').onclick = () => {
+    dialog.close();
+    openScanner();
+  };
+  if (!dialog.open) dialog.showModal();
+  await draw();
+}
+
+$('btn-my-qr').addEventListener('click', openMyQr);
+$('btn-profile-qr').addEventListener('click', () => {
+  $('dialog-profile').close();
+  openMyQr();
+});
+
+const scanner = { run: 0, stream: null, stop: null, lastBad: '' };
+
+function setScanStatus(text) {
+  $('scan-status').textContent = text;
+}
+
+async function openScanner() {
+  show('scan');
+  const run = ++scanner.run;
+  scanner.lastBad = '';
+  setScanStatus('Starting the camera…');
+  let stream;
+  try {
+    stream = await openCamera('environment');
+  } catch (err) {
+    if (run === scanner.run) setScanStatus(CAMERA_ERRORS[err?.name] || "Couldn't start the camera.");
+    return;
+  }
+  if (run !== scanner.run || state.screen !== 'scan') {
+    stopStream(stream);
+    return;
+  }
+  scanner.stream = stream;
+  const video = $('scan-video');
+  video.srcObject = stream;
+  video.play().catch(() => {});
+  setScanStatus("Point your camera at a friend's KoolKat QR code");
+  try {
+    const stop = await scanVideo(video, handleScanned);
+    if (run === scanner.run) scanner.stop = stop;
+    else stop();
+  } catch (err) {
+    if (run === scanner.run) setScanStatus(err.message);
+  }
+}
+
+async function handleScanned(text) {
+  if (text === scanner.lastBad) return false;
+  const code = parseFriendCode(text);
+  if (!code) {
+    scanner.lastBad = text;
+    setScanStatus("That QR code isn't a KoolKat friend code");
+    return false;
+  }
+  setScanStatus('Adding friend…');
+  try {
+    await addByCode(code);
+    return true;
+  } catch (err) {
+    scanner.lastBad = text;
+    setScanStatus(err.message);
+    return false;
+  }
+}
+
+function stopScanner() {
+  scanner.run++;
+  scanner.stop?.();
+  scanner.stop = null;
+  stopStream(scanner.stream);
+  scanner.stream = null;
+  $('scan-video').srcObject = null;
+}
+
+$('btn-scan-qr').addEventListener('click', openScanner);
+$('btn-scan-my-qr').addEventListener('click', () => {
+  openFriends();
+  openMyQr();
+});
+window.addEventListener('hashchange', () => {
+  if (state.me && location.hash.startsWith('#add/')) {
+    const view = location.hash.slice(1);
+    history.replaceState(null, '', location.pathname + location.search);
+    openView(view);
+  }
+});
+
+// ---------- adding friends in person: Nearby ----------
+const near = { run: 0, watch: null, timer: null, position: null, busy: false };
+
+function setNearbyStatus(text) {
+  $('nearby-status').textContent = text;
+}
+
+function openNearby() {
+  show('nearby');
+  $('nearby-list').replaceChildren();
+  const run = ++near.run;
+  if (!navigator.geolocation) {
+    setNearbyStatus("This browser can't share your location, so Nearby doesn't work here. Try a QR code instead.");
+    return;
+  }
+  setNearbyStatus('Finding where you are… If your browser asks, tap Allow.');
+  near.watch = navigator.geolocation.watchPosition(
+    (pos) => {
+      if (run !== near.run) return;
+      const first = !near.position;
+      near.position = pos.coords;
+      if (first) nearbyCheckIn(run);
+    },
+    (err) => {
+      if (run !== near.run) return;
+      setNearbyStatus(
+        err.code === err.PERMISSION_DENIED
+          ? 'Nearby needs your location. Allow location for KoolKat in your browser settings, then open Nearby again.'
+          : "Couldn't find your location. Try turning on Wi-Fi or going outside."
+      );
+    },
+    { enableHighAccuracy: true, maximumAge: 10_000, timeout: 20_000 }
+  );
+  near.timer = setInterval(() => nearbyCheckIn(run), 5000);
+}
+
+async function nearbyCheckIn(run) {
+  if (run !== near.run || !near.position || near.busy || document.visibilityState !== 'visible') return;
+  near.busy = true;
+  try {
+    const { latitude: lat, longitude: lng, accuracy } = near.position;
+    const { people } = await api('POST', '/nearby', { lat, lng, accuracy: Math.round(accuracy || 0) });
+    if (run === near.run) renderNearby(people, run);
+  } catch (err) {
+    if (run === near.run) setNearbyStatus(err.message);
+  } finally {
+    near.busy = false;
+  }
+}
+
+function renderNearby(people, run) {
+  setNearbyStatus(
+    people.length
+      ? `${people.length === 1 ? '1 person' : `${people.length} people`} near you`
+      : 'Looking for people near you… Ask them to open Friends → Nearby too.'
+  );
+  const after = () => nearbyCheckIn(run);
+  $('nearby-list').replaceChildren(
+    ...people.map((u) => {
+      const action = {
+        none: actionButton('Add', () => addFriend(u).then(after)),
+        incoming: actionButton('Accept', () => acceptFriend(u).then(after)),
+        outgoing: el('button', { type: 'button', class: 'btn small', disabled: true, text: 'Requested' }),
+        friends: el('button', { type: 'button', class: 'btn small', disabled: true, text: 'Friends' }),
+      }[u.relationship];
+      return userRow(u, null, action);
+    })
+  );
+}
+
+function stopNearby() {
+  near.run++;
+  if (near.watch != null) navigator.geolocation?.clearWatch(near.watch);
+  clearInterval(near.timer);
+  near.watch = null;
+  near.position = null;
+  // Disappear from everyone else's Nearby list straight away.
+  api('DELETE', '/nearby').catch(() => {});
+}
+
+$('btn-nearby').addEventListener('click', openNearby);
+
+// ---------- KoolKat Unlimited: Activity Bubbles ----------
+const ACTIVITY_EMOJIS = ['🎮', '📚', '🎧', '🍕', '💤', '🏃', '🎬', '✈️', '💼', '🎉'];
+const activityLabel = (a) => `${a.emoji} ${a.text}`.trim();
+
+function showActivity(node, activity) {
+  node.textContent = activity ? activityLabel(activity) : '';
+  node.hidden = !activity;
+}
+
+function renderActivityEditor(plan, { fill = true } = {}) {
+  const a = plan.activity;
+  const emojiInput = $('activity-emoji');
+  const textInput = $('activity-text');
+  if (fill && document.activeElement !== emojiInput && document.activeElement !== textInput) {
+    emojiInput.value = a?.emoji ?? '';
+    textInput.value = a?.text ?? '';
+  }
+  $('btn-activity-clear').disabled = !a;
+  $('activity-emojis').replaceChildren(
+    ...ACTIVITY_EMOJIS.map((emoji) =>
+      el('button', {
+        type: 'button',
+        class: 'emoji-chip',
+        role: 'radio',
+        'aria-checked': String(emojiInput.value === emoji),
+        text: emoji,
+        onclick: () => {
+          emojiInput.value = emoji;
+          renderActivityEditor(state.plan, { fill: false });
+          textInput.focus();
+        },
+      })
+    )
+  );
+}
+
+$('activity-emoji').addEventListener('input', () => renderActivityEditor(state.plan, { fill: false }));
+$('btn-activity-save').addEventListener('click', (e) =>
+  withBusy(e.currentTarget, async () => {
+    const hours = $('activity-hours').value;
+    const { activity } = await api('POST', '/me/activity', {
+      emoji: $('activity-emoji').value.trim(),
+      text: $('activity-text').value,
+      hours: hours ? Number(hours) : null,
+    });
+    state.plan.activity = activity;
+    renderPlan();
+    toast('🫧 Your friends can see what you are up to');
+  })
+);
+$('activity-text').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    $('btn-activity-save').click();
+  }
+});
+$('btn-activity-clear').addEventListener('click', (e) =>
+  withBusy(e.currentTarget, async () => {
+    await api('DELETE', '/me/activity');
+    state.plan.activity = null;
+    $('activity-emoji').value = '';
+    $('activity-text').value = '';
+    renderPlan();
+    toast('Activity cleared');
+  })
+);
+
+// ---------- KoolKat Unlimited: chat themes ----------
+// The background picture is private, so it's fetched with your login and kept as a blob URL.
+const chatPicture = { version: null, url: null, loading: null };
+
+async function chatPictureUrl(version) {
+  if (chatPicture.version === version && chatPicture.url) return chatPicture.url;
+  if (chatPicture.version === version && chatPicture.loading) return chatPicture.loading;
+  chatPicture.version = version;
+  chatPicture.loading = (async () => {
+    const res = await fetch(`${API_BASE}/api/me/chat-background`, { headers: { authorization: `Bearer ${getToken()}` } });
+    if (!res.ok) return null;
+    if (chatPicture.url) URL.revokeObjectURL(chatPicture.url);
+    chatPicture.url = URL.createObjectURL(await res.blob());
+    return chatPicture.url;
+  })().catch(() => null);
+  return chatPicture.loading;
+}
+
+/** Black or white text, whichever reads better on `hex`. */
+function textOn(hex) {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const lin = (c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+  const luminance = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  return luminance > 0.4 ? '#0f172a' : '#ffffff';
+}
+
+async function applyChatTheme(node, theme) {
+  node.dataset.bg = theme?.background ?? 'default';
+  node.style.removeProperty('--chat-custom-bg');
+  node.style.removeProperty('--chat-image');
+  if (theme?.bubble) {
+    node.style.setProperty('--bubble-mine', theme.bubble);
+    node.style.setProperty('--bubble-mine-text', textOn(theme.bubble));
+  } else {
+    node.style.removeProperty('--bubble-mine');
+    node.style.removeProperty('--bubble-mine-text');
+  }
+  if (theme?.background === 'color') node.style.setProperty('--chat-custom-bg', theme.color);
+  if (theme?.background === 'image') {
+    const url = await chatPictureUrl(theme.imageVersion);
+    if (url && node.dataset.bg === 'image') node.style.setProperty('--chat-image', `url("${url}")`);
+  }
+}
+
+function renderChatThemeEditor(plan) {
+  const theme = plan.chatTheme;
+  const current = theme?.background ?? 'default';
+  for (const button of document.querySelectorAll('#chat-backgrounds .swatch')) {
+    button.setAttribute('aria-checked', String(button.dataset.bg === current));
+  }
+  if (theme?.color) {
+    $('chat-bg-color').value = theme.color;
+    $('swatch-color').style.setProperty('--chat-custom-bg', theme.color);
+  }
+  if (theme?.background === 'image') {
+    chatPictureUrl(theme.imageVersion).then((url) => {
+      if (url) $('swatch-image').style.setProperty('--chat-image', `url("${url}")`);
+      $('swatch-image').textContent = url ? '' : '＋';
+    });
+  } else {
+    $('swatch-image').style.removeProperty('--chat-image');
+    $('swatch-image').textContent = '＋';
+  }
+  $('chat-bubble-color').value = theme?.bubble ?? '#1e90ff';
+  $('btn-bubble-reset').disabled = !theme?.bubble;
+  applyChatTheme($('chat-preview'), theme);
+}
+
+async function saveChatTheme(changes) {
+  const theme = state.plan?.chatTheme ?? {};
+  const body = { background: theme.background ?? 'default', color: theme.color, bubble: theme.bubble ?? null, ...changes };
+  if (body.background !== 'color') delete body.color;
+  const { chatTheme } = await api('POST', '/me/chat-theme', body);
+  state.plan.chatTheme = chatTheme;
+  renderChatThemeEditor(state.plan);
+  toast('💬 Chat theme saved');
+}
+
+const reportError = (err) => toast(err.message, { error: true });
+
+$('chat-backgrounds').addEventListener('click', (e) => {
+  const button = e.target.closest('.swatch');
+  if (!button) return;
+  const bg = button.dataset.bg;
+  if (bg === 'color') $('chat-bg-color').click();
+  else if (bg === 'image') $('chat-bg-file').click();
+  else saveChatTheme({ background: bg }).catch(reportError);
+});
+$('chat-bg-color').addEventListener('change', (e) =>
+  saveChatTheme({ background: 'color', color: e.target.value }).catch(reportError)
+);
+$('chat-bg-file').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  try {
+    const img = await loadImageFile(file);
+    const scale = Math.min(1, 1280 / Math.max(img.naturalWidth, img.naturalHeight));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(img.naturalWidth * scale);
+    canvas.height = Math.round(img.naturalHeight * scale);
+    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+    let quality = 0.8;
+    let data = canvas.toDataURL('image/jpeg', quality);
+    while (data.length > 900_000 && quality > 0.4) {
+      quality -= 0.15;
+      data = canvas.toDataURL('image/jpeg', quality);
+    }
+    await saveChatTheme({ background: 'image', image: data.split(',')[1] });
+  } catch (err) {
+    reportError(err);
+  }
+});
+$('chat-bubble-color').addEventListener('change', (e) => saveChatTheme({ bubble: e.target.value }).catch(reportError));
+$('btn-bubble-reset').addEventListener('click', () => saveChatTheme({ bubble: null }).catch(reportError));
+
 async function boot() {
   setAuthMode('login');
   $('auth-config-warning').hidden = Boolean(API_BASE) || !location.hostname.endsWith('.github.io');

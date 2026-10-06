@@ -707,3 +707,168 @@ textarea:focus { outline: 2px solid var(--brand); border-color: transparent; }
 .badge-preview { display: grid; place-items: center; width: 48px; height: 40px; border-radius: 10px; background: var(--bg); }
 .badge-preview img { max-width: 40px; max-height: 32px; }
 #btn-friend-bff[aria-pressed="true"] { border-color: var(--brand); color: var(--brand); }
+
+/* ---------- KatCam ---------- */
+.katcam-inset {
+  position: absolute;
+  top: calc(72px + var(--safe-top));
+  left: 16px;
+  width: 30%;
+  max-width: 180px;
+  aspect-ratio: 3 / 4;
+  border: 3px solid #fff;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #111;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  z-index: 1;
+}
+.camera .katcam-inset video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.katcam-later {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.6;
+}
+.katcam-status {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: calc(120px + var(--safe-bottom));
+  margin: 0;
+  text-align: center;
+  font-weight: 700;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+  z-index: 2;
+}
+#btn-katcam[aria-pressed="true"] { background: var(--brand); color: #fff; }
+
+/* ---------- adding friends: QR & Nearby ---------- */
+.add-ways { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 16px 8px; }
+.add-ways .btn { flex: 1 1 auto; }
+.qr-box { display: grid; place-items: center; margin: 8px 0; }
+.qr-box canvas { width: min(70vw, 296px); height: auto; aspect-ratio: 1; border-radius: 16px; background: #fff; }
+#btn-profile-qr { margin: 0 0 10px; }
+.scan-screen .brand { font-size: 16px; }
+.scan-frame {
+  position: absolute;
+  left: 50%;
+  top: 45%;
+  width: min(64vw, 280px);
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border: 3px solid rgba(255, 255, 255, 0.9);
+  border-radius: 24px;
+  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  z-index: 1;
+}
+.scan-status {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  top: calc(45% + min(32vw, 140px) + 20px);
+  margin: 0;
+  text-align: center;
+  font-weight: 700;
+  z-index: 2;
+}
+.scan-actions { justify-content: center; }
+.nearby-note { margin: 0 16px 8px; color: var(--muted); font-size: 14px; }
+.nearby-status { margin: 0 16px 8px; font-weight: 600; }
+
+/* ---------- Activity Bubbles ---------- */
+.activity-bubble {
+  display: inline-block;
+  max-width: 100%;
+  margin: 2px 0 8px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--brand-soft);
+  color: var(--text);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.activity-bubble.small { margin: 2px 0 0; padding: 1px 8px; font-size: 12px; }
+.chat-title .activity-bubble { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.activity-editor { display: flex; flex-direction: column; gap: 6px; }
+.activity-editor .fineprint { margin: 0; }
+.emoji-row { display: flex; gap: 4px; flex-wrap: wrap; }
+.emoji-chip {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background: var(--bg);
+  font-size: 20px;
+}
+.emoji-chip[aria-checked="true"] { border-color: var(--brand); }
+.emoji-input { width: 56px; flex: none; text-align: center; }
+.activity-editor select { flex: 1; min-width: 0; }
+
+/* ---------- chat themes ---------- */
+.theme-swatches { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 4px;
+  border-radius: 12px;
+  border: 2px solid transparent;
+  background: var(--bg);
+  font-size: 12px;
+  font-weight: 600;
+}
+.swatch[aria-checked="true"] { border-color: var(--brand); background: var(--brand-soft); }
+.swatch-fill {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background-size: cover;
+  background-position: center;
+  color: var(--muted);
+  font-size: 20px;
+}
+#swatch-color { background: var(--chat-custom-bg, linear-gradient(135deg, #f43f5e, #f59e0b, #10b981, #3b82f6, #a855f7)); }
+#swatch-image { background-image: var(--chat-image, none); }
+.bubble-row { align-items: center; margin-top: 8px; }
+.bubble-row label { flex: 1; margin: 0; }
+input[type="color"] { width: 44px; height: 32px; padding: 0; border: 1px solid var(--border); border-radius: 8px; background: none; }
+.chat-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+.chat-preview .bubble { max-width: 80%; font-size: 14px; }
+.chat-preview .bubble.mine { align-self: flex-end; background: var(--bubble-mine, var(--brand)); color: var(--bubble-mine-text, #fff); }
+.chat-preview .bubble.theirs { align-self: flex-start; }
+.message.mine .bubble { background: var(--bubble-mine, var(--brand)); color: var(--bubble-mine-text, #fff); }
+
+.bg-default { background: var(--bg); }
+.bg-midnight, .messages[data-bg="midnight"], .chat-preview[data-bg="midnight"] { background: linear-gradient(160deg, #0f172a, #1e1b4b 60%, #312e81); }
+.bg-sunset, .messages[data-bg="sunset"], .chat-preview[data-bg="sunset"] { background: linear-gradient(160deg, #fb7185, #f59e0b); }
+.bg-ocean, .messages[data-bg="ocean"], .chat-preview[data-bg="ocean"] { background: linear-gradient(160deg, #0ea5e9, #1e3a8a); }
+.bg-forest, .messages[data-bg="forest"], .chat-preview[data-bg="forest"] { background: linear-gradient(160deg, #166534, #4d7c0f); }
+.bg-candy, .messages[data-bg="candy"], .chat-preview[data-bg="candy"] { background: linear-gradient(160deg, #f9a8d4, #c4b5fd 55%, #93c5fd); }
+.messages[data-bg="color"], .chat-preview[data-bg="color"] { background: var(--chat-custom-bg); }
+.messages[data-bg="image"], .chat-preview[data-bg="image"] { background: var(--chat-image) center / cover no-repeat, #000; }
+/* Times, names and the "older" button stay readable on any background. */
+.messages[data-bg]:not([data-bg="default"]) .time,
+.messages[data-bg]:not([data-bg="default"]) .sender {
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+}
+.messages[data-bg]:not([data-bg="default"]) .message:not(.mine) .bubble,
+.chat-preview[data-bg]:not([data-bg="default"]) .bubble.theirs { background: rgba(255, 255, 255, 0.92); color: #0f172a; }
