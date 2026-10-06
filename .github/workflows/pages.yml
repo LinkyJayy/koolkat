@@ -40,6 +40,8 @@ jobs:
         run: |
           cp -r public _site
           touch _site/.nojekyll
+          # Give the service worker this commit as its version, so installed apps update.
+          sed -i "s/__KOOLKAT_VERSION__/${GITHUB_SHA::12}/" _site/sw.js
           if [ -z "$API_URL" ]; then
             echo "::warning::KOOLKAT_API_URL is not set, so the site won't be able to reach a backend. See README → GitHub Pages."
           fi

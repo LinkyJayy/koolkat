@@ -15,16 +15,53 @@ export function needsHomeScreenInstall() {
   return ios && !navigator.standalone && !pushSupported();
 }
 
-export async function registerServiceWorker(onMessage) {
+/**
+ * Register the service worker. `onUpdate(apply)` is called when a new version
+ * of KoolKat has downloaded; calling `apply()` switches to it and reloads.
+ */
+export async function registerServiceWorker(onMessage, onUpdate) {
   if (!('serviceWorker' in navigator) || !window.isSecureContext) return null;
   try {
     registration = await navigator.serviceWorker.register('sw.js');
     navigator.serviceWorker.addEventListener('message', (e) => onMessage?.(e.data || {}));
+    watchForUpdates(registration, onUpdate);
   } catch (err) {
     console.warn('Service worker registration failed', err);
     registration = null;
   }
   return registration;
+}
+
+function watchForUpdates(reg, onUpdate) {
+  let reloading = false;
+  const offer = (worker) => {
+    // Only an *update* (there's already a version running this page) needs a reload.
+    if (!worker || !navigator.serviceWorker.controller) return;
+    onUpdate?.(() => {
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!reloading) {
+          reloading = true;
+          location.reload();
+        }
+      });
+      worker.postMessage({ type: 'skip-waiting' });
+    });
+  };
+  if (reg.waiting) offer(reg.waiting);
+  reg.addEventListener('updatefound', () => {
+    const worker = reg.installing;
+    worker?.addEventListener('statechange', () => {
+      if (worker.state === 'installed') offer(worker);
+    });
+  });
+  // Check for a new version whenever the app comes back to the foreground (at most hourly).
+  let lastCheck = Date.now();
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && Date.now() - lastCheck > 60 * 60 * 1000) {
+      lastCheck = Date.now();
+      reg.update().catch(() => {});
+    }
+  });
 }
 
 async function ready() {

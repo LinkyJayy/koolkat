@@ -21,6 +21,7 @@ Photos taken in KoolKat are called **Klicks**.
 - **Sent view.** Shows "Delivered" or "Opened" for Klicks you've sent.
 - **Push notifications.** 🔔 Get notified about new Klicks, messages, friend requests, accepted requests, and streaks that are about to end. Turn them on from the banner on the Klicks screen or in your profile. Notifications only say *who* sent something, never what.
 - **News.** 📣 The megaphone button on the home screen opens News: codes, events and updates posted by admins. Posts can include a code with a one-tap **Redeem** button. A badge shows when there's something new.
+- **Installable app (PWA).** KoolKat installs like a normal app, with its own icon, full screen and no browser bars. On Android and desktop, use *Profile → Install KoolKat*. On iPhone, use Safari's *Share → Add to Home Screen*. Long-press the icon for shortcuts to the camera, Klicks and Chats. It opens even offline, and when a new version is deployed it shows *"A new version of KoolKat is ready → Reload"*.
 - **Light and dark mode.** Choose System, Light or Dark under *Appearance* on the sign-in screen or in your profile. The choice is remembered on that device.
 
 ## KoolKat Free vs KoolKat Unlimited
@@ -122,6 +123,12 @@ Browsers only allow the camera on `https://` or on `http://localhost`. To use Ko
 
 You can then use "Add to Home Screen" to install KoolKat like an app.
 
+### Installable app (PWA) details
+
+- `public/manifest.webmanifest`: name, icons (including padded "maskable" ones for Android's round icons), shortcuts, and screenshots for the install dialog.
+- `public/sw.js`: the service worker. It saves the app's files on the device so KoolKat opens instantly and offline, and never caches `/api/` (Klicks and messages are always fetched live and stay end-to-end encrypted). The server fills in its version from a hash of the app's files, so every deploy that changes them is picked up as an update. The page then offers a reload instead of switching under you.
+- If you add a new file to `public/js/`, also add it to `PRECACHE` in `sw.js`. A test checks this.
+
 ### Push notifications
 
 Notifications use the standard Web Push API, so they work without any third-party account:
@@ -170,7 +177,8 @@ public/
   js/push.js      turning notifications on and off
   js/config.js    backend address (for GitHub Pages / separate hosting)
   js/theme.js     light / dark mode
-  sw.js           service worker that shows notifications
+  sw.js           service worker: offline app shell, updates, notifications
+  manifest.webmanifest, icons/, screenshots/  installable-app metadata
 .github/workflows/pages.yml  GitHub Pages deployment
 railway.json                 Railway build / start / health-check settings
 test/api.test.js  end-to-end API tests, including real encrypt/decrypt

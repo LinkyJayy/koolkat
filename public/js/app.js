@@ -1420,6 +1420,7 @@ $('btn-profile').addEventListener('click', async () => {
     .catch(() => {});
   $('profile-fingerprint').textContent = await fingerprint(state.me.publicKey);
   renderNotifyRow();
+  renderInstallRow();
   renderCameraInfo();
   api('GET', '/health')
     .then((h) => ($('app-version').textContent = `· version ${h.version}`))
@@ -1721,6 +1722,61 @@ async function renderCameraInfo() {
   $('camera-info').textContent = lines.join('\n');
 }
 
+// ---------- installing the app ----------
+let installPrompt = null;
+const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const isIos = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  // Show our own Install button (in the profile) instead of the browser's mini bar.
+  e.preventDefault();
+  installPrompt = e;
+  renderInstallRow();
+});
+window.addEventListener('appinstalled', () => {
+  installPrompt = null;
+  renderInstallRow();
+  toast('🎉 KoolKat is installed');
+});
+
+function renderInstallRow() {
+  const row = $('install-row');
+  if (isStandalone()) {
+    row.hidden = true;
+    return;
+  }
+  if (installPrompt) {
+    row.hidden = false;
+    $('btn-install').hidden = false;
+    $('install-status').textContent = 'Add it to your home screen like an app';
+  } else if (isIos()) {
+    row.hidden = false;
+    $('btn-install').hidden = true;
+    $('install-status').textContent = 'In Safari, tap Share ⬆️ then “Add to Home Screen”';
+  } else {
+    row.hidden = true;
+  }
+}
+
+$('btn-install').addEventListener('click', async () => {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  await installPrompt.userChoice.catch(() => null);
+  installPrompt = null;
+  renderInstallRow();
+});
+
+// Offline notice
+function renderOnline() {
+  $('offline-bar').hidden = navigator.onLine;
+}
+window.addEventListener('online', () => {
+  renderOnline();
+  if (state.me) refresh();
+});
+window.addEventListener('offline', renderOnline);
+renderOnline();
+
 // ---------- notifications ----------
 const BANNER_KEY = 'koolkat.pushBanner';
 
@@ -1825,10 +1881,16 @@ async function boot() {
   setAuthMode('login');
   $('auth-config-warning').hidden = Boolean(API_BASE) || !location.hostname.endsWith('.github.io');
   window.__koolkatBootStep = 'service worker';
-  await registerServiceWorker((msg) => {
-    if (msg.type === 'refresh' && state.me) refresh();
-    if (msg.type === 'open') openView(msg.view);
-  });
+  await registerServiceWorker(
+    (msg) => {
+      if (msg.type === 'refresh' && state.me) refresh();
+      if (msg.type === 'open') openView(msg.view);
+    },
+    (apply) => {
+      $('update-bar').hidden = false;
+      $('btn-update').onclick = apply;
+    }
+  );
   window.__koolkatBootStep = 'loading your keys';
   const identity = await loadIdentity();
   if (getToken() && identity) {

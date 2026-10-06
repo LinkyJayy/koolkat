@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
@@ -994,9 +995,33 @@ export function createApp({
 
   app.use('/api', api);
   if (serveStatic) {
+    // The service worker is served with a version derived from the app's files,
+    // so each deploy that changes them is picked up as an update on devices.
+    const swSource = fs.readFileSync(path.join(PUBLIC_DIR, 'sw.js'), 'utf8').replace(
+      '__KOOLKAT_VERSION__',
+      appFilesVersion(PUBLIC_DIR)
+    );
+    app.get('/sw.js', (req, res) => {
+      res.set({ 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-cache' });
+      res.send(swSource);
+    });
     app.use(express.static(PUBLIC_DIR, { index: 'index.html' }));
   }
   return app;
+}
+
+/** A short hash of every file the app serves (except the service worker itself). */
+export function appFilesVersion(dir = PUBLIC_DIR) {
+  const hash = crypto.createHash('sha256');
+  const walk = (folder) => {
+    for (const entry of fs.readdirSync(folder, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      const full = path.join(folder, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (full !== path.join(dir, 'sw.js')) hash.update(path.relative(dir, full)).update(fs.readFileSync(full));
+    }
+  };
+  walk(dir);
+  return hash.digest('hex').slice(0, 12);
 }
 
 /** Delete expired sessions. Called periodically by the server. (Snaps are kept.) */

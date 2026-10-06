@@ -1,15 +1,48 @@
 {
+  "id": "./",
   "name": "KoolKat",
   "short_name": "KoolKat",
-  "description": "Private, end-to-end encrypted Klicks for you and your friends.",
+  "description": "Private, end-to-end encrypted Klicks and chats for you and your friends.",
+  "lang": "en",
+  "dir": "ltr",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "orientation": "portrait",
   "background_color": "#000000",
   "theme_color": "#002eff",
+  "categories": ["social", "photo"],
+  "prefer_related_applications": false,
   "icons": [
     { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Take a Klick",
+      "short_name": "Camera",
+      "url": "./#camera",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Klicks inbox",
+      "short_name": "Klicks",
+      "url": "./#inbox",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Chats",
+      "short_name": "Chats",
+      "url": "./#chats",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ],
+  "screenshots": [
+    { "src": "screenshots/sign-in.png", "sizes": "780x1688", "type": "image/png", "form_factor": "narrow", "label": "Sign in to KoolKat" },
+    { "src": "screenshots/chat.png", "sizes": "780x1688", "type": "image/png", "form_factor": "narrow", "label": "End-to-end encrypted chats" },
+    { "src": "screenshots/news.png", "sizes": "780x1688", "type": "image/png", "form_factor": "narrow", "label": "News with codes and events" }
   ]
 }
