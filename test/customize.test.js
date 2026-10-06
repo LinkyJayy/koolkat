@@ -148,3 +148,48 @@ describe('BFFs', () => {
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM bffs WHERE friend_id = ?').get(cat.id).n, 0);
   });
 });
+
+describe('admin reset of badges and icons', () => {
+  const setUp = async () => {
+    await call('POST', '/me/badge', { token: ann.token, body: { image: png(64, 64) } });
+    await call('POST', '/me/app-icon', { token: ann.token, body: { icon: 'custom', icon512: png(512, 512), icon192: png(192, 192) } });
+    return (await me(ann)).plan;
+  };
+  const reset = (body, token = boss.token) => call('POST', '/admin/reset-customization', { token, body });
+
+  test('only admins can reset', async () => {
+    assert.equal((await reset({ username: 'ann', badge: true }, ben.token)).status, 403);
+    assert.equal((await reset({ username: 'nobody', badge: true })).status, 404);
+    assert.equal((await reset({ username: 'ann' })).status, 400, 'must choose something');
+  });
+
+  test('reset just the badge, just the icon, or both', async () => {
+    let plan = await setUp();
+    const badgeUrl = (await me(ann)).user.badgeUrl;
+    const iconId = plan.appIcon.customId;
+
+    let res = await reset({ username: 'ANN', badge: true });
+    assert.deepEqual(res.body.reset, ['badge']);
+    plan = (await me(ann)).plan;
+    assert.equal(plan.customBadge, false);
+    assert.equal(plan.appIcon.icon, 'custom', 'icon untouched');
+    assert.equal((await fetch(`${base}/api/${badgeUrl}`)).status, 404, 'picture deleted');
+
+    res = await reset({ username: 'ann', icon: true });
+    assert.deepEqual(res.body.reset, ['icon']);
+    plan = (await me(ann)).plan;
+    assert.equal(plan.appIcon.icon, 'default');
+    assert.equal(plan.appIcon.customId, null);
+    assert.equal((await fetch(`${base}/api/app-icons/${iconId}/512.png`)).status, 404);
+
+    await setUp();
+    res = await reset({ username: 'ann', badge: true, icon: true });
+    assert.deepEqual(res.body.reset, ['badge', 'icon']);
+    plan = (await me(ann)).plan;
+    assert.equal(plan.customBadge, false);
+    assert.equal(plan.appIcon.icon, 'default');
+
+    res = await reset({ username: 'ann', badge: true, icon: true });
+    assert.deepEqual(res.body.reset, [], 'nothing left to reset');
+  });
+});

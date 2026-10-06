@@ -1697,6 +1697,32 @@ $('grant-form').addEventListener('submit', async (e) => {
   });
 });
 
+// Reset someone's custom badge / app icon.
+$('reset-form').addEventListener('submit', (e) => e.preventDefault());
+for (const button of document.querySelectorAll('#reset-form [data-reset]')) {
+  button.addEventListener('click', () =>
+    withBusy(button, async () => {
+      const username = $('reset-form').username.value.trim();
+      if (!username) throw new Error('Type a username');
+      const which = button.dataset.reset;
+      const label = { badge: 'custom badge', icon: 'custom app icon', both: 'custom badge and app icon' }[which];
+      if (!confirm(`Reset ${username}'s ${label} to the default?`)) return;
+      const res = await api('POST', '/admin/reset-customization', {
+        username,
+        badge: which !== 'icon',
+        icon: which !== 'badge',
+      });
+      const done = res.reset;
+      toast(
+        done.length === 0
+          ? `${res.user.displayName} wasn't using a custom ${which === 'both' ? 'badge or icon' : which}`
+          : `Reset ${res.user.displayName}'s ${done.length === 2 ? 'badge and icon' : done[0]} to the default`
+      );
+      if (res.user.id === state.me.userId) refreshMe().catch(() => {});
+    })
+  );
+}
+
 $('btn-revoke').addEventListener('click', (e) =>
   withBusy(e.currentTarget, async () => {
     const username = $('grant-form').username.value.trim();

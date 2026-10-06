@@ -501,6 +501,42 @@ export function createApp({
     })
   );
 
+  // Reset someone's custom badge, custom app icon, or both (e.g. an inappropriate picture).
+  api.post(
+    '/admin/reset-customization',
+    auth,
+    requireAdmin,
+    wrap((req) => {
+      const target = q.userByName.get(String(req.body?.username ?? '').trim());
+      if (!target) fail(404, 'No user with that username');
+      const badge = Boolean(req.body?.badge);
+      const icon = Boolean(req.body?.icon);
+      if (!badge && !icon) fail(400, 'Choose the badge, the icon, or both');
+      const reset = [];
+      transaction(db, () => {
+        if (badge && target.badge_id) {
+          db.prepare('UPDATE users SET badge_id = NULL, badge_png = NULL WHERE id = ?').run(target.id);
+          reset.push('badge');
+        }
+        if (icon && (target.app_icon || target.app_icon_id)) {
+          db.prepare(
+            'UPDATE users SET app_icon = NULL, app_icon_id = NULL, app_icon_512 = NULL, app_icon_192 = NULL WHERE id = ?'
+          ).run(target.id);
+          reset.push('icon');
+        }
+      });
+      if (reset.length) {
+        const what = reset.length === 2 ? 'badge and app icon were' : reset[0] === 'badge' ? 'badge was' : 'app icon was';
+        pusher.notify(target.id, {
+          body: `An admin reset your KoolKat ${what} to the default.`,
+          tag: 'customization-reset',
+          view: 'camera',
+        });
+      }
+      return { user: publicUser(q.userById.get(target.id)), reset };
+    })
+  );
+
   api.post(
     '/admin/revoke',
     auth,

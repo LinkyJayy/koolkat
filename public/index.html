@@ -401,6 +401,19 @@
       </div>
     </form>
 
+    <h3 class="section-title">Reset badge or icon</h3>
+    <form id="reset-form" class="admin-form" novalidate>
+      <label>Username
+        <input name="username" required autocapitalize="none" spellcheck="false">
+      </label>
+      <p class="fineprint">Puts their custom badge and/or custom app icon back to the default. Their uploaded picture is deleted.</p>
+      <div class="row wrap">
+        <button type="button" class="btn" data-reset="badge">Reset badge</button>
+        <button type="button" class="btn" data-reset="icon">Reset icon</button>
+        <button type="button" class="btn danger" data-reset="both">Reset both</button>
+      </div>
+    </form>
+
     <h3 class="section-title">Create a code</h3>
     <form id="code-form" class="admin-form" novalidate>
       <label>Code <span class="fineprint">Leave blank for a random one</span>

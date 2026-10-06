@@ -58,6 +58,7 @@ The account **`zalith9`** is the admin. Capitalisation doesn't matter, and usern
 - **create redeemable codes** with their own text (or a random `KOOL-XXXX-XXXX`), a **usage limit**, an **expiry date**, and how many days of Unlimited they give (or forever). Each person can use a code once;
 - see how many times each code has been used, and copy or delete codes;
 - **give KoolKat Unlimited to any user** for a number of days, or forever, and take a gift back;
+- **reset someone's badge, app icon, or both** back to the default (*Reset badge or icon*), for example if they upload an inappropriate picture. Their uploaded picture is deleted, and they get a notification;
 - **approve or decline requests** for Unlimited (the button shows how many are waiting);
 - **post to News** (title, text, an optional code, and optionally a notification to everyone), and delete posts.
 
@@ -231,6 +232,7 @@ All endpoints are under `/api` and take and return JSON. Authenticated endpoints
 | POST / DELETE | `/me/badge` | Upload a custom badge (`image` PNG) / reset to the default |
 | GET | `/app-icons/:id/:size.png`, `/badges/:id.png` | Uploaded icon / badge pictures |
 | POST / DELETE | `/bffs/:userId` | Heart / un-heart a friend |
+| POST | `/admin/reset-customization` | Admin: `username`, `badge?`, `icon?`: reset their badge and/or app icon |
 | POST | `/unlimited/request` | `message?`: ask the admins for KoolKat Unlimited |
 | GET | `/admin/requests` | Admin: pending requests |
 | POST | `/admin/requests/:id/approve` / `/decline` | Admin: approve (`days?`, blank = forever) or decline |

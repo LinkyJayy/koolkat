@@ -524,6 +524,7 @@ dialog { max-height: 90dvh; overflow-y: auto; }
 .admin-form label .fineprint { display: block; font-weight: 400; margin: 2px 0 0; }
 .admin-form input { display: block; width: 100%; margin-top: 6px; background: var(--surface); }
 .admin-form .row { display: flex; gap: 8px; margin-top: 12px; }
+.admin-form .row.wrap { flex-wrap: wrap; }
 .admin-form .btn.wide { margin-top: 14px; }
 .code-text { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.04em; }
 #btn-request-open { white-space: normal; line-height: 1.25; }
