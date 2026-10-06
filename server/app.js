@@ -62,6 +62,8 @@ export function createApp({
   // The app's own domain (e.g. kool-kat.com). Visits to the Railway
   // address are sent there, so everyone uses the same site.
   canonicalHost = (process.env.CANONICAL_HOST || '').trim().toLowerCase() || null,
+  // Whether the database survives updates (see storageStatus in db.js).
+  storage = { persistent: true, reason: 'unknown' },
   admins = adminUsernames(),
 } = {}) {
   const app = express();
@@ -260,6 +262,8 @@ export function createApp({
       flair: unlimited ? u.flair || DEFAULT_FLAIR : null,
       request: describeRequest(q.latestRequest.get(u.id)),
       isAdmin: isAdmin(u.username, admins),
+      // Only admins are told when accounts would be lost on the next update.
+      storageWarning: isAdmin(u.username, admins) && !storage.persistent ? storage.reason : null,
       appIcon: { icon: unlimited ? u.app_icon || 'default' : 'default', customId: u.app_icon_id ?? null },
       customBadge: Boolean(u.badge_id),
     };
@@ -308,7 +312,9 @@ export function createApp({
   const { bffSet } = registerCustomizeRoutes({ api, db, clock, auth, wrap, hasUnlimitedUser, areFriends });
 
   const version = (process.env.RAILWAY_GIT_COMMIT_SHA || process.env.KOOLKAT_VERSION || 'dev').slice(0, 7);
-  api.get('/health', (req, res) => res.json({ ok: true, version }));
+  api.get('/health', (req, res) =>
+    res.json({ ok: true, version, storage: storage.persistent ? 'permanent' : 'temporary' })
+  );
 
   // ---------- accounts ----------
   api.post(

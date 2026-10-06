@@ -1481,6 +1481,10 @@ function renderPlan() {
   if (unlimited) renderPersonalisation(plan);
   if (unlimited && document.activeElement !== $('flair-input')) $('flair-input').value = plan.flair;
   $('btn-admin').hidden = !plan.isAdmin;
+  $('storage-warning').hidden = !plan.storageWarning;
+  $('storage-warning').textContent = plan.storageWarning
+    ? `⚠️ Admin: accounts will be lost on the next update (${plan.storageWarning}). In Railway, attach a volume at /data to this service.`
+    : '';
 }
 
 // Asking an admin for KoolKat Unlimited.

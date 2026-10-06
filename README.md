@@ -93,7 +93,8 @@ Configuration (environment variables):
 | --- | --- | --- |
 | `PORT` | `3000` | HTTP port |
 | `HOST` | `0.0.0.0` | Bind address |
-| `KOOLKAT_DB` | `data/koolkat.db` | SQLite database file. On Railway, defaults to the attached volume |
+| `KOOLKAT_DB` | `data/koolkat.db` | SQLite database file. On Railway, defaults to the attached volume; don't set it there |
+| `KOOLKAT_ALLOW_TEMPORARY_STORAGE` | – | Set to `1` to let KoolKat start on Railway without a volume (data is wiped on every update; only for testing) |
 | `TLS_CERT` / `TLS_KEY` | – | Serve HTTPS directly with this certificate and key |
 | `TRUST_PROXY` | `1` on Railway, else off | Number of reverse proxies in front of the server, so rate limiting sees real client IPs |
 | `ALLOWED_ORIGINS` | – | Comma-separated sites allowed to use the API from another domain, e.g. `https://linkyjayy.github.io` for GitHub Pages |
@@ -111,7 +112,9 @@ Configuration (environment variables):
 3. **Get a link.** Open the service → **Settings → Networking → Generate Domain**. Your app is now at something like `https://koolkat-production.up.railway.app`.
 4. **Optional:** in the service's **Variables**, set `VAPID_SUBJECT` to `mailto:you@example.com` so push services can contact you.
 
-Every push to the deployed branch redeploys automatically. The deploy logs show `Database: /data/koolkat.db` once the volume is attached. If you see a WARNING about a missing volume, go back to step 2.
+Every push to the deployed branch redeploys automatically. The deploy logs show `Database: /data/koolkat.db (Railway volume at /data)` once the volume is attached, and `https://<your-domain>/api/health` shows `"storage":"permanent"`.
+
+**KoolKat won't start on Railway without a volume.** An update without one would start with an empty database and wipe every account, so the deploy stops instead with `STOPPED: KoolKat's database would be lost…` in the logs, and Railway keeps the previous version running. Attach the volume (step 2) and redeploy. Admins also see a red warning in their profile if storage is ever temporary.
 
 With Railway serving the app, you don't need GitHub Pages. You can turn it off under *Settings → Pages*.
 

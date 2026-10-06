@@ -489,6 +489,16 @@ dialog .row { display: flex; gap: 8px; justify-content: center; margin-top: 16px
 .kool-badge { height: 0.95em; width: auto; margin-left: 5px; vertical-align: -0.1em; }
 .flair-line { margin: 2px 0 8px; color: var(--brand); font-weight: 600; font-style: italic; overflow-wrap: anywhere; }
 dialog { max-height: 90dvh; overflow-y: auto; }
+.storage-warning {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(225, 29, 72, 0.12);
+  color: var(--danger);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+}
 .plan-card {
   margin: 16px 0;
   padding: 14px;

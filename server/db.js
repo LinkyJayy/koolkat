@@ -222,6 +222,24 @@ export function defaultDatabasePath(env = process.env) {
   return 'data/koolkat.db';
 }
 
+/**
+ * Will the database survive an update? On Railway, only files on an attached
+ * volume are kept between deploys; everything else is wiped with the old container.
+ * Returns { persistent, reason }.
+ */
+export function storageStatus(file, env = process.env) {
+  if (file === ':memory:') return { persistent: false, reason: 'in memory' };
+  if (!env.RAILWAY_ENVIRONMENT) return { persistent: true, reason: 'local disk' };
+  const mount = env.RAILWAY_VOLUME_MOUNT_PATH;
+  if (!mount) return { persistent: false, reason: 'no Railway volume is attached' };
+  const resolved = path.resolve(file);
+  const root = path.resolve(mount);
+  if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+    return { persistent: false, reason: `the database (${resolved}) is outside the volume (${root}); remove the KOOLKAT_DB variable` };
+  }
+  return { persistent: true, reason: `Railway volume at ${root}` };
+}
+
 export function openDatabase(file = defaultDatabasePath()) {
   if (file !== ':memory:') {
     fs.mkdirSync(path.dirname(path.resolve(file)), { recursive: true });
