@@ -20,19 +20,26 @@ Photos taken in KoolKat are called **Klicks**.
 - **Streaks.** 🔥 A streak grows by one for each day both friends send each other a Klick. ⌛ means you'll lose it if you don't both send one today. A missed day resets it.
 - **Sent view.** Shows "Delivered" or "Opened" for Klicks you've sent.
 - **Push notifications.** 🔔 Get notified about new Klicks, messages, friend requests, accepted requests, and streaks that are about to end. Turn them on from the banner on the Klicks screen or in your profile. Notifications only say *who* sent something, never what.
+- **News.** 📣 The megaphone button on the home screen opens News: codes, events and updates posted by admins. Posts can include a code with a one-tap **Redeem** button. A badge shows when there's something new.
 - **Light and dark mode.** Choose System, Light or Dark under *Appearance* on the sign-in screen or in your profile. The choice is remembered on that device.
 
 ## KoolKat Free vs KoolKat Unlimited
 
-| | KoolKat Free | KoolKat Unlimited ($4.99/month) |
+KoolKat is completely free, and so is **KoolKat Unlimited**. Unlimited isn't sold: you get it from an admin.
+
+| | KoolKat Free | KoolKat Unlimited (free, from admins) |
 | --- | --- | --- |
 | Storage for Klicks you've sent | 512 MB | 2.5 GB |
 | Kool badge 👑 next to your name | – | ✓ |
 | Kool flair (custom line under your name, default "i have nine lives") | – | ✓ |
 
-Storage counts the Klicks you've sent that still exist. Deleting a sent Klick (it's removed for everyone) frees the space. When it's full, KoolKat asks you to delete some or upgrade. Badges and flair are shown to your friends in their friend list, your profile, your Klicks and chats.
+Storage counts the Klicks you've sent that still exist. Deleting a sent Klick (it's removed for everyone) frees the space. When it's full, KoolKat asks you to delete some. Badges and flair are shown to your friends in their friend list, your profile, your Klicks and chats.
 
-You can get Unlimited by paying through Stripe, by redeeming a code (*Profile → Have a code?*), or as a gift from an admin.
+There are three ways to get Unlimited:
+
+- **Redeem a code** (*Profile → Have a code?*, or the **Redeem** button on a News post).
+- **Ask for it**: *Profile → 🎁 Ask an admin for KoolKat Unlimited*, with an optional message. Admins get a notification and can approve or decline. After a decline you can ask again the next day.
+- **Get a gift** from an admin.
 
 ### Admin tools
 
@@ -40,24 +47,11 @@ The account **`zalith9`** is the admin. Capitalisation doesn't matter, and usern
 
 - **create redeemable codes** with their own text (or a random `KOOL-XXXX-XXXX`), a **usage limit**, an **expiry date**, and how many days of Unlimited they give (or forever). Each person can use a code once;
 - see how many times each code has been used, and copy or delete codes;
-- **give KoolKat Unlimited to any user** for a number of days, or forever, and take a gift back.
+- **give KoolKat Unlimited to any user** for a number of days, or forever, and take a gift back;
+- **approve or decline requests** for Unlimited (the button shows how many are waiting);
+- **post to News** (title, text, an optional code, and optionally a notification to everyone), and delete posts.
 
 > Admin rights come from the username. If the database is ever lost (for example, Railway without a volume), whoever registers `zalith9` first becomes admin. Keep a volume attached.
-
-### Taking payments (Stripe)
-
-Without Stripe, the upgrade button explains that payments aren't available yet. Codes and gifts still work. KoolKat sets up Stripe by itself, so the only thing you do is add one key:
-
-1. **Create a [Stripe](https://stripe.com) account.** Stripe asks for your details and a bank account, so payouts can reach you.
-2. **Copy your secret key.** In Stripe, open **Developers → API keys** and copy the **Secret key**. Start with the **test mode** key (`sk_test_…`) to try it out safely.
-3. **Add it to Railway.** Open the KoolKat service → **Variables** → **New variable**, name it `STRIPE_SECRET_KEY` and paste the key. Railway redeploys.
-4. **Check it.** In KoolKat, open your profile → **🛠 Admin tools**. The **Payments** section should show three ✓s. On start, KoolKat registers its webhook in Stripe (using your Railway domain) and creates the "Manage subscription" page.
-5. **Try a test payment.** In test mode, tap *Get KoolKat Unlimited* and pay with card `4242 4242 4242 4242`, any future date and any CVC. Your plan should switch to Unlimited within a few seconds.
-6. **Go live.** In Stripe, switch to live mode, copy the live secret key (`sk_live_…`), and replace `STRIPE_SECRET_KEY` in Railway with it.
-
-Never share your secret key with anyone, and never paste it into a chat. It only belongs in Railway's Variables.
-
-Advanced: you can still provide `STRIPE_WEBHOOK_SECRET` (with your own webhook endpoint for `checkout.session.completed` and `customer.subscription.*`) and `STRIPE_PRICE_ID` (your own price instead of the built-in $4.99/month). Set `PUBLIC_URL` if you don't use a Railway-generated domain.
 
 ## End-to-end encryption
 
@@ -94,9 +88,6 @@ Configuration (environment variables):
 | `ALLOWED_ORIGINS` | – | Comma-separated sites allowed to use the API from another domain, e.g. `https://linkyjayy.github.io` for GitHub Pages |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | generated | Web Push keys. If you don't set them, a key pair is generated once and saved in the database. Generate your own with `npx web-push generate-vapid-keys` |
 | `KOOLKAT_ADMINS` | `zalith9` | Usernames (any capitalisation, comma-separated) that get admin tools |
-| `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | – | Turn on paid KoolKat Unlimited (see above) |
-| `STRIPE_PRICE_ID` | – | Use your own Stripe price instead of $4.99/month |
-| `PUBLIC_URL` | from request | The app's public address, used for Stripe return links |
 | `VAPID_SUBJECT` | repo URL | Contact URL or `mailto:` address sent to push services |
 
 ## Deploying to Railway
@@ -155,7 +146,8 @@ server/
   auth.js       auth-secret hashing, sessions, rate limiting
   streaks.js    streak rules
   push.js       Web Push: subscriptions, notifications, streak reminders
-  plans.js      KoolKat Free / Unlimited, codes, admins, Stripe (incl. automatic setup)
+  plans.js      KoolKat Free / Unlimited, codes, admins
+  news.js       News posts (admins write, everyone reads)
   chats.js      direct and group chats (end-to-end encrypted messages)
   http.js       shared request validation helpers
   db.js         SQLite schema
@@ -200,8 +192,6 @@ All endpoints are under `/api` and take and return JSON. Authenticated endpoints
 | GET / POST | `/admin/codes` | Admin: list / create codes (`code?, maxUses?, expiresAt?, grantDays?`) |
 | DELETE | `/admin/codes/:code` | Admin: delete a code |
 | POST | `/admin/grant` / `/admin/revoke` | Admin: give (`username, days?`) or take back gifted Unlimited |
-| POST | `/billing/checkout` / `/billing/portal` | Start a Stripe subscription / manage it |
-| POST | `/stripe/webhook` | Stripe events (signature-checked) |
 | POST / DELETE | `/snaps/:id/favorite` | Favorite / unfavorite a Klick |
 | GET | `/favorites` | Your favorite Klicks |
 | GET | `/chats` | Your chats (members with public keys, unread counts) |
@@ -209,7 +199,12 @@ All endpoints are under `/api` and take and return JSON. Authenticated endpoints
 | POST | `/chats/group` | `memberIds` (2+ friends), `name?`: create a group |
 | POST | `/chats/:id/members` / `/name` / `/leave` / `/read` | Add friends, rename, leave, mark read |
 | GET / POST | `/chats/:id/messages` | Read (`?before=`) / send an encrypted message (`iv, ephemeralPublicKey, ciphertext, keys[]`) |
-| GET | `/admin/payments` | Admin: is Stripe connected, webhook and portal ready |
+| POST | `/unlimited/request` | `message?`: ask the admins for KoolKat Unlimited |
+| GET | `/admin/requests` | Admin: pending requests |
+| POST | `/admin/requests/:id/approve` / `/decline` | Admin: approve (`days?`, blank = forever) or decline |
+| GET | `/news` / `/news/unread` | News posts / unread count |
+| POST | `/news/seen` | Mark News as read |
+| POST / DELETE | `/news` / `/news/:id` | Admin: post (`title, body?, code?, notify?`) / delete |
 | GET | `/push/key` | The server's VAPID public key |
 | POST | `/push/subscribe` | Save this device's `PushSubscription` (as JSON) |
 | POST | `/push/unsubscribe` | `endpoint`: stop notifications for a device |

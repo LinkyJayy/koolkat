@@ -76,9 +76,15 @@
         <span class="avatar" id="my-avatar"></span>
       </button>
       <span class="brand"><img src="icons/logo.png" alt="">KoolKat</span>
+      <span class="top-actions">
+      <button type="button" class="icon-btn" id="btn-news" aria-label="News">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 11v2h4v-2h-4Zm-2 6.6c1 .7 2.2 1.6 3.2 2.4l1.2-1.6c-1-.8-2.3-1.7-3.2-2.4L16 17.6ZM20.4 5.6 19.2 4c-1 .8-2.2 1.7-3.2 2.4L17.2 8c1-.7 2.2-1.6 3.2-2.4ZM4 9a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h1v4h2v-4h1l5 3V6L8 9H4Zm11.5 3c0-1.3-.6-2.5-1.5-3.4v6.8c.9-.8 1.5-2 1.5-3.4Z"/></svg>
+        <span class="badge" id="badge-news" hidden></span>
+      </button>
       <button type="button" class="icon-btn" id="btn-flip" aria-label="Switch camera">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7h-3.2l-1.6-2H8.8L7.2 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2Zm-8 11a5 5 0 0 1-4.6-3h2.1a3 3 0 0 0 5.2-1H13l2.5-3 2.5 3h-1.6A5 5 0 0 1 12 18Zm4.6-6h-2.1a3 3 0 0 0-5.2 1H11l-2.5 3L6 13h1.6a5 5 0 0 1 9-1Z"/></svg>
       </button>
+      </span>
     </header>
     <footer class="overlay-bottom">
       <span class="nav-group">
@@ -222,6 +228,32 @@
     <ul class="list" id="outgoing-list"></ul>
   </section>
 
+  <!-- News -->
+  <section id="screen-news" class="screen panel" hidden>
+    <header class="panel-header">
+      <button type="button" class="icon-btn plain" data-back="camera" aria-label="Back to camera">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12Z"/></svg>
+      </button>
+      <h2><img src="icons/logo.png" alt="" class="logo">News</h2>
+      <span></span>
+    </header>
+    <form class="admin-form news-compose" id="news-form" hidden novalidate>
+      <h3 class="section-title flush">New post (admins only)</h3>
+      <label>Title <input name="title" maxlength="80" required placeholder="e.g. Free Unlimited this weekend!"></label>
+      <label>Post <textarea name="body" maxlength="2000" rows="4" placeholder="Codes, events, updates…"></textarea></label>
+      <label>Code to share <span class="fineprint">Optional. Create it in Admin tools first; readers get a Redeem button</span>
+        <input name="code" maxlength="32" autocapitalize="characters" spellcheck="false">
+      </label>
+      <label class="check"><input type="checkbox" name="notify"> Send everyone a notification</label>
+      <button type="submit" class="btn primary wide">Post</button>
+    </form>
+    <ol class="news-list" id="news-list"></ol>
+    <div class="empty" id="news-empty" hidden>
+      <img src="icons/logo.png" alt="" class="empty-logo">
+      No news yet. Codes, events and updates from the KoolKat team show up here.
+    </div>
+  </section>
+
   <!-- Favorites -->
   <section id="screen-favorites" class="screen panel" hidden>
     <header class="panel-header">
@@ -338,8 +370,14 @@
       <span></span>
     </header>
 
-    <h3 class="section-title">Payments</h3>
-    <div class="payments-status" id="payments-status">Checking…</div>
+    <h3 class="section-title">Unlimited requests</h3>
+    <div class="admin-form">
+      <label>Approve for how many days? <span class="fineprint">Blank = forever</span>
+        <input id="request-days" type="number" min="1" value="30" inputmode="numeric">
+      </label>
+    </div>
+    <ul class="list" id="request-list"></ul>
+    <p class="empty" id="request-empty" hidden>No requests right now.</p>
 
     <h3 class="section-title">Give KoolKat Unlimited</h3>
     <form id="grant-form" class="admin-form" novalidate>
@@ -395,14 +433,22 @@
           <span class="fineprint" id="storage-text"></span>
         </div>
         <div id="plan-upsell">
+          <p class="fineprint upsell-note">KoolKat Unlimited is free! Get it from an admin, a code in News, or by asking.</p>
           <ul class="perks">
             <li>📦 2.5 GB of storage (Free has 512 MB)</li>
             <li><img src="icons/kool-badge.png" alt="" class="kool-badge"> Kool badge next to your name</li>
             <li>✨ Kool flair: a line of your own under your name</li>
           </ul>
-          <button type="button" class="btn primary wide" id="btn-upgrade">Get KoolKat Unlimited · $4.99/month</button>
+          <div id="request-area">
+            <button type="button" class="btn primary wide" id="btn-request-open">🎁 Ask an admin for KoolKat Unlimited</button>
+            <div id="request-form" hidden>
+              <label class="fineprint" for="request-message">Message for the admins (optional)</label>
+              <textarea id="request-message" maxlength="200" rows="2" placeholder="Why would you like Unlimited?"></textarea>
+              <button type="button" class="btn primary wide" id="btn-request-send">Send request</button>
+            </div>
+            <p class="request-status" id="request-status" hidden></p>
+          </div>
         </div>
-        <button type="button" class="btn wide" id="btn-manage-sub" hidden>Manage subscription</button>
         <div id="flair-editor" hidden>
           <label class="fineprint" for="flair-input">Your Kool flair (friends see this)</label>
           <div class="inline-form">

@@ -257,12 +257,6 @@ function enterApp() {
   }, 10000);
   resyncPush();
   refreshMe().catch(() => {});
-  // Back from Stripe checkout.
-  const params = new URLSearchParams(location.search);
-  if (params.has('upgraded')) {
-    history.replaceState(null, '', location.pathname + location.hash);
-    welcomeUnlimited();
-  }
   // Opened from a notification: jump to what it was about.
   const view = location.hash.slice(1);
   if (view) {
@@ -276,6 +270,7 @@ function openView(view) {
   if (view === 'inbox') openInbox();
   else if (view === 'friends') openFriends();
   else if (view === 'chats') openChats();
+  else if (view === 'news') openNews();
   else if (state.screen !== 'camera') show('camera');
 }
 
@@ -305,7 +300,7 @@ async function refreshInbox() {
 
 async function refresh() {
   try {
-    await Promise.all([refreshFriends(), refreshInbox(), refreshChats()]);
+    await Promise.all([refreshFriends(), refreshInbox(), refreshChats(), refreshNewsBadge()]);
     if (state.screen === 'chats') renderChats();
     if (state.screen === 'friends') {
       renderFriends();
@@ -797,6 +792,84 @@ function closeSnap() {
 }
 $('screen-viewer').addEventListener('click', (e) => {
   if (!e.target.closest('.viewer-actions')) closeSnap();
+});
+
+// ---------- news ----------
+async function refreshNewsBadge() {
+  const { unread } = await api('GET', '/news/unread');
+  $('badge-news').hidden = unread === 0;
+  $('badge-news').textContent = unread;
+}
+
+function openNews() {
+  show('news');
+  loadNews();
+}
+$('btn-news').addEventListener('click', openNews);
+
+async function loadNews() {
+  try {
+    const { posts, canPost } = await api('GET', '/news');
+    $('news-form').hidden = !canPost;
+    renderNews(posts, canPost);
+    await api('POST', '/news/seen');
+    $('badge-news').hidden = true;
+  } catch (err) {
+    toast(err.message, { error: true });
+  }
+}
+
+function renderNews(posts, canPost) {
+  $('news-empty').hidden = posts.length > 0;
+  $('news-list').replaceChildren(
+    ...posts.map((p) =>
+      el(
+        'li',
+        { class: 'news-post' },
+        el('h3', { text: p.title }),
+        el('div', { class: 'news-meta' }, p.author ? p.author.displayName : 'KoolKat', badgeImg(p.author), ` · ${timeAgo(p.createdAt)}`),
+        p.body ? el('p', { class: 'news-body', text: p.body }) : null,
+        p.code
+          ? el(
+              'div',
+              { class: 'news-code' },
+              el('code', { text: p.code }),
+              actionButton('Redeem', async () => {
+                const res = await api('POST', '/codes/redeem', { code: p.code });
+                await refreshMe().catch(() => {});
+                toast(res.forever ? '🎉 KoolKat Unlimited is yours forever!' : `🎉 KoolKat Unlimited until ${formatDate(res.unlimitedUntil)}!`);
+              }),
+              actionButton('Copy', () => copyText(p.code), '')
+            )
+          : null,
+        canPost
+          ? actionButton('Delete post', async () => {
+              if (!confirm(`Delete “${p.title}”?`)) return;
+              await api('DELETE', `/news/${p.id}`);
+              await loadNews();
+            }, 'danger')
+          : null
+      )
+    )
+  );
+}
+
+$('news-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.currentTarget;
+  await withBusy(form.querySelector('button[type=submit]'), async () => {
+    const title = form.title.value.trim();
+    if (!title) throw new Error('Give the post a title');
+    await api('POST', '/news', {
+      title,
+      body: form.body.value,
+      code: form.code.value.trim() || null,
+      notify: form.notify.checked,
+    });
+    form.reset();
+    toast('📣 Posted to News');
+    await loadNews();
+  });
 });
 
 // ---------- favorites ----------
@@ -1339,7 +1412,12 @@ $('btn-profile').addEventListener('click', async () => {
   $('profile-avatar').textContent = (state.me.displayName || state.me.username)[0];
   $('profile-username').textContent = `@${state.me.username}`;
   renderPlan();
-  refreshMe().then(renderPlan).catch(() => {});
+  refreshMe()
+    .then(() => {
+      renderPlan();
+      if (state.plan?.isAdmin) return api('GET', '/admin/requests').then((r) => renderRequests(r.requests));
+    })
+    .catch(() => {});
   $('profile-fingerprint').textContent = await fingerprint(state.me.publicKey);
   renderNotifyRow();
   renderCameraInfo();
@@ -1374,44 +1452,47 @@ function renderPlan() {
   $('plan-detail').textContent = unlimited
     ? plan.forever
       ? 'Yours forever'
-      : plan.subscribed
-        ? `Renews monthly · $${(plan.price / 100).toFixed(2)}/month`
-        : `Until ${formatDate(plan.unlimitedUntil)}`
+      : `Until ${formatDate(plan.unlimitedUntil)}`
     : '512 MB storage';
   const pct = Math.min(100, (plan.storageUsed / plan.storageLimit) * 100);
   $('storage-fill').style.width = `${pct}%`;
   $('storage-fill').classList.toggle('full', pct >= 95);
   $('storage-text').textContent = `${formatBytes(plan.storageUsed)} of ${formatBytes(plan.storageLimit)} used by Klicks you've sent`;
   $('plan-upsell').hidden = unlimited;
-  $('btn-manage-sub').hidden = !plan.subscribed;
+  renderRequest(plan);
   $('flair-editor').hidden = !unlimited;
   if (unlimited && document.activeElement !== $('flair-input')) $('flair-input').value = plan.flair;
   $('btn-admin').hidden = !plan.isAdmin;
 }
 
-function welcomeUnlimited() {
-  toast('🎉 Welcome to KoolKat Unlimited!');
-  // The payment confirmation can take a few seconds to reach the server.
-  let tries = 0;
-  const check = () =>
-    refreshMe()
-      .then(() => {
-        if (state.plan?.plan !== 'unlimited' && ++tries < 10) setTimeout(check, 3000);
-      })
-      .catch(() => {});
-  check();
+// Asking an admin for KoolKat Unlimited.
+function renderRequest(plan) {
+  const r = plan.request;
+  const status = $('request-status');
+  const pending = r?.status === 'pending';
+  const declinedRecently = r?.status === 'declined' && Date.now() - (r.handledAt ?? 0) < 24 * 60 * 60 * 1000;
+  $('btn-request-open').hidden = pending || declinedRecently || !$('request-form').hidden;
+  if (pending || declinedRecently) $('request-form').hidden = true;
+  status.hidden = !(pending || declinedRecently);
+  status.textContent = pending
+    ? `🎁 Request sent ${timeAgo(r.createdAt)}. An admin will look at it soon!`
+    : "Your last request wasn't approved. You can ask again tomorrow, or look for codes in News.";
 }
 
-$('btn-upgrade').addEventListener('click', (e) =>
+$('btn-request-open').addEventListener('click', () => {
+  $('btn-request-open').hidden = true;
+  $('request-form').hidden = false;
+  $('request-message').focus();
+});
+
+$('btn-request-send').addEventListener('click', (e) =>
   withBusy(e.currentTarget, async () => {
-    const { url } = await api('POST', '/billing/checkout');
-    location.href = url;
-  })
-);
-$('btn-manage-sub').addEventListener('click', (e) =>
-  withBusy(e.currentTarget, async () => {
-    const { url } = await api('POST', '/billing/portal');
-    location.href = url;
+    await api('POST', '/unlimited/request', { message: $('request-message').value.trim() });
+    $('request-message').value = '';
+    $('request-form').hidden = true;
+    await refreshMe();
+    renderPlan();
+    toast('🎁 Request sent to the admins');
   })
 );
 
@@ -1455,30 +1536,54 @@ $('btn-admin').addEventListener('click', () => {
   $('dialog-profile').close();
   show('admin');
   loadCodes();
-  loadPaymentsStatus();
+  loadRequests();
 });
 
-async function loadPaymentsStatus() {
-  const box = $('payments-status');
+async function loadRequests() {
   try {
-    const p = await api('GET', '/admin/payments');
-    const line = (ok, text) => el('div', { class: ok ? 'ok' : 'warn', text: `${ok ? '✓' : '✗'} ${text}` });
-    if (!p.configured) {
-      box.replaceChildren(
-        line(false, 'Stripe is not connected yet'),
-        el('div', { class: 'fineprint', text: 'Add your Stripe secret key as STRIPE_SECRET_KEY in Railway → Variables. KoolKat sets up the rest.' })
-      );
-      return;
-    }
-    box.replaceChildren(
-      line(true, p.mode === 'live' ? 'Stripe connected (LIVE: real payments)' : 'Stripe connected (TEST mode: no real money)'),
-      line(Boolean(p.webhook), p.webhook ? 'Payment confirmations set up' : 'Payment confirmations not set up yet (needs a Railway domain)'),
-      line(p.portal, p.portal ? '"Manage subscription" page ready' : '"Manage subscription" page not set up yet'),
-      el('div', { class: 'fineprint', text: p.lastEventAt ? `Last payment event: ${timeAgo(p.lastEventAt)}` : 'No payment events received yet' })
-    );
+    renderRequests((await api('GET', '/admin/requests')).requests);
   } catch (err) {
-    box.textContent = err.message;
+    toast(err.message, { error: true });
   }
+}
+
+function renderRequests(requests) {
+  $('request-empty').hidden = requests.length > 0;
+  $('request-list').replaceChildren(
+    ...requests.map((r) =>
+      el(
+        'li',
+        {},
+        el(
+          'div',
+          { class: 'item' },
+          avatar(r.user),
+          el(
+            'span',
+            { class: 'item-main' },
+            nameEl(r.user),
+            el('div', { class: 'item-sub', text: `@${r.user.username} · ${timeAgo(r.createdAt)}` }),
+            r.message ? el('div', { class: 'item-sub request-msg', text: `“${r.message}”` }) : null
+          ),
+          el(
+            'span',
+            { class: 'item-actions' },
+            actionButton('Approve', async () => {
+              const days = $('request-days').value || null;
+              await api('POST', `/admin/requests/${r.id}/approve`, { days });
+              toast(`🎉 ${r.user.displayName} got KoolKat Unlimited ${days ? `for ${days} days` : 'forever'}`);
+              await loadRequests();
+            }),
+            actionButton('Decline', async () => {
+              await api('POST', `/admin/requests/${r.id}/decline`);
+              await loadRequests();
+            }, 'danger')
+          )
+        )
+      )
+    )
+  );
+  $('btn-admin').textContent = requests.length ? `🛠 Admin tools (${requests.length} request${requests.length === 1 ? '' : 's'})` : '🛠 Admin tools';
 }
 
 async function loadCodes() {

@@ -4,15 +4,7 @@ import { defaultDatabasePath, openDatabase } from '../server/db.js';
 import { INBOX_PAGE_SIZE, cleanup, createApp } from '../server/app.js';
 import { DAY_MS, dayNumber } from '../server/streaks.js';
 import { createPusher } from '../server/push.js';
-import {
-  DEFAULT_FLAIR,
-  FREE_STORAGE,
-  UNLIMITED_STORAGE,
-  ensureStripeSetup,
-  loadStripeState,
-  verifyStripeSignature,
-} from '../server/plans.js';
-import crypto from 'node:crypto';
+import { DEFAULT_FLAIR, FREE_STORAGE, UNLIMITED_STORAGE } from '../server/plans.js';
 import {
   createIdentity,
   decryptSnap,
@@ -698,129 +690,81 @@ describe('KoolKat Unlimited', () => {
     db.prepare("DELETE FROM snaps WHERE id = 'filler'").run();
   });
 
-  test('checkout explains when payments are not set up', async () => {
-    const res = await call('POST', '/billing/checkout', { token: kim.token });
-    assert.equal(res.status, 503);
-    assert.equal((await me(kim)).plan.payments, false);
-  });
 });
 
-describe('Stripe payments', () => {
-  const secret = 'whsec_test';
-  const stripeCalls = [];
-  let stripeServer;
-  let sbase;
-  let mia;
-
+describe('free Unlimited: requests, and News', () => {
+  let admin, uma, vic;
+  const me = async (u) => (await call('GET', '/me', { token: u.token })).body;
   before(async () => {
-    const fakeFetch = async (url, init) => {
-      stripeCalls.push({ url, body: new URLSearchParams(init.body) });
-      return new Response(JSON.stringify({ url: 'https://checkout.stripe.test/session' }), { status: 200 });
-    };
-    stripeServer = createApp({
-      db,
-      clock,
-      serveStatic: false,
-      pusher,
-      stripe: { secretKey: 'sk_test', webhookSecret: secret, priceId: null },
-      stripeFetch: fakeFetch,
-      stripeAutoSetup: false,
-    }).listen(0);
-    await new Promise((r) => stripeServer.once('listening', r));
-    sbase = `http://127.0.0.1:${stripeServer.address().port}/api`;
-    mia = await register('mia');
-  });
-  after(() => stripeServer.close());
-
-  const scall = async (method, path, { token, body, headers = {} } = {}) => {
-    const res = await fetch(sbase + path, {
-      method,
-      headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), ...headers },
-      body,
-    });
-    return { status: res.status, body: await res.json() };
-  };
-  const signed = (event) => {
-    const payload = JSON.stringify(event);
-    const t = Math.floor(now / 1000);
-    const sig = crypto.createHmac('sha256', secret).update(`${t}.${payload}`).digest('hex');
-    return { body: payload, headers: { 'stripe-signature': `t=${t},v1=${sig}`, 'content-type': 'application/json' } };
-  };
-
-  test('checkout creates a $4.99/month subscription session', async () => {
-    const res = await scall('POST', '/billing/checkout', { token: mia.token });
-    assert.equal(res.status, 200);
-    assert.equal(res.body.url, 'https://checkout.stripe.test/session');
-    const body = stripeCalls[0].body;
-    assert.equal(body.get('mode'), 'subscription');
-    assert.equal(body.get('line_items[0][price_data][unit_amount]'), '499');
-    assert.equal(body.get('line_items[0][price_data][recurring][interval]'), 'month');
-    assert.equal(body.get('client_reference_id'), String(mia.id));
+    // zalith9 was registered earlier; sign in again.
+    const keys = await deriveKeysFromPassword('zalith9', 'correct horse battery', ITER);
+    admin = (await call('POST', '/auth/login', { body: { username: 'Zalith9', authSecret: keys.authSecret } })).body;
+    [uma, vic] = [await register('uma'), await register('vic')];
   });
 
-  test('webhooks turn the subscription on and off; bad signatures are refused', async () => {
-    const periodEnd = Math.floor(now / 1000) + 30 * 86400;
-    const sub = (type, status) => ({
-      type,
-      data: { object: { id: 'sub_1', customer: 'cus_1', status, metadata: { user_id: String(mia.id) }, items: { data: [{ current_period_end: periodEnd }] } } },
-    });
+  test('there is no paid checkout any more', async () => {
+    assert.equal((await call('POST', '/billing/checkout', { token: uma.token })).status, 404);
+    assert.equal((await call('POST', '/stripe/webhook', { body: {} })).status, 404);
+  });
 
-    const bad = signed(sub('customer.subscription.created', 'active'));
-    bad.headers['stripe-signature'] = bad.headers['stripe-signature'].replace(/v1=./, 'v1=0');
-    assert.equal((await scall('POST', '/stripe/webhook', bad)).status, 400);
+  test('ask for Unlimited; an admin approves it', async () => {
+    const asked = await call('POST', '/unlimited/request', { token: uma.token, body: { message: 'pretty please 🙏' } });
+    assert.equal(asked.status, 201);
+    assert.equal((await me(uma)).plan.request.status, 'pending');
+    assert.equal((await call('POST', '/unlimited/request', { token: uma.token, body: {} })).status, 409, 'one at a time');
 
-    assert.equal((await scall('POST', '/stripe/webhook', signed(sub('customer.subscription.created', 'active')))).status, 200);
-    let plan = (await scall('GET', '/me', { token: mia.token })).body.plan;
+    assert.equal((await call('GET', '/admin/requests', { token: uma.token })).status, 403);
+    const pending = (await call('GET', '/admin/requests', { token: admin.token })).body.requests;
+    const mine = pending.find((r) => r.user.username === 'uma');
+    assert.equal(mine.message, 'pretty please 🙏');
+
+    const ok = await call('POST', `/admin/requests/${mine.id}/approve`, { token: admin.token, body: { days: 14 } });
+    assert.equal(ok.status, 200);
+    const plan = (await me(uma)).plan;
     assert.equal(plan.plan, 'unlimited');
-    assert.equal(plan.subscribed, true);
-
-    await scall('POST', '/stripe/webhook', signed(sub('customer.subscription.deleted', 'canceled')));
-    now += 1;
-    plan = (await scall('GET', '/me', { token: mia.token })).body.plan;
-    assert.equal(plan.plan, 'free');
+    assert.equal(plan.request.status, 'approved');
+    assert.ok(Math.abs(plan.unlimitedUntil - (now + 14 * DAY_MS)) < 5000);
+    assert.equal((await call('POST', `/admin/requests/${mine.id}/approve`, { token: admin.token })).status, 409);
+    assert.equal((await call('POST', '/unlimited/request', { token: uma.token, body: {} })).status, 409, 'already has it');
   });
 
-  test('automatic setup registers the webhook and portal once', async () => {
-    const setupDb = openDatabase(':memory:');
-    const calls = [];
-    const stripeRequest = async (method, path, params) => {
-      calls.push(path);
-      if (path === '/webhook_endpoints') {
-        assert.equal(params.url, 'https://koolkat.example/api/stripe/webhook');
-        assert.ok(params.enabled_events.includes('customer.subscription.updated'));
-        return { id: 'we_1', secret: 'whsec_auto' };
-      }
-      return { id: 'bpc_1' };
-    };
-    const quiet = { log() {}, warn() {} };
-    const state = loadStripeState(setupDb, { secretKey: 'sk_test' });
-    await ensureStripeSetup({ db: setupDb, stripeRequest, state, publicUrl: 'https://koolkat.example', log: quiet });
-    assert.deepEqual(calls, ['/webhook_endpoints', '/billing_portal/configurations']);
-    assert.equal(state.webhookSecret, 'whsec_auto');
-
-    // After a restart nothing is created again.
-    const again = loadStripeState(setupDb, { secretKey: 'sk_test' });
-    assert.equal(again.webhookSecret, 'whsec_auto');
-    assert.equal(again.portalConfigId, 'bpc_1');
-    await ensureStripeSetup({ db: setupDb, stripeRequest, state: again, publicUrl: 'https://koolkat.example', log: quiet });
-    assert.equal(calls.length, 2);
+  test('a declined request can be asked again the next day', async () => {
+    await call('POST', '/unlimited/request', { token: vic.token, body: {} });
+    const r = (await call('GET', '/admin/requests', { token: admin.token })).body.requests.find((x) => x.user.username === 'vic');
+    await call('POST', `/admin/requests/${r.id}/decline`, { token: admin.token });
+    assert.equal((await me(vic)).plan.plan, 'free');
+    assert.equal((await call('POST', '/unlimited/request', { token: vic.token, body: {} })).status, 429);
+    now += DAY_MS + 1000;
+    assert.equal((await call('POST', '/unlimited/request', { token: vic.token, body: {} })).status, 201);
   });
 
-  test('admins can see whether payments are set up', async () => {
-    const admin = (await call('POST', '/auth/login', {
-      body: { username: 'zalith9', authSecret: (await deriveKeysFromPassword('zalith9', 'correct horse battery', ITER)).authSecret },
-    })).body;
-    const res = await scall('GET', '/admin/payments', { token: admin.token });
-    assert.equal(res.body.configured, true);
-    assert.equal(res.body.mode, 'test');
-    assert.equal(res.body.webhook, 'env');
-    assert.ok(res.body.lastEventAt, 'records when a webhook last arrived');
-  });
+  test('only admins can post News; everyone can read it', async () => {
+    assert.equal((await call('POST', '/news', { token: uma.token, body: { title: 'hi' } })).status, 403);
+    assert.equal((await call('POST', '/news', { token: admin.token, body: { title: 'Code!', code: 'NOPE-NOPE' } })).status, 400);
+    await call('POST', '/admin/codes', { token: admin.token, body: { code: 'NEWS-2026', maxUses: 100 } });
+    const posted = await call('POST', '/news', {
+      token: admin.token,
+      body: { title: 'Free Unlimited 🎉', body: 'Line one\nLine two', code: 'news-2026' },
+    });
+    assert.equal(posted.status, 201);
+    assert.equal(posted.body.post.code, 'NEWS-2026');
 
-  test('signature check rejects old timestamps', () => {
-    const t = Math.floor(now / 1000) - 3600;
-    const sig = crypto.createHmac('sha256', secret).update(`${t}.{}`).digest('hex');
-    assert.equal(verifyStripeSignature('{}', `t=${t},v1=${sig}`, secret, now), false);
+    const feed = (await call('GET', '/news', { token: vic.token })).body;
+    assert.equal(feed.canPost, false);
+    assert.equal(feed.posts[0].title, 'Free Unlimited 🎉');
+    assert.equal(feed.posts[0].body, 'Line one\nLine two');
+    assert.equal(feed.posts[0].author.username, 'ZaLiTh9');
+    assert.equal(feed.unread, 1);
+    await call('POST', '/news/seen', { token: vic.token });
+    assert.equal((await call('GET', '/news/unread', { token: vic.token })).body.unread, 0);
+    assert.equal((await call('GET', '/news', { token: admin.token })).body.canPost, true);
+
+    // The code in the post works.
+    assert.equal((await call('POST', '/codes/redeem', { token: vic.token, body: { code: 'NEWS-2026' } })).status, 200);
+
+    assert.equal((await call('DELETE', `/news/${posted.body.post.id}`, { token: uma.token })).status, 403);
+    assert.equal((await call('DELETE', `/news/${posted.body.post.id}`, { token: admin.token })).status, 200);
+    assert.equal((await call('GET', '/news', { token: vic.token })).body.posts.length, 0);
   });
 });
 

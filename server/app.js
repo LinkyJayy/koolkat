@@ -17,30 +17,22 @@ import {
   CODE_RE,
   FOREVER,
   FREE_STORAGE,
-  SUBSCRIPTION_GRACE_MS,
-  UNLIMITED_PRICE_CENTS,
   UNLIMITED_STORAGE,
   DEFAULT_FLAIR,
   adminUsernames,
   cleanFlair,
-  createStripeClient,
-  ensureStripeSetup,
+  cleanText,
   generateCode,
-  loadStripeState,
-  publicUrlFromEnv,
-  recordStripeEvent,
   hasUnlimited,
   isAdmin,
   normaliseCode,
   perks,
-  stripeConfig,
-  subscriptionPeriodEnd,
   unlimitedUntil,
-  verifyStripeSignature,
 } from './plans.js';
 import { DAY_MS } from './streaks.js';
 import { HttpError, base64Field, fail, pair, parseUserId, validatePublicKey } from './http.js';
 import { registerChatRoutes } from './chats.js';
+import { registerNewsRoutes } from './news.js';
 
 const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 
@@ -66,11 +58,6 @@ export function createApp({
   pusher = createPusher({ db, clock }),
   allowedOrigins = parseAllowedOrigins(),
   admins = adminUsernames(),
-  stripe = stripeConfig(),
-  stripeFetch = fetch,
-  // Register the webhook / portal in Stripe automatically on start.
-  stripeAutoSetup = Boolean(stripe && !process.env.KOOLKAT_SKIP_STRIPE_SETUP),
-  publicUrl = publicUrlFromEnv(),
 } = {}) {
   const app = express();
   app.disable('x-powered-by');
@@ -131,7 +118,7 @@ export function createApp({
     friendship: db.prepare('SELECT * FROM friendships WHERE user_low = ? AND user_high = ?'),
     friendshipsOf: db.prepare(`
       SELECT f.*, u.id AS other_id, u.username, u.display_name, u.public_key,
-             u.plan_until, u.sub_until, u.flair
+             u.plan_until, u.flair
       FROM friendships f
       JOIN users u ON u.id = CASE WHEN f.user_low = ? THEN f.user_high ELSE f.user_low END
       WHERE f.user_low = ? OR f.user_high = ?`),
@@ -147,7 +134,7 @@ export function createApp({
       SET low_last_day = ?, high_last_day = ?, streak_count = ?, streak_day = ?
       WHERE user_low = ? AND user_high = ?`),
     searchUsers: db.prepare(`
-      SELECT id, username, display_name, plan_until, sub_until, flair FROM users
+      SELECT id, username, display_name, plan_until, flair FROM users
       WHERE username LIKE ? ESCAPE '\\' AND id != ?
       ORDER BY length(username), username LIMIT 20`),
     insertSnap: db.prepare(`
@@ -160,7 +147,7 @@ export function createApp({
     // Received snaps from people who are still friends, newest first, one page at a time.
     inbox: db.prepare(`
       SELECT s.id, s.created_at, s.size, s.ciphertext IS NOT NULL AS available, r.viewed_at,
-             u.id AS sender_id, u.username, u.display_name, u.plan_until, u.sub_until, u.flair
+             u.id AS sender_id, u.username, u.display_name, u.plan_until, u.flair
       FROM snap_recipients r
       JOIN snaps s ON s.id = r.snap_id
       JOIN users u ON u.id = s.sender_id
@@ -170,7 +157,7 @@ export function createApp({
       ORDER BY s.created_at DESC LIMIT ?`),
     sent: db.prepare(`
       SELECT s.id, s.created_at, s.sender_wrapped_key IS NOT NULL AND s.ciphertext IS NOT NULL AS viewable,
-             r.viewed_at, u.id AS recipient_id, u.username, u.display_name, u.plan_until, u.sub_until, u.flair
+             r.viewed_at, u.id AS recipient_id, u.username, u.display_name, u.plan_until, u.flair
       FROM snaps s
       JOIN snap_recipients r ON r.snap_id = s.id
       JOIN users u ON u.id = r.recipient_id
@@ -179,7 +166,7 @@ export function createApp({
     snapForRecipient: db.prepare(`
       SELECT s.*, r.wrapped_key, r.wrap_iv, r.viewed_at,
              u.username AS sender_username, u.display_name AS sender_display_name,
-             u.plan_until, u.sub_until, u.flair
+             u.plan_until, u.flair
       FROM snaps s
       JOIN snap_recipients r ON r.snap_id = s.id AND r.recipient_id = ?
       JOIN users u ON u.id = s.sender_id
@@ -192,32 +179,36 @@ export function createApp({
     deleteSnap: db.prepare('DELETE FROM snaps WHERE id = ?'),
     snapForSender: db.prepare('SELECT * FROM snaps WHERE id = ? AND sender_id = ?'),
     snapRecipients: db.prepare(`
-      SELECT u.id, u.username, u.display_name, u.plan_until, u.sub_until, u.flair
+      SELECT u.id, u.username, u.display_name, u.plan_until, u.flair
       FROM snap_recipients r JOIN users u ON u.id = r.recipient_id WHERE r.snap_id = ?`),
     storageUsed: db.prepare(
       'SELECT COALESCE(SUM(size), 0) AS used FROM snaps WHERE sender_id = ? AND ciphertext IS NOT NULL'
     ),
     setFlair: db.prepare('UPDATE users SET flair = ? WHERE id = ?'),
     setPlanUntil: db.prepare('UPDATE users SET plan_until = ? WHERE id = ?'),
-    setSubscription: db.prepare(
-      'UPDATE users SET sub_until = ?, stripe_customer_id = COALESCE(?, stripe_customer_id), stripe_subscription_id = ? WHERE id = ?'
-    ),
-    linkStripeCustomer: db.prepare(
-      'UPDATE users SET stripe_customer_id = ?, stripe_subscription_id = COALESCE(?, stripe_subscription_id) WHERE id = ?'
-    ),
-    userByStripeCustomer: db.prepare('SELECT * FROM users WHERE stripe_customer_id = ?'),
     favoriteIds: db.prepare('SELECT snap_id FROM favorites WHERE user_id = ?'),
     addFavorite: db.prepare('INSERT OR IGNORE INTO favorites (user_id, snap_id, created_at) VALUES (?, ?, ?)'),
     removeFavorite: db.prepare('DELETE FROM favorites WHERE user_id = ? AND snap_id = ?'),
     favorites: db.prepare(`
       SELECT f.created_at AS favorited_at, s.id, s.sender_id, s.created_at, s.ciphertext IS NOT NULL AS available,
              s.sender_wrapped_key IS NOT NULL AS sender_viewable,
-             u.username, u.display_name, u.plan_until, u.sub_until, u.flair
+             u.username, u.display_name, u.plan_until, u.flair
       FROM favorites f
       JOIN snaps s ON s.id = f.snap_id
       JOIN users u ON u.id = s.sender_id
       WHERE f.user_id = ?
       ORDER BY f.created_at DESC`),
+    latestRequest: db.prepare('SELECT * FROM unlimited_requests WHERE user_id = ? ORDER BY id DESC LIMIT 1'),
+    request: db.prepare('SELECT * FROM unlimited_requests WHERE id = ?'),
+    insertRequest: db.prepare('INSERT INTO unlimited_requests (user_id, message, created_at) VALUES (?, ?, ?)'),
+    pendingRequests: db.prepare(`
+      SELECT r.*, u.username, u.display_name, u.plan_until, u.flair
+      FROM unlimited_requests r JOIN users u ON u.id = r.user_id
+      WHERE r.status = 'pending' ORDER BY r.created_at`),
+    handleRequest: db.prepare(
+      "UPDATE unlimited_requests SET status = ?, handled_by = ?, handled_at = ?, grant_days = ? WHERE id = ? AND status = 'pending'"
+    ),
+    adminIds: db.prepare('SELECT id, username FROM users'),
     code: db.prepare('SELECT * FROM codes WHERE code = ?'),
     codes: db.prepare('SELECT * FROM codes ORDER BY created_at DESC'),
     insertCode: db.prepare(`
@@ -237,6 +228,9 @@ export function createApp({
     ...perks(u, clock(), admins),
   });
 
+  const describeRequest = (r) =>
+    r ? { id: r.id, status: r.status, createdAt: r.created_at, handledAt: r.handled_at, message: r.message } : null;
+
   const planFor = (u) => {
     const now = clock();
     const unlimited = hasUnlimited(u, now, admins);
@@ -245,13 +239,11 @@ export function createApp({
       plan: unlimited ? 'unlimited' : 'free',
       unlimitedUntil: unlimited ? (until >= FOREVER ? null : until) : null,
       forever: unlimited && until >= FOREVER,
-      subscribed: (u.sub_until ?? 0) > now,
       storageUsed: q.storageUsed.get(u.id).used,
       storageLimit: unlimited ? UNLIMITED_STORAGE : FREE_STORAGE,
       flair: unlimited ? u.flair || DEFAULT_FLAIR : null,
+      request: describeRequest(q.latestRequest.get(u.id)),
       isAdmin: isAdmin(u.username, admins),
-      payments: Boolean(stripe),
-      price: UNLIMITED_PRICE_CENTS,
     };
   };
 
@@ -494,83 +486,12 @@ export function createApp({
     wrap((req) => {
       const target = q.userByName.get(String(req.body?.username ?? '').trim());
       if (!target) fail(404, 'No user with that username');
-      // Removes gifted / code time only; a paid subscription is managed in Stripe.
+      // Removes gifted / code / approved-request time. (Admins always keep theirs.)
       q.setPlanUntil.run(null, target.id);
       return { user: publicUser(q.userById.get(target.id)) };
     })
   );
 
-  // ---------- billing (Stripe) ----------
-  const stripeRequest = stripe && createStripeClient(stripe, stripeFetch);
-  const stripeState = loadStripeState(db, stripe);
-  if (stripeRequest && stripeAutoSetup) {
-    app.locals.stripeSetup = ensureStripeSetup({ db, stripeRequest, state: stripeState, publicUrl }).catch((err) =>
-      console.error(`Stripe setup failed: ${err.message}`)
-    );
-  }
-  const siteUrl = (req) => (publicUrl || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
-
-  api.get(
-    '/admin/payments',
-    auth,
-    requireAdmin,
-    wrap(() => ({
-      configured: Boolean(stripe),
-      mode: stripe ? (stripe.secretKey.startsWith('sk_live') || stripe.secretKey.startsWith('rk_live') ? 'live' : 'test') : null,
-      webhook: stripeState.webhookSecret ? stripeState.webhookSource : null,
-      webhookUrl: stripeState.webhookUrl,
-      portal: Boolean(stripeState.portalConfigId),
-      lastEventAt: stripeState.lastEventAt,
-    }))
-  );
-
-  api.post(
-    '/billing/checkout',
-    auth,
-    wrap(async (req) => {
-      if (!stripeRequest) fail(503, "Payments aren't set up yet. Ask for a KoolKat Unlimited code instead!");
-      const user = q.userById.get(req.user.id);
-      if ((user.sub_until ?? 0) > clock()) fail(409, 'You already have a KoolKat Unlimited subscription');
-      const lineItem = stripe.priceId
-        ? { price: stripe.priceId, quantity: 1 }
-        : {
-            quantity: 1,
-            price_data: {
-              currency: 'usd',
-              unit_amount: UNLIMITED_PRICE_CENTS,
-              recurring: { interval: 'month' },
-              product_data: { name: 'KoolKat Unlimited' },
-            },
-          };
-      const session = await stripeRequest('POST', '/checkout/sessions', {
-        mode: 'subscription',
-        line_items: { 0: lineItem },
-        success_url: `${siteUrl(req)}/?upgraded=1`,
-        cancel_url: `${siteUrl(req)}/`,
-        client_reference_id: String(user.id),
-        customer: user.stripe_customer_id || undefined,
-        metadata: { user_id: String(user.id) },
-        subscription_data: { metadata: { user_id: String(user.id) } },
-      });
-      return { url: session.url };
-    })
-  );
-
-  api.post(
-    '/billing/portal',
-    auth,
-    wrap(async (req) => {
-      if (!stripeRequest) fail(503, "Payments aren't set up yet");
-      const user = q.userById.get(req.user.id);
-      if (!user.stripe_customer_id) fail(404, 'No subscription to manage');
-      const portal = await stripeRequest('POST', '/billing_portal/sessions', {
-        customer: user.stripe_customer_id,
-        return_url: `${siteUrl(req)}/`,
-        configuration: stripeState.portalConfigId || undefined,
-      });
-      return { url: portal.url };
-    })
-  );
 
   // ---------- friends ----------
   api.get(
@@ -719,7 +640,7 @@ export function createApp({
           413,
           plan.plan === 'unlimited'
             ? 'Your KoolKat storage is full. Delete some of your sent Klicks to make room.'
-            : 'Your 512 MB of KoolKat storage is full. Delete some of your sent Klicks, or upgrade to KoolKat Unlimited for 2.5 GB.'
+            : 'Your 512 MB of KoolKat storage is full. Delete some of your sent Klicks, or ask an admin for KoolKat Unlimited (2.5 GB, free).'
         );
       }
 
@@ -873,6 +794,92 @@ export function createApp({
     })
   );
 
+  // ---------- requests for KoolKat Unlimited ----------
+  const REQUEST_RETRY_MS = DAY_MS; // after a decline, people can ask again the next day
+
+  const notifyAdmins = (payload) => {
+    for (const u of q.adminIds.all()) if (isAdmin(u.username, admins)) pusher.notify(u.id, payload);
+  };
+
+  api.post(
+    '/unlimited/request',
+    auth,
+    wrap((req, res) => {
+      const user = q.userById.get(req.user.id);
+      const now = clock();
+      if (hasUnlimited(user, now, admins)) fail(409, 'You already have KoolKat Unlimited');
+      const last = q.latestRequest.get(user.id);
+      if (last?.status === 'pending') fail(409, "You've already asked. An admin will look at it soon.");
+      if (last?.status === 'declined' && now - (last.handled_at ?? 0) < REQUEST_RETRY_MS) {
+        fail(429, 'Your last request was declined. You can ask again tomorrow.');
+      }
+      const message = cleanText(req.body?.message ?? '', 200, { multiline: true }) || null;
+      q.insertRequest.run(user.id, message, now);
+      notifyAdmins({
+        body: `🎁 ${user.display_name} (@${user.username}) asked for KoolKat Unlimited`,
+        tag: 'unlimited-requests',
+        view: 'camera',
+      });
+      res.status(201);
+      return { request: describeRequest(q.latestRequest.get(user.id)) };
+    })
+  );
+
+  api.get(
+    '/admin/requests',
+    auth,
+    requireAdmin,
+    wrap(() => ({
+      requests: q.pendingRequests.all().map((r) => ({
+        ...describeRequest(r),
+        user: publicUser({ ...r, id: r.user_id }),
+      })),
+    }))
+  );
+
+  const pendingRequest = (req) => {
+    const r = q.request.get(Number(req.params.id));
+    if (!r) fail(404, 'Request not found');
+    if (r.status !== 'pending') fail(409, 'That request was already handled');
+    return r;
+  };
+
+  api.post(
+    '/admin/requests/:id/approve',
+    auth,
+    requireAdmin,
+    wrap((req) => {
+      const r = pendingRequest(req);
+      const days = optionalPositiveInt(req.body?.days, 'Days', 36_500);
+      const until = transaction(db, () => {
+        q.handleRequest.run('approved', req.user.id, clock(), days, r.id);
+        return grantUnlimited(q.userById.get(r.user_id), days);
+      });
+      pusher.notify(r.user_id, {
+        body: until >= FOREVER ? '🎉 You got KoolKat Unlimited, forever!' : '🎉 Your KoolKat Unlimited request was approved!',
+        tag: 'unlimited-request',
+        view: 'camera',
+      });
+      return { ok: true, forever: until >= FOREVER, unlimitedUntil: until >= FOREVER ? null : until };
+    })
+  );
+
+  api.post(
+    '/admin/requests/:id/decline',
+    auth,
+    requireAdmin,
+    wrap((req) => {
+      const r = pendingRequest(req);
+      q.handleRequest.run('declined', req.user.id, clock(), null, r.id);
+      pusher.notify(r.user_id, {
+        body: "Your KoolKat Unlimited request wasn't approved this time. Keep an eye on News for codes!",
+        tag: 'unlimited-request',
+        view: 'news',
+      });
+      return { ok: true };
+    })
+  );
+
   // ---------- favorites ----------
   const favoriteSet = (userId) => new Set(q.favoriteIds.all(userId).map((r) => r.snap_id));
 
@@ -933,6 +940,10 @@ export function createApp({
   // ---------- chats ----------
   registerChatRoutes({ api, db, clock, auth, wrap, publicUser, areFriends, pusher });
 
+  // ---------- news ----------
+  const isAdminUser = (user) => isAdmin(user?.username, admins);
+  registerNewsRoutes({ api, db, clock, auth, wrap, publicUser, isAdminUser, pusher });
+
   // ---------- push notifications ----------
   api.get('/push/key', (req, res) => res.json({ publicKey: pusher.publicKey }));
 
@@ -966,51 +977,6 @@ export function createApp({
     console.error(err);
     res.status(500).json({ error: 'Something went wrong' });
   });
-
-  // Stripe webhook: needs the raw body to check the signature, so it's mounted
-  // before the JSON-parsing API router.
-  app.post('/api/stripe/webhook', express.raw({ type: '*/*', limit: '1mb' }), (req, res) => {
-    if (!stripeState.webhookSecret) return res.status(503).json({ error: 'Webhooks not configured' });
-    const raw = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : '';
-    if (!verifyStripeSignature(raw, req.get('stripe-signature'), stripeState.webhookSecret, clock())) {
-      return res.status(400).json({ error: 'Bad signature' });
-    }
-    let event;
-    try {
-      event = JSON.parse(raw);
-    } catch {
-      return res.status(400).json({ error: 'Invalid JSON' });
-    }
-    handleStripeEvent(event);
-    recordStripeEvent(db, stripeState, clock());
-    res.json({ received: true });
-  });
-
-  function handleStripeEvent(event) {
-    const obj = event?.data?.object ?? {};
-    const userFrom = (metaUserId, customerId) =>
-      (metaUserId && q.userById.get(Number(metaUserId))) || (customerId && q.userByStripeCustomer.get(customerId));
-    switch (event.type) {
-      case 'checkout.session.completed': {
-        const user = userFrom(obj.client_reference_id || obj.metadata?.user_id, obj.customer);
-        if (user && obj.customer) q.linkStripeCustomer.run(obj.customer, obj.subscription ?? null, user.id);
-        break;
-      }
-      case 'customer.subscription.created':
-      case 'customer.subscription.updated':
-      case 'customer.subscription.deleted': {
-        const user = userFrom(obj.metadata?.user_id, obj.customer);
-        if (!user) break;
-        const active = ['active', 'trialing', 'past_due'].includes(obj.status) && event.type !== 'customer.subscription.deleted';
-        const end = subscriptionPeriodEnd(obj);
-        const until = active && end ? end + SUBSCRIPTION_GRACE_MS : clock();
-        q.setSubscription.run(until, obj.customer ?? null, active ? obj.id : null, user.id);
-        break;
-      }
-      default:
-        break;
-    }
-  }
 
   app.use('/api', api);
   if (serveStatic) {

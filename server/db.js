@@ -142,6 +142,29 @@ CREATE TABLE IF NOT EXISTS message_keys (
   PRIMARY KEY (message_id, user_id)
 );
 
+-- Requests from users asking an admin for KoolKat Unlimited.
+CREATE TABLE IF NOT EXISTS unlimited_requests (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  message     TEXT,
+  status      TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'declined')),
+  created_at  INTEGER NOT NULL,
+  handled_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  handled_at  INTEGER,
+  grant_days  INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_unlimited_requests_user ON unlimited_requests(user_id, created_at);
+
+-- News posts written by admins (codes, events, updates). Readable by everyone signed in.
+CREATE TABLE IF NOT EXISTS news (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  author_id   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  title       TEXT NOT NULL,
+  body        TEXT NOT NULL,
+  code        TEXT,                       -- optional code readers can redeem from the post
+  created_at  INTEGER NOT NULL
+);
+
 -- Server-wide key/value settings (e.g. generated VAPID keys).
 CREATE TABLE IF NOT EXISTS settings (
   key    TEXT PRIMARY KEY,
@@ -152,12 +175,15 @@ CREATE TABLE IF NOT EXISTS settings (
 // Columns added after the first release. Each is added if an older database lacks it.
 const MIGRATIONS = [
   ['friendships', 'streak_reminded_day', 'INTEGER'],
-  // KoolKat Unlimited: from gifts/codes (plan_until) or a paid subscription (sub_until).
+  // KoolKat Unlimited end time (gifts, codes, approved requests).
   ['users', 'plan_until', 'INTEGER'],
+  // sub_until / stripe_*: unused, left from when Unlimited was a paid plan.
   ['users', 'sub_until', 'INTEGER'],
   ['users', 'flair', 'TEXT'],
   ['users', 'stripe_customer_id', 'TEXT'],
   ['users', 'stripe_subscription_id', 'TEXT'],
+  // When the user last opened News (for the unread badge).
+  ['users', 'news_seen_at', 'INTEGER'],
   // Lets the sender open their own snaps (the snap key wrapped for the sender).
   ['snaps', 'sender_wrapped_key', 'TEXT'],
   ['snaps', 'sender_wrap_iv', 'TEXT'],
