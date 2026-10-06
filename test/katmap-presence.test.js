@@ -59,6 +59,7 @@ before(async () => {
 const json = (status, body, headers = {}) => new Response(body == null ? null : JSON.stringify(body), { status, headers });
 let spotifyPlaying = null;
 let spotifyLeft = 1000;
+const lastfmLookups = [];
 let lastfmPlaying = true;
 const spotifyCalls = [];
 async function fakeFetch(url, init = {}) {
@@ -92,6 +93,10 @@ async function fakeFetch(url, init = {}) {
     const user = u.searchParams.get('user');
     if (user === 'ghost') return json(404, { error: 6, message: 'User not found' });
     if (u.searchParams.get('method') === 'user.getinfo') return json(200, { user: { name: user } });
+    if (u.searchParams.get('method') === 'track.getInfo') {
+      lastfmLookups.push(u.searchParams.get('track'));
+      return json(200, { track: { name: u.searchParams.get('track'), duration: '175000' } });
+    }
     const track = { name: 'Old song', artist: { '#text': 'Someone' }, album: { '#text': '' }, image: [], url: 'https://www.last.fm/music/x' };
     const playing = { name: 'Espresso', artist: { '#text': 'Sabrina Carpenter' }, album: { '#text': 'Short n Sweet' }, image: [{ size: 'large', '#text': 'https://lastfm.freetls.fastly.net/i/u/174s/a.png' }], url: 'https://www.last.fm/music/Sabrina', '@attr': { nowplaying: 'true' } };
     return json(200, { recenttracks: { track: lastfmPlaying ? [playing, track] : [track] } });
@@ -208,27 +213,37 @@ describe('Rich Presence', () => {
     assert.equal(quick[ann.id].msLeft, undefined, 'time left is not stored');
     assert.deepEqual((await call('GET', '/presence/friends', { token: cat.token })).body.playing, {}, 'not friends');
 
-    // While playing, it's checked again within 5 seconds, or when the song ends if sooner.
+    // While a song plays, nothing is asked until just after it ends.
     const due = () => db.prepare('SELECT presence_retry_at FROM users WHERE id = ?').get(ann.id).presence_retry_at - now;
-    assert.equal(due(), 2000, 'song ends in 1s (+1s)');
-    spotifyLeft = 60_000;
-    now += 2_000;
+    assert.equal(due(), 2500, 'song ends in 1s (+1.5s)');
+    spotifyLeft = 200_000;
+    now += 2_500;
     await app.locals.pollPresence();
-    assert.equal(due(), 5000);
+    assert.equal(due(), 201_500, 'waits for the whole song');
+    now += 100_000;
+    await app.locals.pollPresence();
+    assert.equal(due(), 101_500, 'nothing asked mid-song');
+    // Still shown long after the last check, until the song should have ended (+1 minute).
+    const annFor = async (u) => (await call('GET', '/friends', { token: u.token })).body.friends.find((f) => f.username === 'ann');
+    assert.equal((await annFor(ben)).nowPlaying.title, 'Digital Love');
+    assert.equal((await annFor(ben)).nowPlaying.endsAt, undefined, 'how far in is never shared');
+    assert.equal((await call('GET', '/presence/friends', { token: ben.token })).body.playing[ann.id].endsAt, undefined);
 
     // Right after music stops, it's checked every 10 seconds (not 30).
     spotifyPlaying = null;
-    now += 5_000;
+    now += 101_500;
     await app.locals.pollPresence();
     assert.equal(due(), 10_000);
     spotifyPlaying = 'Digital Love';
     now += 10_000;
     await app.locals.pollPresence();
 
-    // Stale songs disappear if checks stop.
-    assert.equal((await call('GET', '/friends', { token: ben.token })).body.friends.find((f) => f.username === 'ann').nowPlaying.title, 'Digital Love');
-    now += 5 * 60 * 1000;
-    assert.equal((await call('GET', '/friends', { token: ben.token })).body.friends.find((f) => f.username === 'ann').nowPlaying, null);
+    // Songs disappear if checks stop (e.g. the server was down) a minute after they should have ended.
+    assert.equal((await annFor(ben)).nowPlaying.title, 'Digital Love');
+    now += 200_000 + 59_000;
+    assert.ok((await annFor(ben)).nowPlaying);
+    now += 2_000;
+    assert.equal((await annFor(ben)).nowPlaying, null);
 
     // Revoked access disconnects.
     db.prepare("UPDATE users SET spotify_refresh = 'revoked', spotify_expires = 0 WHERE id = ?").run(ann.id);
@@ -244,6 +259,13 @@ describe('Rich Presence', () => {
     assert.equal(ok.body.source, 'lastfm');
     assert.equal(ok.body.nowPlaying.title, 'Espresso');
     assert.equal(ok.body.nowPlaying.art, 'https://lastfm.freetls.fastly.net/i/u/174s/a.png');
+    // Its length is looked up once, and nothing else is asked until it ends.
+    assert.deepEqual(lastfmLookups, ['Espresso']);
+    const due = () => db.prepare('SELECT presence_retry_at FROM users WHERE id = ?').get(ann.id).presence_retry_at - now;
+    assert.equal(due(), 176_500);
+    now += 176_500;
+    await app.locals.pollPresence();
+    assert.deepEqual(lastfmLookups, ['Espresso', 'Espresso'], 'played again: a new play');
     lastfmPlaying = false;
     now += 20_000;
     assert.equal((await call('POST', '/presence/refresh', { token: ann.token })).body.nowPlaying, null);

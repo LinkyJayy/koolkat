@@ -12,13 +12,20 @@ import { fail } from './http.js';
 /** A song only shows while the last check is this recent. */
 export const PRESENCE_FRESH = 2 * 60 * 1000;
 
-// How soon to check again. Checks are quick while music plays (and, on Spotify,
-// right when the song ends), and slow down when nothing has played for a while
-// so idle accounts don't use up Spotify's and Last.fm's request limits.
-export const CHECK_PLAYING = 5 * 1000;
-export const CHECK_LASTFM_PLAYING = 6 * 1000;
+// How soon to check again. While a song plays, KoolKat works out when it ends
+// and doesn't ask again until then (so a skip or pause only shows up when the
+// song would have finished, or when you open your own profile). When nothing
+// is playing it checks now and then, to notice the next song starting.
 export const CHECK_RECENTLY_IDLE = 10 * 1000;
 export const CHECK_IDLE = 30 * 1000;
+/** For songs whose length isn't known. */
+export const CHECK_UNKNOWN_LENGTH = 30 * 1000;
+/** Check this long after a song should have ended (the next one has started by then). */
+const AFTER_END = 1500;
+/** A song still shows this long past its expected end, in case the check is a bit late. */
+const END_GRACE = 60 * 1000;
+/** Never wait longer than this (very long podcasts, mixes). */
+const MAX_WAIT = 20 * 60 * 1000;
 const RECENTLY = 10 * 60 * 1000;
 // At most this many requests per second to each service, however many people are connected.
 const PER_SECOND = { spotify: 4, lastfm: 4 };
@@ -50,13 +57,18 @@ const clip = (value, max = 120) => String(value ?? '').slice(0, max);
 
 /** What a friend sees, or null when nothing is playing (or they don't have Unlimited). */
 export function presenceOf(u, now, hasUnlimitedUser) {
-  if (!u.presence_track || !u.presence_at || now - u.presence_at > PRESENCE_FRESH) return null;
-  if (!hasUnlimitedUser(u)) return null;
+  if (!u.presence_track || !u.presence_at) return null;
+  let track;
   try {
-    return JSON.parse(u.presence_track);
+    track = JSON.parse(u.presence_track);
   } catch {
     return null;
   }
+  // endsAt is only used here: friends never see how far into a song someone is.
+  const { endsAt, ...shown } = track;
+  const fresh = endsAt ? now <= endsAt + END_GRACE : now - u.presence_at <= PRESENCE_FRESH;
+  if (!fresh || !hasUnlimitedUser(u)) return null;
+  return shown;
 }
 
 class RemoteError extends Error {
@@ -278,6 +290,17 @@ export function registerPresenceRoutes({
     };
   };
 
+  /** A song's length in ms from Last.fm, or null when it doesn't know. */
+  const lastfmLength = async (track) => {
+    try {
+      const body = await lastfm({ method: 'track.getInfo', artist: track.artist, track: track.title, autocorrect: '1' });
+      const ms = Number(body.track?.duration);
+      return ms > 0 ? ms : null;
+    } catch {
+      return null;
+    }
+  };
+
   api.post(
     '/presence/lastfm',
     auth,
@@ -301,16 +324,25 @@ export function registerPresenceRoutes({
   // When each account last had something playing (to decide how often to check).
   const lastPlaying = new Map();
 
-  function nextCheck(user, track, now) {
-    if (track) {
-      lastPlaying.set(user.id, now);
-      if (user.presence_source === 'lastfm') return now + CHECK_LASTFM_PLAYING;
-      // Check again just after the song ends, if that's sooner.
-      const end = track.msLeft != null ? track.msLeft + 1000 : CHECK_PLAYING;
-      return now + Math.max(1000, Math.min(CHECK_PLAYING, end));
+  const sameSong = (a, b) => a && b && a.title === b.title && a.artist === b.artist;
+  const previousTrack = (user) => {
+    try {
+      return JSON.parse(user.presence_track);
+    } catch {
+      return null;
     }
-    const recent = now - (lastPlaying.get(user.id) ?? 0) < RECENTLY;
-    return now + (recent ? CHECK_RECENTLY_IDLE : CHECK_IDLE);
+  };
+
+  /** When the song that's playing should end (ms timestamp), or null if unknown. */
+  async function songEnd(user, found, now) {
+    if (found.msLeft != null) return now + Math.min(found.msLeft, MAX_WAIT);
+    if (user.presence_source !== 'lastfm') return null;
+    const before = previousTrack(user);
+    // Same song as last time and it hasn't finished yet: keep the end we worked out.
+    if (sameSong(before, found) && before.endsAt > now) return before.endsAt;
+    // A new song (asked once per song): Last.fm only says what's playing, not how far in.
+    const length = await lastfmLength(found);
+    return length ? now + Math.min(length, MAX_WAIT) : null;
   }
 
   async function pollUser(user) {
@@ -319,11 +351,18 @@ export function registerPresenceRoutes({
       const found = user.presence_source === 'spotify' ? await spotifyNowPlaying(user) : await lastfmNowPlaying(user);
       const now = clock();
       let track = null;
+      let next;
       if (found) {
+        lastPlaying.set(user.id, now);
+        const endsAt = await songEnd(user, found, now);
         const { msLeft, ...rest } = found;
-        track = rest;
+        track = endsAt ? { ...rest, endsAt } : rest;
+        next = endsAt ? endsAt + AFTER_END : now + CHECK_UNKNOWN_LENGTH;
+      } else {
+        const recent = now - (lastPlaying.get(user.id) ?? 0) < RECENTLY;
+        next = now + (recent ? CHECK_RECENTLY_IDLE : CHECK_IDLE);
       }
-      q.setTrack.run(track ? JSON.stringify(track) : null, now, nextCheck(user, found, now), user.id);
+      q.setTrack.run(track ? JSON.stringify(track) : null, now, next, user.id);
     } catch (err) {
       if (err.revoked) {
         // They removed KoolKat from their Spotify account.
