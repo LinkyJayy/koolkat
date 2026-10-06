@@ -26,6 +26,7 @@ const PRECACHE = [
   'js/theme.js',
   'icons/logo.png',
   'icons/kool-badge.png',
+  'icons/bff-heart.png',
   'icons/icon-32.png',
   'icons/icon-64.png',
   'icons/icon-180.png',
@@ -70,6 +71,12 @@ self.addEventListener('fetch', (event) => {
   const path = url.pathname.slice(new URL(self.registration.scope).pathname.length);
   // Live data and the worker itself always come from the network.
   if (path.startsWith('api/') || path === 'sw.js') return;
+
+  // The manifest can change with the chosen app icon, so fetch it fresh when online.
+  if (path === 'manifest.webmanifest') {
+    event.respondWith(fetch(request).catch(async () => (await caches.open(CACHE)).match(scoped('manifest.webmanifest'))));
+    return;
+  }
 
   if (request.mode === 'navigate') {
     // Pages: try the network first (fresh), fall back to the saved app shell offline.

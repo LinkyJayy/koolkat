@@ -12,7 +12,7 @@ const MAX_GROUP_NAME = 40;
  * end-to-end encrypted on the device; the server only stores ciphertext and
  * a wrapped copy of each message's key for every member at the time it was sent.
  */
-export function registerChatRoutes({ api, db, clock, auth, wrap, publicUser, areFriends, pusher }) {
+export function registerChatRoutes({ api, db, clock, auth, wrap, publicUser, areFriends, pusher, bffSet = () => new Set() }) {
   const q = {
     chat: db.prepare('SELECT * FROM chats WHERE id = ?'),
     chatByDirectKey: db.prepare('SELECT * FROM chats WHERE direct_key = ?'),
@@ -27,7 +27,7 @@ export function registerChatRoutes({ api, db, clock, auth, wrap, publicUser, are
     memberCount: db.prepare('SELECT COUNT(*) AS n FROM chat_members WHERE chat_id = ?'),
     deleteChat: db.prepare('DELETE FROM chats WHERE id = ?'),
     members: db.prepare(`
-      SELECT u.id, u.username, u.display_name, u.public_key, u.plan_until, u.flair
+      SELECT u.id, u.username, u.display_name, u.public_key, u.plan_until, u.flair, u.badge_id
       FROM chat_members m JOIN users u ON u.id = m.user_id
       WHERE m.chat_id = ? ORDER BY m.joined_at, u.id`),
     myChats: db.prepare(`
@@ -46,7 +46,7 @@ export function registerChatRoutes({ api, db, clock, auth, wrap, publicUser, are
     markRead: db.prepare('UPDATE chat_members SET last_read_at = ? WHERE chat_id = ? AND user_id = ?'),
     messages: db.prepare(`
       SELECT msg.*, k.wrapped_key, k.wrap_iv,
-             u.username, u.display_name, u.plan_until, u.flair
+             u.username, u.display_name, u.plan_until, u.flair, u.badge_id
       FROM messages msg
       JOIN message_keys k ON k.message_id = msg.id AND k.user_id = ?
       LEFT JOIN users u ON u.id = msg.sender_id
@@ -110,7 +110,17 @@ export function registerChatRoutes({ api, db, clock, auth, wrap, publicUser, are
     auth,
     wrap((req) => {
       const me = req.user.id;
-      const chats = q.myChats.all(me).filter((c) => usable(c, me)).map((c) => describeChat(c, me));
+      const bffs = bffSet(me);
+      const chats = q.myChats
+        .all(me)
+        .filter((c) => usable(c, me))
+        .map((c) => {
+          const chat = describeChat(c, me);
+          const other = chat.kind === 'direct' ? chat.members.find((m) => m.id !== me) : null;
+          return { ...chat, bff: Boolean(other && bffs.has(other.id)) };
+        });
+      // BFF chats are pinned to the top (newest first within each group).
+      chats.sort((a, b) => Number(b.bff) - Number(a.bff));
       return { chats, unread: chats.reduce((n, c) => n + c.unread, 0) };
     })
   );

@@ -66,10 +66,13 @@ const avatar = (user, cls = '') =>
   el('span', { class: `avatar ${cls}`, text: (user.displayName || user.username || '?').trim()[0] });
 
 /** A user's display name, with the Kool badge if they have KoolKat Unlimited. */
+// The default Kool badge, or the custom badge picture someone uploaded.
+const badgeSrc = (user) => (user?.badgeUrl ? `${API_BASE}/api/${user.badgeUrl}` : 'icons/kool-badge.png');
 const badgeImg = (user) =>
   user?.badge
-    ? el('img', { src: 'icons/kool-badge.png', alt: 'KoolKat Unlimited', title: 'KoolKat Unlimited', class: 'kool-badge' })
+    ? el('img', { src: badgeSrc(user), alt: 'KoolKat Unlimited', title: 'KoolKat Unlimited', class: 'kool-badge' })
     : null;
+const bffImg = (user) => (user?.bff ? el('img', { src: 'icons/bff-heart.png', alt: 'BFF', title: 'BFF', class: 'bff-heart' }) : null);
 /** Drop empty parts, so replaceChildren() doesn't print "null". */
 const nodes = (...parts) => parts.filter((p) => p != null && p !== false);
 const nameEl = (user, cls = 'item-title') => el('div', { class: cls }, user.displayName, badgeImg(user));
@@ -119,7 +122,10 @@ function show(name) {
 
 document.addEventListener('click', (e) => {
   const back = e.target.closest('[data-back]');
-  if (back) show(back.dataset.back);
+  if (!back) return;
+  // Going back to the chat list reloads it (new messages, order, BFF pins).
+  if (back.dataset.back === 'chats') openChats();
+  else show(back.dataset.back);
 });
 
 // ---------- auth ----------
@@ -226,6 +232,7 @@ async function logout() {
 }
 
 function signedOut() {
+  applyAppIcon(null);
   setToken(null);
   clearIdentity();
   clearInterval(state.pollTimer);
@@ -975,6 +982,7 @@ function renderChats() {
           { type: 'button', class: 'item', onclick: () => openChat(c) },
           chatAvatar(c),
           el('span', { class: 'item-main' }, chatTitle(c), el('div', { class: `item-sub${c.unread ? ' unread' : ''}`, text: sub })),
+          bffImg(c),
           c.unread ? el('span', { class: 'unread-dot', text: c.unread }) : null
         )
       );
@@ -1316,33 +1324,33 @@ function renderFriends() {
   );
 
   $('friends-empty').hidden = state.friends.length > 0;
-  $('friends-list').replaceChildren(
-    ...state.friends.map((f) => {
-      let sub = f.flair ? `@${f.username} · ${f.flair}` : `@${f.username}`;
-      if (f.streak.count > 0 && f.streak.youNeedToSnap) sub = 'Send them a Klick today to keep your streak!';
-      else if (f.streak.count > 0 && f.streak.theyNeedToSnap) sub = `Waiting for ${f.displayName} to send a Klick back`;
-      return el(
-        'li',
-        {},
-        el(
-          'button',
-          { type: 'button', class: 'item', onclick: () => openFriend(f) },
-          avatar(f),
-          el(
-            'span',
-            { class: 'item-main' },
-            nameEl(f),
-            el('div', { class: 'item-sub', text: sub })
-          ),
-          streakBadge(f.streak)
-        )
-      );
-    })
-  );
+  const bffs = state.friends.filter((f) => f.bff);
+  $('bff-title').hidden = bffs.length === 0;
+  $('friends-title').hidden = bffs.length > 0 && bffs.length === state.friends.length;
+  $('bff-list').replaceChildren(...bffs.map(friendRow));
+  $('friends-list').replaceChildren(...state.friends.filter((f) => !f.bff).map(friendRow));
 
   $('outgoing-title').hidden = state.outgoing.length === 0;
   $('outgoing-list').replaceChildren(
     ...state.outgoing.map((u) => userRow(u, `@${u.username} · pending`, actionButton('Cancel', () => removeFriend(u), '')))
+  );
+}
+
+function friendRow(f) {
+  let sub = f.flair ? `@${f.username} · ${f.flair}` : `@${f.username}`;
+  if (f.streak.count > 0 && f.streak.youNeedToSnap) sub = 'Send them a Klick today to keep your streak!';
+  else if (f.streak.count > 0 && f.streak.theyNeedToSnap) sub = `Waiting for ${f.displayName} to send a Klick back`;
+  return el(
+    'li',
+    {},
+    el(
+      'button',
+      { type: 'button', class: 'item', onclick: () => openFriend(f) },
+      avatar(f),
+      el('span', { class: 'item-main' }, nameEl(f), el('div', { class: 'item-sub', text: sub })),
+      bffImg(f),
+      streakBadge(f.streak)
+    )
   );
 }
 
@@ -1393,6 +1401,7 @@ async function openFriend(friend) {
   $('friend-streak').textContent =
     friend.streak.count > 0 ? `🔥 ${friend.streak.count} day streak${friend.streak.expiring ? ' ⌛' : ''}` : 'No streak yet. Send each other Klicks every day to start one!';
   $('friend-fingerprint').textContent = await fingerprint(friend.publicKey);
+  renderBffButton(friend);
   dialog.returnValue = '';
   dialog.onclose = () => {
     if (dialog.returnValue === 'message') {
@@ -1436,7 +1445,13 @@ $('btn-profile').addEventListener('click', async () => {
 async function refreshMe() {
   const me = await api('GET', '/me');
   state.plan = me.plan;
-  Object.assign(state.me, { displayName: me.user.displayName, badge: me.user.badge, flair: me.user.flair });
+  Object.assign(state.me, {
+    displayName: me.user.displayName,
+    badge: me.user.badge,
+    badgeUrl: me.user.badgeUrl,
+    flair: me.user.flair,
+  });
+  applyAppIcon(me.plan.appIcon);
   return me;
 }
 
@@ -1462,6 +1477,8 @@ function renderPlan() {
   $('plan-upsell').hidden = unlimited;
   renderRequest(plan);
   $('flair-editor').hidden = !unlimited;
+  $('unlimited-extras').hidden = !unlimited;
+  if (unlimited) renderPersonalisation(plan);
   if (unlimited && document.activeElement !== $('flair-input')) $('flair-input').value = plan.flair;
   $('btn-admin').hidden = !plan.isAdmin;
 }
@@ -1689,6 +1706,171 @@ $('btn-revoke').addEventListener('click', (e) =>
     toast(`Removed gifted Unlimited from ${res.user.displayName}`);
   })
 );
+
+// ---------- KoolKat Unlimited personalisation ----------
+const APP_ICON_KEY = 'koolkat.appIcon';
+
+/** Point the tab icon, home-screen icon and install manifest at the chosen app icon. */
+function applyAppIcon(appIcon) {
+  const choice = appIcon?.icon || 'default';
+  let small = 'icons/icon-32.png';
+  let large = 'icons/icon-192.png';
+  let touch = 'icons/icon-180.png';
+  let manifest = 'manifest.webmanifest';
+  if (choice === 'crown' || choice === 'glow') {
+    small = `icons/alt-${choice}-32.png`;
+    large = `icons/alt-${choice}-192.png`;
+    touch = `icons/alt-${choice}-180.png`;
+    manifest = `manifest.webmanifest?icon=${choice}`;
+  } else if (choice === 'custom' && appIcon.customId) {
+    large = `${API_BASE}/api/app-icons/${appIcon.customId}/192.png`;
+    small = large;
+    touch = large;
+    manifest = `manifest.webmanifest?icon=custom-${appIcon.customId}`;
+  }
+  const [icon32, icon192] = document.querySelectorAll('link[rel="icon"]');
+  if (icon32) icon32.href = small;
+  if (icon192) icon192.href = large;
+  const apple = document.querySelector('link[rel="apple-touch-icon"]');
+  if (apple) apple.href = touch;
+  const link = document.querySelector('link[rel="manifest"]');
+  if (link && !API_BASE) link.href = manifest; // a separately hosted frontend has a static manifest
+  try {
+    if (choice === 'default') localStorage.removeItem(APP_ICON_KEY);
+    else localStorage.setItem(APP_ICON_KEY, JSON.stringify(appIcon));
+  } catch {
+    /* storage blocked */
+  }
+}
+
+// Use the last chosen icon straight away, before the server answers.
+try {
+  const saved = JSON.parse(localStorage.getItem(APP_ICON_KEY) || 'null');
+  if (saved) applyAppIcon(saved);
+} catch {
+  /* nothing saved */
+}
+
+function renderPersonalisation(plan) {
+  const current = plan.appIcon?.icon || 'default';
+  for (const button of document.querySelectorAll('.icon-choice')) {
+    button.setAttribute('aria-checked', String(button.dataset.icon === current));
+  }
+  const id = plan.appIcon?.customId;
+  $('custom-icon-preview').hidden = !id;
+  $('custom-icon-plus').hidden = Boolean(id);
+  if (id) $('custom-icon-preview').src = `${API_BASE}/api/app-icons/${id}/192.png`;
+  $('badge-preview').src = badgeSrc(state.me);
+  $('btn-badge-reset').disabled = !plan.customBadge;
+}
+
+async function loadImageFile(file) {
+  if (!file || !file.type.startsWith('image/')) throw new Error('Pick a picture');
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    return img;
+  } catch {
+    throw new Error("That picture couldn't be opened. Try a JPG or PNG.");
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/** The picture, cropped to a centred square of `size` pixels, as base64 PNG. */
+function squarePng(img, size) {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const side = Math.min(img.naturalWidth, img.naturalHeight);
+  const sx = (img.naturalWidth - side) / 2;
+  const sy = (img.naturalHeight - side) / 2;
+  canvas.getContext('2d').drawImage(img, sx, sy, side, side, 0, 0, size, size);
+  return canvas.toDataURL('image/png').split(',')[1];
+}
+
+/** The picture scaled to fit in `max`×`max` (keeping its shape), as base64 PNG. */
+function fittedPng(img, max) {
+  const scale = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(16, Math.round(img.naturalWidth * scale));
+  canvas.height = Math.max(16, Math.round(img.naturalHeight * scale));
+  canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/png').split(',')[1];
+}
+
+async function saveAppIcon(body) {
+  const { appIcon } = await api('POST', '/me/app-icon', body);
+  await refreshMe();
+  renderPlan();
+  applyAppIcon(appIcon);
+  toast('🎨 App icon updated');
+}
+
+$('icon-picker').addEventListener('click', (e) => {
+  const button = e.target.closest('.icon-choice');
+  if (!button) return;
+  const icon = button.dataset.icon;
+  if (icon === 'custom' && !state.plan?.appIcon?.customId) {
+    $('icon-file').click();
+    return;
+  }
+  withBusy(button, () => saveAppIcon({ icon }));
+});
+$('btn-icon-upload').addEventListener('click', () => $('icon-file').click());
+
+$('icon-file').addEventListener('change', (e) => {
+  const file = e.target.files?.[0];
+  e.target.value = '';
+  withBusy($('icon-picker').querySelector('[data-icon="custom"]'), async () => {
+    const img = await loadImageFile(file);
+    await saveAppIcon({ icon: 'custom', icon512: squarePng(img, 512), icon192: squarePng(img, 192) });
+  });
+});
+
+$('btn-badge-upload').addEventListener('click', () => $('badge-file').click());
+$('badge-file').addEventListener('change', (e) => {
+  const file = e.target.files?.[0];
+  e.target.value = '';
+  withBusy($('btn-badge-upload'), async () => {
+    const img = await loadImageFile(file);
+    await api('POST', '/me/badge', { image: fittedPng(img, 128) });
+    await refreshMe();
+    renderPlan();
+    toast('✨ Badge updated');
+  });
+});
+$('btn-badge-reset').addEventListener('click', (e) =>
+  withBusy(e.currentTarget, async () => {
+    await api('DELETE', '/me/badge');
+    await refreshMe();
+    renderPlan();
+    toast('Badge reset to the default');
+  })
+);
+
+// BFF button on a friend's card.
+function renderBffButton(friend) {
+  const button = $('btn-friend-bff');
+  const unlimited = state.plan?.plan === 'unlimited';
+  button.setAttribute('aria-pressed', String(Boolean(friend.bff)));
+  button.replaceChildren(
+    el('img', { src: 'icons/bff-heart.png', alt: '', class: 'bff-heart' }),
+    friend.bff ? ' BFF' : unlimited ? ' Make BFF' : ' BFF (Unlimited)'
+  );
+  button.onclick = () =>
+    withBusy(button, async () => {
+      if (!unlimited) throw new Error('BFFs are part of KoolKat Unlimited. Ask an admin for it in your profile!');
+      await api(friend.bff ? 'DELETE' : 'POST', `/bffs/${friend.id}`);
+      friend.bff = !friend.bff;
+      toast(friend.bff ? `💙 ${friend.displayName} is now your BFF` : `${friend.displayName} is no longer a BFF`);
+      renderBffButton(friend);
+      await refreshFriends();
+      renderFriends();
+      refreshChats().catch(() => {});
+    });
+}
 
 // ---------- troubleshooting ----------
 async function renderCameraInfo() {

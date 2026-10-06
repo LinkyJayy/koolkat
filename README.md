@@ -33,8 +33,17 @@ KoolKat is completely free, and so is **KoolKat Unlimited**. Unlimited isn't sol
 | Storage for Klicks you've sent | 512 MB | 2.5 GB |
 | Kool badge 👑 next to your name | – | ✓ |
 | Kool flair (custom line under your name, default "i have nine lives") | – | ✓ |
+| Custom app icon: Classic, Crown, Glow, or your own picture | – | ✓ |
+| Custom badge picture (with *Reset Badge to Default*) | – | ✓ |
+| BFFs 💙: heart friends to pin them to the top of your friends and chats | – | ✓ |
 
 Storage counts the Klicks you've sent that still exist. Deleting a sent Klick (it's removed for everyone) frees the space. When it's full, KoolKat asks you to delete some. Badges and flair are shown to your friends in their friend list, your profile, your Klicks and chats.
+
+**Customising (Profile → KoolKat Unlimited):**
+
+- **App icon.** Pick *Crown* or *Glow*, or *Upload a picture from your gallery* (cropped to a square). The browser tab icon changes straight away, and installing KoolKat uses your icon. Browsers don't let a website change an icon that's already on the home screen, so to switch there, remove KoolKat and install it again. (Chrome on Android may also update it by itself after a while.)
+- **Kool badge.** *Choose from gallery* replaces the crown next to your name with your own picture, for everyone who sees your name. *Reset Badge to Default* brings the crown back. Uploaded badge and icon pictures are served from unguessable links so browsers can show them.
+- **BFFs.** Open a friend's card and tap **Make BFF**. BFFs get their own section at the top of *Friends*, and their chats are pinned to the top of *Chats*, with the 💙 heart. Only you see who your BFFs are. Unfriending someone removes the heart.
 
 There are three ways to get Unlimited:
 
@@ -165,6 +174,7 @@ server/
   push.js       Web Push: subscriptions, notifications, streak reminders
   plans.js      KoolKat Free / Unlimited, codes, admins
   news.js       News posts (admins write, everyone reads)
+  customize.js  Unlimited app icons, custom badges, BFFs, per-icon manifest
   chats.js      direct and group chats (end-to-end encrypted messages)
   http.js       shared request validation helpers
   db.js         SQLite schema
@@ -217,6 +227,10 @@ All endpoints are under `/api` and take and return JSON. Authenticated endpoints
 | POST | `/chats/group` | `memberIds` (2+ friends), `name?`: create a group |
 | POST | `/chats/:id/members` / `/name` / `/leave` / `/read` | Add friends, rename, leave, mark read |
 | GET / POST | `/chats/:id/messages` | Read (`?before=`) / send an encrypted message (`iv, ephemeralPublicKey, ciphertext, keys[]`) |
+| POST | `/me/app-icon` | `icon`: `default` / `crown` / `glow` / `custom` (+ `icon512`, `icon192` PNGs to upload) |
+| POST / DELETE | `/me/badge` | Upload a custom badge (`image` PNG) / reset to the default |
+| GET | `/app-icons/:id/:size.png`, `/badges/:id.png` | Uploaded icon / badge pictures |
+| POST / DELETE | `/bffs/:userId` | Heart / un-heart a friend |
 | POST | `/unlimited/request` | `message?`: ask the admins for KoolKat Unlimited |
 | GET | `/admin/requests` | Admin: pending requests |
 | POST | `/admin/requests/:id/approve` / `/decline` | Admin: approve (`days?`, blank = forever) or decline |

@@ -13,7 +13,7 @@ const NEWS_LIMIT = 100;
 export function registerNewsRoutes({ api, db, clock, auth, wrap, publicUser, isAdminUser, pusher }) {
   const q = {
     posts: db.prepare(`
-      SELECT n.*, u.username, u.display_name, u.plan_until, u.flair
+      SELECT n.*, u.username, u.display_name, u.plan_until, u.flair, u.badge_id
       FROM news n LEFT JOIN users u ON u.id = n.author_id
       ORDER BY n.created_at DESC, n.id DESC LIMIT ?`),
     post: db.prepare('SELECT * FROM news WHERE id = ?'),

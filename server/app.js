@@ -34,6 +34,7 @@ import { DAY_MS } from './streaks.js';
 import { HttpError, base64Field, fail, pair, parseUserId, validatePublicKey } from './http.js';
 import { registerChatRoutes } from './chats.js';
 import { registerNewsRoutes } from './news.js';
+import { manifestHandler, registerCustomizeRoutes } from './customize.js';
 
 const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 
@@ -133,7 +134,7 @@ export function createApp({
     friendship: db.prepare('SELECT * FROM friendships WHERE user_low = ? AND user_high = ?'),
     friendshipsOf: db.prepare(`
       SELECT f.*, u.id AS other_id, u.username, u.display_name, u.public_key,
-             u.plan_until, u.flair
+             u.plan_until, u.flair, u.badge_id
       FROM friendships f
       JOIN users u ON u.id = CASE WHEN f.user_low = ? THEN f.user_high ELSE f.user_low END
       WHERE f.user_low = ? OR f.user_high = ?`),
@@ -149,7 +150,7 @@ export function createApp({
       SET low_last_day = ?, high_last_day = ?, streak_count = ?, streak_day = ?
       WHERE user_low = ? AND user_high = ?`),
     searchUsers: db.prepare(`
-      SELECT id, username, display_name, plan_until, flair FROM users
+      SELECT id, username, display_name, plan_until, flair, badge_id FROM users
       WHERE username LIKE ? ESCAPE '\\' AND id != ?
       ORDER BY length(username), username LIMIT 20`),
     insertSnap: db.prepare(`
@@ -162,7 +163,7 @@ export function createApp({
     // Received snaps from people who are still friends, newest first, one page at a time.
     inbox: db.prepare(`
       SELECT s.id, s.created_at, s.size, s.ciphertext IS NOT NULL AS available, r.viewed_at,
-             u.id AS sender_id, u.username, u.display_name, u.plan_until, u.flair
+             u.id AS sender_id, u.username, u.display_name, u.plan_until, u.flair, u.badge_id
       FROM snap_recipients r
       JOIN snaps s ON s.id = r.snap_id
       JOIN users u ON u.id = s.sender_id
@@ -172,7 +173,7 @@ export function createApp({
       ORDER BY s.created_at DESC LIMIT ?`),
     sent: db.prepare(`
       SELECT s.id, s.created_at, s.sender_wrapped_key IS NOT NULL AND s.ciphertext IS NOT NULL AS viewable,
-             r.viewed_at, u.id AS recipient_id, u.username, u.display_name, u.plan_until, u.flair
+             r.viewed_at, u.id AS recipient_id, u.username, u.display_name, u.plan_until, u.flair, u.badge_id
       FROM snaps s
       JOIN snap_recipients r ON r.snap_id = s.id
       JOIN users u ON u.id = r.recipient_id
@@ -181,7 +182,7 @@ export function createApp({
     snapForRecipient: db.prepare(`
       SELECT s.*, r.wrapped_key, r.wrap_iv, r.viewed_at,
              u.username AS sender_username, u.display_name AS sender_display_name,
-             u.plan_until, u.flair
+             u.plan_until, u.flair, u.badge_id
       FROM snaps s
       JOIN snap_recipients r ON r.snap_id = s.id AND r.recipient_id = ?
       JOIN users u ON u.id = s.sender_id
@@ -194,7 +195,7 @@ export function createApp({
     deleteSnap: db.prepare('DELETE FROM snaps WHERE id = ?'),
     snapForSender: db.prepare('SELECT * FROM snaps WHERE id = ? AND sender_id = ?'),
     snapRecipients: db.prepare(`
-      SELECT u.id, u.username, u.display_name, u.plan_until, u.flair
+      SELECT u.id, u.username, u.display_name, u.plan_until, u.flair, u.badge_id
       FROM snap_recipients r JOIN users u ON u.id = r.recipient_id WHERE r.snap_id = ?`),
     storageUsed: db.prepare(
       'SELECT COALESCE(SUM(size), 0) AS used FROM snaps WHERE sender_id = ? AND ciphertext IS NOT NULL'
@@ -207,7 +208,7 @@ export function createApp({
     favorites: db.prepare(`
       SELECT f.created_at AS favorited_at, s.id, s.sender_id, s.created_at, s.ciphertext IS NOT NULL AS available,
              s.sender_wrapped_key IS NOT NULL AS sender_viewable,
-             u.username, u.display_name, u.plan_until, u.flair
+             u.username, u.display_name, u.plan_until, u.flair, u.badge_id
       FROM favorites f
       JOIN snaps s ON s.id = f.snap_id
       JOIN users u ON u.id = s.sender_id
@@ -217,7 +218,7 @@ export function createApp({
     request: db.prepare('SELECT * FROM unlimited_requests WHERE id = ?'),
     insertRequest: db.prepare('INSERT INTO unlimited_requests (user_id, message, created_at) VALUES (?, ?, ?)'),
     pendingRequests: db.prepare(`
-      SELECT r.*, u.username, u.display_name, u.plan_until, u.flair
+      SELECT r.*, u.username, u.display_name, u.plan_until, u.flair, u.badge_id
       FROM unlimited_requests r JOIN users u ON u.id = r.user_id
       WHERE r.status = 'pending' ORDER BY r.created_at`),
     handleRequest: db.prepare(
@@ -259,6 +260,8 @@ export function createApp({
       flair: unlimited ? u.flair || DEFAULT_FLAIR : null,
       request: describeRequest(q.latestRequest.get(u.id)),
       isAdmin: isAdmin(u.username, admins),
+      appIcon: { icon: unlimited ? u.app_icon || 'default' : 'default', customId: u.app_icon_id ?? null },
+      customBadge: Boolean(u.badge_id),
     };
   };
 
@@ -299,6 +302,10 @@ export function createApp({
     if (!isAdmin(req.user?.username, admins)) return res.status(403).json({ error: 'Admins only' });
     next();
   };
+
+  // ---------- KoolKat Unlimited personalisation (app icons, badges, BFFs) ----------
+  const hasUnlimitedUser = (u) => hasUnlimited(u, clock(), admins);
+  const { bffSet } = registerCustomizeRoutes({ api, db, clock, auth, wrap, hasUnlimitedUser, areFriends });
 
   const version = (process.env.RAILWAY_GIT_COMMIT_SHA || process.env.KOOLKAT_VERSION || 'dev').slice(0, 7);
   api.get('/health', (req, res) => res.json({ ok: true, version }));
@@ -534,6 +541,7 @@ export function createApp({
     wrap((req) => {
       const me = req.user.id;
       const now = clock();
+      const bffs = bffSet(me);
       const friends = [];
       const incoming = [];
       const outgoing = [];
@@ -545,6 +553,7 @@ export function createApp({
             publicKey: row.public_key,
             friendsSince: row.accepted_at,
             streak: describeStreak(row, me, now),
+            bff: bffs.has(row.other_id),
           });
         } else if (row.requester_id === me) {
           outgoing.push({ ...user, requestedAt: row.created_at });
@@ -552,8 +561,12 @@ export function createApp({
           incoming.push({ ...user, requestedAt: row.created_at });
         }
       }
+      // BFFs first, then by streak, then by name.
       friends.sort(
-        (a, b) => b.streak.count - a.streak.count || a.displayName.localeCompare(b.displayName)
+        (a, b) =>
+          Number(b.bff) - Number(a.bff) ||
+          b.streak.count - a.streak.count ||
+          a.displayName.localeCompare(b.displayName)
       );
       return { friends, incoming, outgoing };
     })
@@ -616,6 +629,12 @@ export function createApp({
       const [low, high] = pair(req.user.id, other);
       if (!q.friendship.get(low, high)) fail(404, 'Not found');
       q.deleteFriendship.run(low, high);
+      db.prepare('DELETE FROM bffs WHERE (user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)').run(
+        low,
+        high,
+        high,
+        low
+      );
       return { ok: true };
     })
   );
@@ -953,7 +972,7 @@ export function createApp({
   );
 
   // ---------- chats ----------
-  registerChatRoutes({ api, db, clock, auth, wrap, publicUser, areFriends, pusher });
+  registerChatRoutes({ api, db, clock, auth, wrap, publicUser, areFriends, pusher, bffSet });
 
   // ---------- news ----------
   const isAdminUser = (user) => isAdmin(user?.username, admins);
@@ -1005,6 +1024,7 @@ export function createApp({
       res.set({ 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-cache' });
       res.send(swSource);
     });
+    app.get('/manifest.webmanifest', manifestHandler({ publicDir: PUBLIC_DIR, db, hasUnlimitedUser }));
     app.use(express.static(PUBLIC_DIR, { index: 'index.html' }));
   }
   return app;

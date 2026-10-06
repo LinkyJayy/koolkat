@@ -227,6 +227,8 @@
     <ul class="list" id="search-results"></ul>
     <h3 class="section-title" id="incoming-title" hidden>Friend requests</h3>
     <ul class="list" id="incoming-list"></ul>
+    <h3 class="section-title bff-title" id="bff-title" hidden><img src="icons/bff-heart.png" alt="" class="bff-heart"> BFFs</h3>
+    <ul class="list" id="bff-list"></ul>
     <h3 class="section-title" id="friends-title">My friends</h3>
     <ul class="list" id="friends-list"></ul>
     <div class="empty" id="friends-empty" hidden><img src="icons/logo.png" alt="" class="empty-logo">No friends yet. Search for a username above to add someone.</div>
@@ -444,6 +446,8 @@
             <li>📦 2.5 GB of storage (Free has 512 MB)</li>
             <li><img src="icons/kool-badge.png" alt="" class="kool-badge"> Kool badge next to your name</li>
             <li>✨ Kool flair: a line of your own under your name</li>
+            <li>🎨 Custom app icons and your own badge picture</li>
+            <li><img src="icons/bff-heart.png" alt="" class="bff-heart"> BFFs pinned to the top of your friends and chats</li>
           </ul>
           <div id="request-area">
             <button type="button" class="btn primary wide" id="btn-request-open">🎁 Ask an admin for KoolKat Unlimited</button>
@@ -461,6 +465,26 @@
             <input id="flair-input" maxlength="40" enterkeyhint="done">
             <button type="button" class="btn small primary" id="btn-flair-save">Save</button>
           </div>
+        </div>
+        <div id="unlimited-extras" hidden>
+          <p class="fineprint extras-title">App icon</p>
+          <div class="icon-picker" role="radiogroup" aria-label="App icon" id="icon-picker">
+            <button type="button" class="icon-choice" data-icon="default" role="radio"><img src="icons/icon-192.png" alt=""><span>Classic</span></button>
+            <button type="button" class="icon-choice" data-icon="crown" role="radio"><img src="icons/alt-crown-192.png" alt=""><span>Crown</span></button>
+            <button type="button" class="icon-choice" data-icon="glow" role="radio"><img src="icons/alt-glow-192.png" alt=""><span>Glow</span></button>
+            <button type="button" class="icon-choice" data-icon="custom" role="radio"><img id="custom-icon-preview" src="icons/logo.png" alt="" hidden><span class="icon-plus" id="custom-icon-plus">＋</span><span>Your own</span></button>
+          </div>
+          <button type="button" class="btn small" id="btn-icon-upload">Upload a picture from your gallery</button>
+          <input type="file" accept="image/*" id="icon-file" hidden>
+          <p class="fineprint" id="icon-note">The browser tab icon changes right away. Installing KoolKat uses your icon. If it's already on your home screen, remove it and install it again to switch.</p>
+
+          <p class="fineprint extras-title">Kool badge</p>
+          <div class="badge-editor">
+            <span class="badge-preview"><img id="badge-preview" src="icons/kool-badge.png" alt="Your badge"></span>
+            <button type="button" class="btn small" id="btn-badge-upload">Choose from gallery</button>
+            <button type="button" class="btn small" id="btn-badge-reset">Reset Badge to Default</button>
+          </div>
+          <input type="file" accept="image/*" id="badge-file" hidden>
         </div>
         <div class="inline-form redeem">
           <input id="redeem-input" placeholder="Have a code?" autocapitalize="characters" spellcheck="false" aria-label="Redeem code" enterkeyhint="go">
@@ -515,6 +539,7 @@
       <p class="fineprint">If this matches the code on your friend's profile screen, your Klicks and messages to them are encrypted to the right person.</p>
       <div class="row">
         <button class="btn" value="close">Close</button>
+        <button type="button" class="btn" id="btn-friend-bff"></button>
         <button class="btn primary" value="message">Message</button>
         <button class="btn danger" value="remove">Remove friend</button>
       </div>

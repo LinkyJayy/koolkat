@@ -29,8 +29,9 @@ export const hasUnlimited = (u, now, admins) => unlimitedUntil(u, admins) > now;
 
 /** The badge and flair other people see next to a user's name. */
 export function perks(u, now, admins) {
-  if (!hasUnlimited(u, now, admins)) return { badge: false, flair: null };
-  return { badge: true, flair: u.flair || DEFAULT_FLAIR };
+  if (!hasUnlimited(u, now, admins)) return { badge: false, flair: null, badgeUrl: null };
+  // badgeUrl: a custom badge picture (relative to /api/), or null for the default crown.
+  return { badge: true, flair: u.flair || DEFAULT_FLAIR, badgeUrl: u.badge_id ? `badges/${u.badge_id}.png` : null };
 }
 
 /**

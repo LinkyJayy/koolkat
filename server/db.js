@@ -165,6 +165,14 @@ CREATE TABLE IF NOT EXISTS news (
   created_at  INTEGER NOT NULL
 );
 
+-- BFFs (a KoolKat Unlimited feature): friends someone has hearted. Private to user_id.
+CREATE TABLE IF NOT EXISTS bffs (
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  friend_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at  INTEGER NOT NULL,
+  PRIMARY KEY (user_id, friend_id)
+);
+
 -- Server-wide key/value settings (e.g. generated VAPID keys).
 CREATE TABLE IF NOT EXISTS settings (
   key    TEXT PRIMARY KEY,
@@ -184,6 +192,14 @@ const MIGRATIONS = [
   ['users', 'stripe_subscription_id', 'TEXT'],
   // When the user last opened News (for the unread badge).
   ['users', 'news_seen_at', 'INTEGER'],
+  // KoolKat Unlimited customisation: app icon choice ('crown' | 'glow' | 'custom'),
+  // an uploaded icon (served by a random public id), and a custom badge image.
+  ['users', 'app_icon', 'TEXT'],
+  ['users', 'app_icon_id', 'TEXT'],
+  ['users', 'app_icon_512', 'BLOB'],
+  ['users', 'app_icon_192', 'BLOB'],
+  ['users', 'badge_id', 'TEXT'],
+  ['users', 'badge_png', 'BLOB'],
   // Lets the sender open their own snaps (the snap key wrapped for the sender).
   ['snaps', 'sender_wrapped_key', 'TEXT'],
   ['snaps', 'sender_wrap_iv', 'TEXT'],

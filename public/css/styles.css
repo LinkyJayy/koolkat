@@ -663,3 +663,36 @@ textarea:focus { outline: 2px solid var(--brand); border-color: transparent; }
 @media (display-mode: standalone) {
   .toast { bottom: calc(130px + var(--safe-bottom)); }
 }
+
+/* ---------- Unlimited personalisation ---------- */
+.bff-heart { height: 1em; width: auto; vertical-align: -0.12em; margin-left: 4px; flex: none; }
+.item > .bff-heart { height: 20px; margin: 0; }
+.bff-title { display: flex; align-items: center; gap: 4px; }
+.extras-title { margin: 6px 0 4px; font-weight: 700; color: var(--text); }
+.icon-picker { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.icon-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 4px;
+  border-radius: 12px;
+  border: 2px solid transparent;
+  background: var(--bg);
+  font-size: 12px;
+  font-weight: 600;
+}
+.icon-choice img, .icon-plus {
+  width: 48px;
+  height: 48px;
+  border-radius: 22%;
+  object-fit: cover;
+}
+.icon-plus { display: grid; place-items: center; background: var(--border); font-size: 24px; color: var(--muted); }
+.icon-choice[aria-checked="true"] { border-color: var(--brand); background: var(--brand-soft); }
+#icon-note { margin: 6px 0 0; }
+#btn-icon-upload { margin-top: 8px; }
+.badge-editor { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.badge-preview { display: grid; place-items: center; width: 48px; height: 40px; border-radius: 10px; background: var(--bg); }
+.badge-preview img { max-width: 40px; max-height: 32px; }
+#btn-friend-bff[aria-pressed="true"] { border-color: var(--brand); color: var(--brand); }
