@@ -93,6 +93,55 @@ CREATE TABLE IF NOT EXISTS code_redemptions (
   PRIMARY KEY (code, user_id)
 );
 
+-- Klicks a user has starred. Removed along with the Klick.
+CREATE TABLE IF NOT EXISTS favorites (
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  snap_id     TEXT NOT NULL REFERENCES snaps(id) ON DELETE CASCADE,
+  created_at  INTEGER NOT NULL,
+  PRIMARY KEY (user_id, snap_id)
+);
+
+-- Chats: one-to-one ('direct') or group. Messages are end-to-end encrypted
+-- like Klicks: each message has its own key, wrapped separately for every
+-- member who was in the chat when it was sent.
+CREATE TABLE IF NOT EXISTS chats (
+  id          TEXT PRIMARY KEY,
+  kind        TEXT NOT NULL CHECK (kind IN ('direct', 'group')),
+  name        TEXT,
+  direct_key  TEXT UNIQUE,                -- "lowId:highId" for direct chats
+  created_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at  INTEGER NOT NULL,
+  last_message_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS chat_members (
+  chat_id       TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+  user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  joined_at     INTEGER NOT NULL,
+  last_read_at  INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (chat_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_chat_members_user ON chat_members(user_id);
+
+CREATE TABLE IF NOT EXISTS messages (
+  id             TEXT PRIMARY KEY,
+  chat_id        TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+  sender_id      INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at     INTEGER NOT NULL,
+  iv             TEXT NOT NULL,
+  ephemeral_key  TEXT NOT NULL,
+  ciphertext     BLOB NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_messages_chat ON messages(chat_id, created_at);
+
+CREATE TABLE IF NOT EXISTS message_keys (
+  message_id   TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+  user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  wrapped_key  TEXT NOT NULL,
+  wrap_iv      TEXT NOT NULL,
+  PRIMARY KEY (message_id, user_id)
+);
+
 -- Server-wide key/value settings (e.g. generated VAPID keys).
 CREATE TABLE IF NOT EXISTS settings (
   key    TEXT PRIMARY KEY,

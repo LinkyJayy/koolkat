@@ -4,12 +4,21 @@ import { defaultDatabasePath, openDatabase } from '../server/db.js';
 import { INBOX_PAGE_SIZE, cleanup, createApp } from '../server/app.js';
 import { DAY_MS, dayNumber } from '../server/streaks.js';
 import { createPusher } from '../server/push.js';
-import { DEFAULT_FLAIR, FREE_STORAGE, UNLIMITED_STORAGE, verifyStripeSignature } from '../server/plans.js';
+import {
+  DEFAULT_FLAIR,
+  FREE_STORAGE,
+  UNLIMITED_STORAGE,
+  ensureStripeSetup,
+  loadStripeState,
+  verifyStripeSignature,
+} from '../server/plans.js';
 import crypto from 'node:crypto';
 import {
   createIdentity,
   decryptSnap,
   deriveKeysFromPassword,
+  decryptMessage,
+  encryptMessage,
   encryptSnap,
   unlockIdentity,
 } from '../public/js/crypto.js';
@@ -352,7 +361,7 @@ describe('push notifications', () => {
     await flush();
     assert.equal(pushes.length, 1);
     assert.equal(pushes[0].view, 'inbox');
-    assert.match(pushes[0].body, /GINA sent you a snap/);
+    assert.match(pushes[0].body, /GINA sent you a Klick/);
     assert.ok(!JSON.stringify(pushes).includes('top secret'));
   });
 
@@ -436,6 +445,140 @@ describe('senders can view their own snaps', () => {
     const res = await call('DELETE', `/snaps/${sent.body.id}`, { token: ivy.token });
     assert.equal(res.body.deletedForEveryone, true);
     assert.equal((await call('GET', `/snaps/${sent.body.id}`, { token: jack.token })).status, 404);
+  });
+});
+
+describe('favorites', () => {
+  let nia, omar, pia;
+  before(async () => {
+    [nia, omar, pia] = [await register('nia'), await register('omar'), await register('pia')];
+    await befriend(nia, omar);
+  });
+
+  test('star received and sent Klicks, list them, unstar', async () => {
+    const got = (await sendSnap(omar, [nia], 'fav me')).body.id;
+    const mine = (await sendSnap(nia, [omar], 'my fav')).body.id;
+    assert.equal((await call('POST', `/snaps/${got}/favorite`, { token: nia.token })).status, 200);
+    assert.equal((await call('POST', `/snaps/${mine}/favorite`, { token: nia.token })).status, 200);
+    assert.equal((await call('POST', `/snaps/${got}/favorite`, { token: pia.token })).status, 404, 'not theirs');
+
+    const favs = (await call('GET', '/favorites', { token: nia.token })).body.favorites;
+    assert.deepEqual(favs.map((f) => [f.id, f.own]).sort(), [[got, false], [mine, true]].sort());
+    const inbox = (await call('GET', '/snaps/inbox', { token: nia.token })).body.snaps;
+    assert.equal(inbox.find((x) => x.id === got).favorite, true);
+    assert.equal((await call('GET', `/snaps/${got}`, { token: nia.token })).body.favorite, true);
+
+    await call('DELETE', `/snaps/${got}/favorite`, { token: nia.token });
+    assert.deepEqual((await call('GET', '/favorites', { token: nia.token })).body.favorites.map((f) => f.id), [mine]);
+  });
+
+  test('favorites from ex-friends are hidden, and go when the Klick is deleted', async () => {
+    const got = (await sendSnap(omar, [nia])).body.id;
+    await call('POST', `/snaps/${got}/favorite`, { token: nia.token });
+    await call('DELETE', `/friends/${omar.id}`, { token: nia.token });
+    assert.ok(!(await call('GET', '/favorites', { token: nia.token })).body.favorites.some((f) => f.id === got));
+    await befriend(nia, omar);
+    assert.ok((await call('GET', '/favorites', { token: nia.token })).body.favorites.some((f) => f.id === got));
+    await call('DELETE', `/snaps/${got}`, { token: omar.token });
+    assert.ok(!(await call('GET', '/favorites', { token: nia.token })).body.favorites.some((f) => f.id === got));
+  });
+});
+
+describe('chats', () => {
+  let quinn, ruby, sam, tess;
+  const membersOf = (chat) => chat.members.map((m) => ({ userId: m.id, publicKey: m.publicKey }));
+  const say = async (user, chat, text) => {
+    now += 1000;
+    return call('POST', `/chats/${chat.id}/messages`, { token: user.token, body: await encryptMessage(text, membersOf(chat)) });
+  };
+  const read = async (user, chat) => {
+    const { body } = await call('GET', `/chats/${chat.id}/messages`, { token: user.token });
+    return Promise.all(body.messages.map(async (m) => [m.sender?.username, await decryptMessage(m, user.privateKey, user.id)]));
+  };
+
+  before(async () => {
+    [quinn, ruby, sam, tess] = [await register('quinn'), await register('ruby'), await register('sam'), await register('tess')];
+    await befriend(quinn, ruby);
+    await befriend(quinn, sam);
+  });
+
+  test('friends can message each other, end-to-end encrypted', async () => {
+    const { chat } = (await call('POST', '/chats/direct', { token: quinn.token, body: { userId: ruby.id } })).body;
+    assert.equal(chat.kind, 'direct');
+    assert.equal(chat.name, 'RUBY');
+    // Opening it again returns the same chat, from either side.
+    const same = (await call('POST', '/chats/direct', { token: ruby.token, body: { userId: quinn.id } })).body.chat;
+    assert.equal(same.id, chat.id);
+
+    assert.equal((await say(quinn, chat, 'hey ruby 👋')).status, 201);
+    assert.equal((await say(ruby, chat, 'hi quinn')).status, 201);
+    assert.deepEqual(await read(ruby, chat), [['quinn', 'hey ruby 👋'], ['ruby', 'hi quinn']]);
+
+    // The server only has ciphertext.
+    const stored = db.prepare('SELECT ciphertext FROM messages WHERE chat_id = ?').all(chat.id);
+    assert.ok(stored.every((r) => !Buffer.from(r.ciphertext).toString('utf8').includes('hey ruby')));
+
+    // Quinn hasn't read Ruby's reply yet; Ruby has read everything (she replied).
+    const list = (await call('GET', '/chats', { token: quinn.token })).body;
+    assert.equal(list.chats[0].id, chat.id);
+    assert.equal(list.unread, 1);
+    assert.equal((await call('GET', '/chats', { token: ruby.token })).body.unread, 0);
+    await call('POST', `/chats/${chat.id}/read`, { token: quinn.token });
+    assert.equal((await call('GET', '/chats', { token: quinn.token })).body.unread, 0);
+  });
+
+  test('only friends can message; outsiders see nothing', async () => {
+    assert.equal((await call('POST', '/chats/direct', { token: quinn.token, body: { userId: tess.id } })).status, 403);
+    const { chat } = (await call('POST', '/chats/direct', { token: quinn.token, body: { userId: ruby.id } })).body;
+    assert.equal((await call('GET', `/chats/${chat.id}/messages`, { token: tess.token })).status, 404);
+    // Unfriending closes the chat until you're friends again.
+    await call('DELETE', `/friends/${ruby.id}`, { token: quinn.token });
+    assert.equal((await say(quinn, chat, 'still there?')).status, 403);
+    assert.ok(!(await call('GET', '/chats', { token: quinn.token })).body.chats.some((c) => c.id === chat.id));
+    await befriend(quinn, ruby);
+    assert.equal((await say(quinn, chat, 'friends again')).status, 201);
+  });
+
+  test('group chats need at least 2 friends', async () => {
+    assert.equal(
+      (await call('POST', '/chats/group', { token: quinn.token, body: { memberIds: [ruby.id] } })).status,
+      400
+    );
+    assert.equal(
+      (await call('POST', '/chats/group', { token: quinn.token, body: { memberIds: [ruby.id, tess.id] } })).status,
+      403,
+      'tess is not their friend'
+    );
+    const res = await call('POST', '/chats/group', { token: quinn.token, body: { name: 'Kool Kats', memberIds: [ruby.id, sam.id] } });
+    assert.equal(res.status, 201);
+    const chat = res.body.chat;
+    assert.equal(chat.name, 'Kool Kats');
+    assert.equal(chat.members.length, 3);
+
+    assert.equal((await say(quinn, chat, 'welcome!')).status, 201);
+    // Ruby and Sam aren't friends with each other, but both are in the group.
+    assert.equal((await say(sam, chat, 'hi all')).status, 201);
+    assert.deepEqual(await read(ruby, chat), [['quinn', 'welcome!'], ['sam', 'hi all']]);
+
+    // A message that isn't encrypted for every member is refused.
+    const partial = await encryptMessage('secret', membersOf(chat).slice(0, 2));
+    assert.equal((await call('POST', `/chats/${chat.id}/messages`, { token: quinn.token, body: partial })).status, 409);
+  });
+
+  test('add people to a group and leave it', async () => {
+    await befriend(quinn, tess);
+    let chat = (await call('POST', '/chats/group', { token: quinn.token, body: { memberIds: [ruby.id, sam.id] } })).body.chat;
+    await say(quinn, chat, 'before tess');
+    chat = (await call('POST', `/chats/${chat.id}/members`, { token: quinn.token, body: { userIds: [tess.id] } })).body.chat;
+    assert.equal(chat.members.length, 4);
+    await say(quinn, chat, 'hi tess');
+    // New members only see messages sent after they joined.
+    assert.deepEqual(await read(tess, chat), [['quinn', 'hi tess']]);
+
+    await call('POST', `/chats/${chat.id}/leave`, { token: sam.token });
+    assert.equal((await call('GET', `/chats/${chat.id}/messages`, { token: sam.token })).status, 404);
+    chat = (await call('GET', `/chats/${chat.id}/messages`, { token: quinn.token })).body.chat;
+    assert.equal(chat.members.length, 3);
   });
 });
 
@@ -581,6 +724,7 @@ describe('Stripe payments', () => {
       pusher,
       stripe: { secretKey: 'sk_test', webhookSecret: secret, priceId: null },
       stripeFetch: fakeFetch,
+      stripeAutoSetup: false,
     }).listen(0);
     await new Promise((r) => stripeServer.once('listening', r));
     sbase = `http://127.0.0.1:${stripeServer.address().port}/api`;
@@ -634,6 +778,43 @@ describe('Stripe payments', () => {
     now += 1;
     plan = (await scall('GET', '/me', { token: mia.token })).body.plan;
     assert.equal(plan.plan, 'free');
+  });
+
+  test('automatic setup registers the webhook and portal once', async () => {
+    const setupDb = openDatabase(':memory:');
+    const calls = [];
+    const stripeRequest = async (method, path, params) => {
+      calls.push(path);
+      if (path === '/webhook_endpoints') {
+        assert.equal(params.url, 'https://koolkat.example/api/stripe/webhook');
+        assert.ok(params.enabled_events.includes('customer.subscription.updated'));
+        return { id: 'we_1', secret: 'whsec_auto' };
+      }
+      return { id: 'bpc_1' };
+    };
+    const quiet = { log() {}, warn() {} };
+    const state = loadStripeState(setupDb, { secretKey: 'sk_test' });
+    await ensureStripeSetup({ db: setupDb, stripeRequest, state, publicUrl: 'https://koolkat.example', log: quiet });
+    assert.deepEqual(calls, ['/webhook_endpoints', '/billing_portal/configurations']);
+    assert.equal(state.webhookSecret, 'whsec_auto');
+
+    // After a restart nothing is created again.
+    const again = loadStripeState(setupDb, { secretKey: 'sk_test' });
+    assert.equal(again.webhookSecret, 'whsec_auto');
+    assert.equal(again.portalConfigId, 'bpc_1');
+    await ensureStripeSetup({ db: setupDb, stripeRequest, state: again, publicUrl: 'https://koolkat.example', log: quiet });
+    assert.equal(calls.length, 2);
+  });
+
+  test('admins can see whether payments are set up', async () => {
+    const admin = (await call('POST', '/auth/login', {
+      body: { username: 'zalith9', authSecret: (await deriveKeysFromPassword('zalith9', 'correct horse battery', ITER)).authSecret },
+    })).body;
+    const res = await scall('GET', '/admin/payments', { token: admin.token });
+    assert.equal(res.body.configured, true);
+    assert.equal(res.body.mode, 'test');
+    assert.equal(res.body.webhook, 'env');
+    assert.ok(res.body.lastEventAt, 'records when a webhook last arrived');
   });
 
   test('signature check rejects old timestamps', () => {

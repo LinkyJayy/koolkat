@@ -10,7 +10,7 @@ const host = process.env.HOST || '0.0.0.0';
 const dbPath = defaultDatabasePath();
 if (process.env.RAILWAY_ENVIRONMENT && !process.env.RAILWAY_VOLUME_MOUNT_PATH && !process.env.KOOLKAT_DB) {
   console.warn(
-    'WARNING: no Railway volume is attached, so all accounts, friends and snaps will be ' +
+    'WARNING: no Railway volume is attached, so all accounts, friends and Klicks will be ' +
       'lost on the next deploy or restart. Attach a volume to this service (any mount path, e.g. /data).'
   );
 }

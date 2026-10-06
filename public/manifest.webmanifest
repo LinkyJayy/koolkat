@@ -1,7 +1,7 @@
 {
   "name": "KoolKat",
   "short_name": "KoolKat",
-  "description": "Private, end-to-end encrypted snaps for you and your friends.",
+  "description": "Private, end-to-end encrypted Klicks for you and your friends.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

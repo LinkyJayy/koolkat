@@ -141,7 +141,7 @@ export function createPusher({ db, clock = Date.now, send = webpush.sendNotifica
         jobs.push(
           notify(userId, {
             title: `⌛ Your ${f.streak_count}🔥 streak is ending`,
-            body: `Snap ${friendName} in the next ${left} hour${left === 1 ? '' : 's'} to keep it going!`,
+            body: `Send ${friendName} a Klick in the next ${left} hour${left === 1 ? '' : 's'} to keep it going!`,
             tag: `streak-${f.user_low}-${f.user_high}`,
             view: 'camera',
           })

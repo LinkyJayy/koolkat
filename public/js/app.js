@@ -13,7 +13,9 @@ import {
 import { clearIdentity, loadIdentity, saveIdentity } from './keystore.js';
 import {
   createIdentity,
+  decryptMessage,
   decryptSnap,
+  encryptMessage,
   deriveKeysFromPassword,
   encryptSnap,
   fingerprint,
@@ -101,7 +103,7 @@ function streakBadge(streak) {
   if (!streak || streak.count < 1) return null;
   return el('span', {
     class: `streak${streak.expiring ? ' expiring' : ''}`,
-    title: streak.expiring ? 'Snap each other today to keep your streak!' : `${streak.count} day streak`,
+    title: streak.expiring ? 'Send each other a Klick today to keep your streak!' : `${streak.count} day streak`,
     text: `🔥 ${streak.count}`,
   });
 }
@@ -109,6 +111,7 @@ function streakBadge(streak) {
 // ---------- screens ----------
 function show(name) {
   if (state.screen === 'camera' && name !== 'camera') stopCamera();
+  if (state.screen === 'chat' && name !== 'chat') stopChatPolling();
   for (const s of document.querySelectorAll('.screen')) s.hidden = s.id !== `screen-${name}`;
   state.screen = name;
   if (name === 'camera') startCamera();
@@ -226,6 +229,10 @@ function signedOut() {
   setToken(null);
   clearIdentity();
   clearInterval(state.pollTimer);
+  stopChatPolling();
+  chat.current = null;
+  chat.decrypted.clear();
+  state.chats = [];
   state.me = null;
   state.friends = [];
   state.inbox = [];
@@ -268,6 +275,7 @@ function openView(view) {
   if (!state.me) return;
   if (view === 'inbox') openInbox();
   else if (view === 'friends') openFriends();
+  else if (view === 'chats') openChats();
   else if (state.screen !== 'camera') show('camera');
 }
 
@@ -284,7 +292,7 @@ async function refreshFriends() {
 
 async function refreshInbox() {
   const { snaps, hasMore } = await api('GET', '/snaps/inbox');
-  // Keep any older pages already loaded with "Show older snaps".
+  // Keep any older pages already loaded with "Show older Klicks".
   const oldest = snaps.at(-1)?.createdAt ?? 0;
   const older = hasMore ? state.inbox.filter((s) => s.createdAt < oldest) : [];
   state.inbox = [...snaps, ...older];
@@ -297,7 +305,8 @@ async function refreshInbox() {
 
 async function refresh() {
   try {
-    await Promise.all([refreshFriends(), refreshInbox()]);
+    await Promise.all([refreshFriends(), refreshInbox(), refreshChats()]);
+    if (state.screen === 'chats') renderChats();
     if (state.screen === 'friends') {
       renderFriends();
       if ($('search-input').value.trim()) runSearch();
@@ -603,7 +612,7 @@ $('btn-send').addEventListener('click', async () => {
     });
     button.textContent = 'Sending…';
     await api('POST', '/snaps', payload);
-    toast(recipients.length === 1 ? 'Snap sent!' : `Snap sent to ${recipients.length} friends!`);
+    toast(recipients.length === 1 ? 'Klick sent!' : `Klick sent to ${recipients.length} friends!`);
     discardCapture();
     show('camera');
     refreshFriends().catch(() => {});
@@ -647,13 +656,13 @@ async function loadInbox() {
 
 function inboxStatus(s) {
   if (!s.available) return 'No longer available';
-  if (!s.opened) return `New Snap · ${timeAgo(s.createdAt)}`;
+  if (!s.opened) return `New Klick · ${timeAgo(s.createdAt)}`;
   return `Sent ${timeAgo(s.createdAt)} · tap to view again`;
 }
 
 function renderInbox() {
   const empty = $('inbox-empty');
-  $('inbox-empty-text').textContent = 'No snaps yet. When friends send you snaps, they show up here.';
+  $('inbox-empty-text').textContent = 'No Klicks yet. When friends send you Klicks, they show up here.';
   empty.hidden = state.inbox.length > 0;
   const rows = state.inbox.map((s) =>
     el(
@@ -683,7 +692,7 @@ function renderInbox() {
       el(
         'li',
         { class: 'load-more' },
-        el('button', { type: 'button', class: 'btn', text: 'Show older snaps', onclick: (e) => withBusy(e.currentTarget, loadOlderSnaps) })
+        el('button', { type: 'button', class: 'btn', text: 'Show older Klicks', onclick: (e) => withBusy(e.currentTarget, loadOlderSnaps) })
       )
     );
   }
@@ -702,7 +711,7 @@ async function loadOlderSnaps() {
 
 function renderSent(snaps) {
   const empty = $('inbox-empty');
-  $('inbox-empty-text').textContent = "You haven't sent any snaps yet.";
+  $('inbox-empty-text').textContent = "You haven't sent any Klicks yet.";
   empty.hidden = snaps.length > 0;
   $('inbox-list').replaceChildren(
     ...snaps.map((s) => {
@@ -736,6 +745,7 @@ function renderSent(snaps) {
 let viewer = null;
 
 async function openSnap(summary) {
+  const returnTo = state.screen;
   try {
     const snap = await api('GET', `/snaps/${encodeURIComponent(summary.id)}`);
     const opened = await decryptSnap(snap, state.me.privateKey, state.me.userId);
@@ -755,7 +765,8 @@ async function openSnap(summary) {
 
     show('viewer');
     fitFrame($('viewer-frame'), img.naturalWidth, img.naturalHeight);
-    viewer = { url, summary, own: Boolean(snap.own), size: [img.naturalWidth, img.naturalHeight] };
+    viewer = { url, summary, own: Boolean(snap.own), returnTo, size: [img.naturalWidth, img.naturalHeight] };
+    setFavoriteButton(Boolean(snap.favorite));
 
     if (!snap.own && !summary.opened) {
       summary.opened = true;
@@ -764,35 +775,396 @@ async function openSnap(summary) {
     }
   } catch (err) {
     if (err.status === 410 || err.status === 404) summary.available = false;
-    toast(err.name === 'OperationError' ? "This snap couldn't be decrypted." : err.message, { error: true });
-    if (summary.own) loadInbox();
+    toast(err.name === 'OperationError' ? "This Klick couldn't be decrypted." : err.message, { error: true });
+    if (returnTo === 'favorites') loadFavorites();
+    else if (summary.own) loadInbox();
     else renderInbox();
   }
 }
 
 function closeSnap() {
   if (!viewer) return;
+  const { returnTo } = viewer;
   URL.revokeObjectURL(viewer.url);
   $('viewer-img').removeAttribute('src');
   viewer = null;
-  show('inbox');
-  loadInbox();
+  if (returnTo === 'favorites') {
+    openFavorites();
+  } else {
+    show('inbox');
+    loadInbox();
+  }
 }
 $('screen-viewer').addEventListener('click', (e) => {
-  if (!e.target.closest('#btn-snap-delete')) closeSnap();
+  if (!e.target.closest('.viewer-actions')) closeSnap();
+});
+
+// ---------- favorites ----------
+function setFavoriteButton(on) {
+  const button = $('btn-snap-favorite');
+  button.setAttribute('aria-pressed', String(on));
+  button.setAttribute('aria-label', on ? 'Remove from favorites' : 'Add to favorites');
+}
+
+$('btn-snap-favorite').addEventListener('click', (e) =>
+  withBusy(e.currentTarget, async () => {
+    if (!viewer) return;
+    const on = $('btn-snap-favorite').getAttribute('aria-pressed') !== 'true';
+    await api(on ? 'POST' : 'DELETE', `/snaps/${encodeURIComponent(viewer.summary.id)}/favorite`);
+    viewer.summary.favorite = on;
+    setFavoriteButton(on);
+    toast(on ? '⭐ Added to favorites' : 'Removed from favorites');
+  })
+);
+
+function openFavorites() {
+  show('favorites');
+  loadFavorites();
+}
+$('btn-favorites').addEventListener('click', openFavorites);
+
+async function loadFavorites() {
+  try {
+    const { favorites } = await api('GET', '/favorites');
+    renderFavorites(favorites);
+  } catch (err) {
+    toast(err.message, { error: true });
+  }
+}
+
+function renderFavorites(favorites) {
+  $('favorites-empty').hidden = favorites.length > 0;
+  $('favorites-list').replaceChildren(
+    ...favorites.map((f) =>
+      el(
+        'li',
+        {},
+        el(
+          'button',
+          { type: 'button', class: 'item', disabled: !f.available, onclick: () => openSnap(f) },
+          avatar(f.own ? state.me : f.from),
+          el(
+            'span',
+            { class: 'item-main' },
+            f.own ? el('div', { class: 'item-title', text: `You → ${f.to.map((u) => u.displayName).join(', ')}` }) : nameEl(f.from),
+            el('div', { class: 'item-sub', text: f.available ? `Klick from ${timeAgo(f.createdAt)}` : 'No longer available' })
+          ),
+          el('span', { class: 'fav-star', 'aria-hidden': 'true', text: '★' })
+        )
+      )
+    )
+  );
+}
+
+// ---------- chats ----------
+const chat = { current: null, messages: [], decrypted: new Map(), hasMore: false, timer: null, picker: null };
+
+async function refreshChats() {
+  const { chats, unread } = await api('GET', '/chats');
+  state.chats = chats;
+  const badge = $('badge-chats');
+  badge.hidden = unread === 0;
+  badge.textContent = unread;
+}
+
+function openChats() {
+  show('chats');
+  renderChats();
+  refreshChats().then(renderChats).catch((err) => toast(err.message, { error: true }));
+}
+$('btn-chats').addEventListener('click', openChats);
+
+const chatAvatar = (c) =>
+  c.kind === 'group'
+    ? el('span', { class: 'avatar group-avatar', text: '👥' })
+    : avatar(c.members.find((m) => m.id !== state.me.userId) ?? { displayName: c.name });
+
+function chatTitle(c, cls = 'item-title') {
+  if (c.kind === 'direct') {
+    const other = c.members.find((m) => m.id !== state.me.userId);
+    if (other) return nameEl(other, cls);
+  }
+  return el('div', { class: cls, text: c.name });
+}
+
+function renderChats() {
+  const chats = state.chats ?? [];
+  $('chats-empty').hidden = chats.length > 0;
+  $('chats-list').replaceChildren(
+    ...chats.map((c) => {
+      let sub = c.kind === 'group' ? `${c.members.length} people` : 'Tap to chat';
+      if (c.lastMessageAt) sub = c.unread ? `${c.unread} new message${c.unread === 1 ? '' : 's'} · ${timeAgo(c.lastMessageAt)}` : `Last message ${timeAgo(c.lastMessageAt)}`;
+      return el(
+        'li',
+        {},
+        el(
+          'button',
+          { type: 'button', class: 'item', onclick: () => openChat(c) },
+          chatAvatar(c),
+          el('span', { class: 'item-main' }, chatTitle(c), el('div', { class: `item-sub${c.unread ? ' unread' : ''}`, text: sub })),
+          c.unread ? el('span', { class: 'unread-dot', text: c.unread }) : null
+        )
+      );
+    })
+  );
+}
+
+// Picking friends for a new chat, a new group, or adding to a group.
+function openPicker(mode) {
+  chat.picker = { mode, selected: new Set() };
+  $('chat-new-title').textContent = { direct: 'New chat', group: 'New group', add: 'Add friends' }[mode];
+  $('chat-new-hint').textContent =
+    mode === 'direct' ? 'Pick a friend to message.' : mode === 'group' ? 'Pick at least 2 friends for your group.' : 'Pick friends to add to the group.';
+  $('group-name-row').hidden = mode !== 'group';
+  $('group-name').value = '';
+  $('btn-create-group').textContent = mode === 'add' ? 'Add to group' : 'Create group';
+  show('chat-new');
+  renderPicker();
+  refreshFriends().then(renderPicker).catch(() => {});
+}
+$('btn-new-chat').addEventListener('click', () => openPicker('direct'));
+$('btn-new-group').addEventListener('click', () => openPicker('group'));
+
+function renderPicker() {
+  const { mode, selected } = chat.picker;
+  const inGroup = new Set(mode === 'add' ? chat.current?.members.map((m) => m.id) : []);
+  const friends = state.friends.filter((f) => !inGroup.has(f.id));
+  $('chat-new-empty').hidden = friends.length > 0;
+  $('chat-new-list').replaceChildren(
+    ...friends.map((f) => {
+      const row = [avatar(f), el('span', { class: 'item-main' }, nameEl(f), el('div', { class: 'item-sub', text: `@${f.username}` }))];
+      if (mode === 'direct') {
+        return el('li', {}, el('button', { type: 'button', class: 'item', onclick: (e) => withBusy(e.currentTarget, () => startDirectChat(f.id)) }, ...row));
+      }
+      return el(
+        'li',
+        {},
+        el(
+          'label',
+          { class: 'item' },
+          ...row,
+          el('input', {
+            type: 'checkbox',
+            checked: selected.has(f.id),
+            'aria-label': `Add ${f.displayName}`,
+            onchange: (e) => {
+              if (e.target.checked) selected.add(f.id);
+              else selected.delete(f.id);
+              updateGroupBar();
+            },
+          })
+        )
+      );
+    })
+  );
+  updateGroupBar();
+}
+
+function updateGroupBar() {
+  const { mode, selected } = chat.picker;
+  const needed = mode === 'group' ? 2 : 1;
+  $('group-bar').hidden = mode === 'direct' || selected.size === 0;
+  $('group-summary').textContent =
+    selected.size < needed ? `Pick ${needed - selected.size} more` : `${selected.size} friend${selected.size === 1 ? '' : 's'} picked`;
+  $('btn-create-group').disabled = selected.size < needed;
+}
+
+$('btn-create-group').addEventListener('click', (e) =>
+  withBusy(e.currentTarget, async () => {
+    const { mode, selected } = chat.picker;
+    if (mode === 'add') {
+      const res = await api('POST', `/chats/${chat.current.id}/members`, { userIds: [...selected] });
+      toast('Added to the group');
+      openChat(res.chat);
+    } else {
+      const res = await api('POST', '/chats/group', { name: $('group-name').value.trim() || null, memberIds: [...selected] });
+      openChat(res.chat);
+    }
+  })
+);
+
+async function startDirectChat(userId) {
+  const { chat: c } = await api('POST', '/chats/direct', { userId });
+  openChat(c);
+}
+
+function openChat(c) {
+  chat.current = c;
+  chat.messages = [];
+  chat.hasMore = false;
+  renderChatHeader();
+  $('message-list').replaceChildren();
+  $('btn-older-messages').hidden = true;
+  show('chat');
+  loadMessages({ scroll: true }).catch((err) => toast(err.message, { error: true }));
+  stopChatPolling();
+  chat.timer = setInterval(() => {
+    if (document.visibilityState === 'visible') loadMessages().catch(() => {});
+  }, 3000);
+}
+
+function stopChatPolling() {
+  clearInterval(chat.timer);
+  chat.timer = null;
+}
+
+function renderChatHeader() {
+  const c = chat.current;
+  $('chat-name').replaceChildren(chatTitle(c, 'chat-name-inner'));
+  const others = c.members.filter((m) => m.id !== state.me.userId);
+  $('chat-members').textContent =
+    c.kind === 'group' ? `You, ${others.map((m) => m.displayName).join(', ')}` : others[0]?.flair || `@${others[0]?.username ?? ''}`;
+  $('btn-chat-menu').hidden = c.kind !== 'group';
+}
+
+async function decryptAll(messages) {
+  return Promise.all(
+    messages.map(async (m) => {
+      if (!chat.decrypted.has(m.id)) {
+        try {
+          chat.decrypted.set(m.id, { text: await decryptMessage(m, state.me.privateKey, state.me.userId) });
+        } catch {
+          chat.decrypted.set(m.id, { text: "This message couldn't be decrypted.", failed: true });
+        }
+      }
+      return m;
+    })
+  );
+}
+
+async function loadMessages({ scroll = false, older = false } = {}) {
+  const c = chat.current;
+  if (!c) return;
+  const before = older ? chat.messages[0]?.createdAt : null;
+  const res = await api('GET', `/chats/${c.id}/messages${before ? `?before=${before}` : ''}`);
+  if (chat.current?.id !== c.id) return; // switched chats meanwhile
+  chat.current = res.chat;
+  renderChatHeader();
+  await decryptAll(res.messages);
+  const known = new Set(chat.messages.map((m) => m.id));
+  const fresh = res.messages.filter((m) => !known.has(m.id));
+  if (older) {
+    chat.messages = [...fresh, ...chat.messages];
+    chat.hasMore = res.hasMore;
+  } else {
+    if (!chat.messages.length) chat.hasMore = res.hasMore;
+    chat.messages = [...chat.messages, ...fresh].sort((a, b) => a.createdAt - b.createdAt);
+  }
+  if (!fresh.length && !scroll) return;
+  const box = $('messages');
+  const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+  const prevHeight = box.scrollHeight;
+  renderMessages();
+  if (older) box.scrollTop = box.scrollHeight - prevHeight;
+  else if (scroll || nearBottom) box.scrollTop = box.scrollHeight;
+  if (fresh.some((m) => m.sender?.id !== state.me.userId)) {
+    api('POST', `/chats/${c.id}/read`).then(refreshChats).catch(() => {});
+  }
+}
+
+function renderMessages() {
+  const group = chat.current.kind === 'group';
+  let previousSender = null;
+  $('btn-older-messages').hidden = !chat.hasMore;
+  $('message-list').replaceChildren(
+    ...chat.messages.map((m) => {
+      const mine = m.sender?.id === state.me.userId;
+      const { text, failed } = chat.decrypted.get(m.id) ?? { text: '' };
+      const showSender = group && !mine && previousSender !== m.sender?.id;
+      previousSender = m.sender?.id;
+      return el(
+        'li',
+        { class: `message${mine ? ' mine' : ''}${failed ? ' failed' : ''}` },
+        showSender ? el('span', { class: 'sender' }, m.sender ? m.sender.displayName : 'Someone', badgeImg(m.sender)) : null,
+        el('div', { class: 'bubble', text }),
+        el('span', { class: 'time', text: timeAgo(m.createdAt) })
+      );
+    })
+  );
+}
+
+$('btn-older-messages').addEventListener('click', (e) => withBusy(e.currentTarget, () => loadMessages({ older: true })));
+
+$('composer').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const input = $('composer-input');
+  const text = input.value.trim();
+  if (!text || !chat.current) return;
+  const button = $('btn-send-message');
+  await withBusy(button, async () => {
+    const send = async () => {
+      const members = chat.current.members.map((m) => ({ userId: m.id, publicKey: m.publicKey }));
+      return api('POST', `/chats/${chat.current.id}/messages`, await encryptMessage(text, members));
+    };
+    try {
+      await send();
+    } catch (err) {
+      if (err.status !== 409) throw err;
+      // Someone joined or left: refresh the member list and encrypt again.
+      await loadMessages();
+      await send();
+    }
+    input.value = '';
+    await loadMessages({ scroll: true });
+  });
+  input.focus();
+});
+
+// Group options
+$('btn-chat-menu').addEventListener('click', () => {
+  const c = chat.current;
+  $('group-rename').value = c.customName ?? '';
+  $('group-members').replaceChildren(
+    ...c.members.map((m) =>
+      el(
+        'li',
+        {},
+        el('div', { class: 'item' }, avatar(m), el('span', { class: 'item-main' }, nameEl(m), el('div', { class: 'item-sub', text: m.id === state.me.userId ? 'You' : `@${m.username}` })))
+      )
+    )
+  );
+  $('dialog-group').showModal();
+});
+$('btn-group-rename').addEventListener('click', (e) =>
+  withBusy(e.currentTarget, async () => {
+    const res = await api('POST', `/chats/${chat.current.id}/name`, { name: $('group-rename').value.trim() || null });
+    chat.current = res.chat;
+    renderChatHeader();
+    toast('Group name saved');
+  })
+);
+$('btn-group-add').addEventListener('click', () => {
+  $('dialog-group').close();
+  openPicker('add');
+});
+$('btn-group-leave').addEventListener('click', (e) =>
+  withBusy(e.currentTarget, async () => {
+    if (!confirm('Leave this group? You will stop getting its messages.')) return;
+    await api('POST', `/chats/${chat.current.id}/leave`);
+    $('dialog-group').close();
+    chat.current = null;
+    toast('You left the group');
+    openChats();
+  })
+);
+$('group-rename').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    $('btn-group-rename').click();
+  }
 });
 
 $('btn-snap-delete').addEventListener('click', async (e) => {
   if (!viewer) return;
   const { summary, own } = viewer;
   const question = own
-    ? 'Delete this snap for everyone? Nobody will be able to see it again, and it stops counting toward your storage.'
-    : `Delete this snap from ${summary.from.displayName}? You won't be able to see it again.`;
+    ? 'Delete this Klick for everyone? Nobody will be able to see it again, and it stops counting toward your storage.'
+    : `Delete this Klick from ${summary.from.displayName}? You won't be able to see it again.`;
   if (!confirm(question)) return;
   await withBusy(e.currentTarget, async () => {
     await api('DELETE', `/snaps/${encodeURIComponent(summary.id)}`);
     state.inbox = state.inbox.filter((s) => s.id !== summary.id);
-    toast(own ? 'Snap deleted for everyone' : 'Snap deleted');
+    toast(own ? 'Klick deleted for everyone' : 'Klick deleted');
     closeSnap();
   });
 });
@@ -874,8 +1246,8 @@ function renderFriends() {
   $('friends-list').replaceChildren(
     ...state.friends.map((f) => {
       let sub = f.flair ? `@${f.username} · ${f.flair}` : `@${f.username}`;
-      if (f.streak.count > 0 && f.streak.youNeedToSnap) sub = 'Snap them today to keep your streak!';
-      else if (f.streak.count > 0 && f.streak.theyNeedToSnap) sub = `Waiting for ${f.displayName} to snap back`;
+      if (f.streak.count > 0 && f.streak.youNeedToSnap) sub = 'Send them a Klick today to keep your streak!';
+      else if (f.streak.count > 0 && f.streak.theyNeedToSnap) sub = `Waiting for ${f.displayName} to send a Klick back`;
       return el(
         'li',
         {},
@@ -946,10 +1318,14 @@ async function openFriend(friend) {
   $('friend-flair').textContent = friend.flair || '';
   $('friend-flair').hidden = !friend.flair;
   $('friend-streak').textContent =
-    friend.streak.count > 0 ? `🔥 ${friend.streak.count} day streak${friend.streak.expiring ? ' ⌛' : ''}` : 'No streak yet. Snap each other every day to start one!';
+    friend.streak.count > 0 ? `🔥 ${friend.streak.count} day streak${friend.streak.expiring ? ' ⌛' : ''}` : 'No streak yet. Send each other Klicks every day to start one!';
   $('friend-fingerprint').textContent = await fingerprint(friend.publicKey);
   dialog.returnValue = '';
   dialog.onclose = () => {
+    if (dialog.returnValue === 'message') {
+      startDirectChat(friend.id).catch((err) => toast(err.message, { error: true }));
+      return;
+    }
     if (dialog.returnValue === 'remove' && confirm(`Remove ${friend.displayName} as a friend? Your streak will be lost.`)) {
       removeFriend(friend, `Removed ${friend.displayName}`).catch((err) => toast(err.message, { error: true }));
     }
@@ -1005,7 +1381,7 @@ function renderPlan() {
   const pct = Math.min(100, (plan.storageUsed / plan.storageLimit) * 100);
   $('storage-fill').style.width = `${pct}%`;
   $('storage-fill').classList.toggle('full', pct >= 95);
-  $('storage-text').textContent = `${formatBytes(plan.storageUsed)} of ${formatBytes(plan.storageLimit)} used by snaps you've sent`;
+  $('storage-text').textContent = `${formatBytes(plan.storageUsed)} of ${formatBytes(plan.storageLimit)} used by Klicks you've sent`;
   $('plan-upsell').hidden = unlimited;
   $('btn-manage-sub').hidden = !plan.subscribed;
   $('flair-editor').hidden = !unlimited;
@@ -1079,7 +1455,31 @@ $('btn-admin').addEventListener('click', () => {
   $('dialog-profile').close();
   show('admin');
   loadCodes();
+  loadPaymentsStatus();
 });
+
+async function loadPaymentsStatus() {
+  const box = $('payments-status');
+  try {
+    const p = await api('GET', '/admin/payments');
+    const line = (ok, text) => el('div', { class: ok ? 'ok' : 'warn', text: `${ok ? '✓' : '✗'} ${text}` });
+    if (!p.configured) {
+      box.replaceChildren(
+        line(false, 'Stripe is not connected yet'),
+        el('div', { class: 'fineprint', text: 'Add your Stripe secret key as STRIPE_SECRET_KEY in Railway → Variables. KoolKat sets up the rest.' })
+      );
+      return;
+    }
+    box.replaceChildren(
+      line(true, p.mode === 'live' ? 'Stripe connected (LIVE: real payments)' : 'Stripe connected (TEST mode: no real money)'),
+      line(Boolean(p.webhook), p.webhook ? 'Payment confirmations set up' : 'Payment confirmations not set up yet (needs a Railway domain)'),
+      line(p.portal, p.portal ? '"Manage subscription" page ready' : '"Manage subscription" page not set up yet'),
+      el('div', { class: 'fineprint', text: p.lastEventAt ? `Last payment event: ${timeAgo(p.lastEventAt)}` : 'No payment events received yet' })
+    );
+  } catch (err) {
+    box.textContent = err.message;
+  }
+}
 
 async function loadCodes() {
   try {
@@ -1237,7 +1637,7 @@ async function renderNotifyRow() {
       : 'Not supported in this browser';
     button.hidden = true;
   } else {
-    status.textContent = 'Snaps, friend requests and streak reminders';
+    status.textContent = 'Klicks, messages, friend requests and streak reminders';
     button.textContent = 'Turn on';
   }
 }

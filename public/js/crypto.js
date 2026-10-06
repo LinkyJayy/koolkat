@@ -95,11 +95,12 @@ export async function fingerprint(publicKeyB64) {
 }
 
 // ---------- snap encryption ----------
-async function wrappingKey(privateKey, publicKey, recipientId) {
+// `context` keeps keys for different kinds of data (Klicks, messages) separate.
+async function wrappingKey(privateKey, publicKey, recipientId, context = 'snap') {
   const shared = await subtle.deriveBits({ name: 'ECDH', public: publicKey }, privateKey, 256);
   const hkdf = await subtle.importKey('raw', shared, 'HKDF', false, ['deriveKey']);
   return subtle.deriveKey(
-    { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(32), info: enc.encode(`koolkat-snap:${recipientId}`) },
+    { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(32), info: enc.encode(`koolkat-${context}:${recipientId}`) },
     hkdf,
     { name: 'AES-GCM', length: 256 },
     false,
@@ -165,4 +166,41 @@ export async function decryptSnap(snap, privateKey, myUserId) {
     captionY: Number.isFinite(meta.captionY) ? Math.min(Math.max(meta.captionY, 0.05), 0.95) : 0.5,
     mime: meta.mime === 'image/png' ? 'image/png' : 'image/jpeg',
   };
+}
+
+// ---------- chat messages ----------
+// Same scheme as Klicks: a fresh AES-256-GCM key per message, wrapped for
+// every chat member (including the sender) with ECDH + HKDF.
+
+/** Encrypt a text message for chat members. Returns the body for POST /chats/:id/messages. */
+export async function encryptMessage(text, members) {
+  const messageKey = await subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
+  const iv = randomBytes(12);
+  const ciphertext = await subtle.encrypt({ name: 'AES-GCM', iv }, messageKey, enc.encode(JSON.stringify({ text })));
+  const rawKey = await subtle.exportKey('raw', messageKey);
+  const ephemeral = await subtle.generateKey(CURVE, true, ['deriveBits']);
+  const keys = await Promise.all(
+    members.map(async ({ userId, publicKey }) => {
+      const key = await wrappingKey(ephemeral.privateKey, await importPublicKey(publicKey), userId, 'message');
+      const wrapIv = randomBytes(12);
+      const wrappedKey = await subtle.encrypt({ name: 'AES-GCM', iv: wrapIv }, key, rawKey);
+      return { userId, wrappedKey: toBase64(wrappedKey), wrapIv: toBase64(wrapIv) };
+    })
+  );
+  return {
+    iv: toBase64(iv),
+    ephemeralPublicKey: toBase64(await subtle.exportKey('spki', ephemeral.publicKey)),
+    ciphertext: toBase64(ciphertext),
+    keys,
+  };
+}
+
+/** Decrypt a message from GET /chats/:id/messages. Returns the text. */
+export async function decryptMessage(message, privateKey, myUserId) {
+  const key = await wrappingKey(privateKey, await importPublicKey(message.ephemeralPublicKey), myUserId, 'message');
+  const rawKey = await subtle.decrypt({ name: 'AES-GCM', iv: fromBase64(message.wrapIv) }, key, fromBase64(message.wrappedKey));
+  const messageKey = await subtle.importKey('raw', rawKey, 'AES-GCM', false, ['decrypt']);
+  const plain = await subtle.decrypt({ name: 'AES-GCM', iv: fromBase64(message.iv) }, messageKey, fromBase64(message.ciphertext));
+  const { text } = JSON.parse(dec.decode(plain));
+  return typeof text === 'string' ? text : '';
 }

@@ -1,31 +1,36 @@
 # KoolKat
 
-A private, Snapchat alternative. You take photos in the app with the front or rear camera, add a caption, and send them to friends. They're **end-to-end encrypted**, can only go to **friends**, stay saved so you can view them again, and build **streaks** when you and a friend snap each other every day.
+A private, Snapchat alternative. You take photos in the app with the front or rear camera, add a caption, and send them to friends as **Klicks**. Klicks are **end-to-end encrypted**, can only go to **friends**, and stay saved so you can view them again. Sending each other Klicks every day builds **streaks**, and you can **chat** with friends one-on-one or in groups.
 
 ## Features
 
+Photos taken in KoolKat are called **Klicks**.
+
 - **Accounts.** Sign up and sign in with a username and password. Sessions persist across reloads.
 - **Friends.** Search by username, send, accept, ignore or cancel requests, and remove friends. Adding someone who already added you accepts their request.
-- **Friends-only.** The server refuses to deliver a snap to anyone who isn't an accepted friend. It also refuses to let a recipient download a snap after the two of them stop being friends.
+- **Friends-only.** The server refuses to deliver a Klick to anyone who isn't an accepted friend. It also refuses to let a recipient download a Klick after the two of them stop being friends.
 - **Camera.** Uses the front or rear camera with a flip button. Selfies are mirrored like a normal selfie camera.
 - **Captions.** Tap the photo to add a caption, and tap somewhere else to move it. The caption is encrypted along with the photo.
-- **Saved snaps.** Snaps you receive stay in your inbox, so you can open them again whenever you like. They stay end-to-end encrypted on the server, and only the friends a snap was sent to can open it. If you unfriend someone, their snaps are hidden from you (and yours from them) until you're friends again.
-- **View your own snaps.** Each snap is also encrypted for you, so you can open it again from *Snaps → Sent*. As the sender, deleting a snap removes it for everyone.
-- **Deleting snaps.** Open a snap and tap 🗑 to remove it from your inbox. Once every recipient has deleted it, the encrypted data is removed from the server for good.
-- **Streaks.** 🔥 A streak grows by one for each day both friends snap each other. ⌛ means you'll lose it if you don't both snap today. A missed day resets it.
-- **Sent view.** Shows "Delivered" or "Opened" for snaps you've sent.
-- **Push notifications.** 🔔 Get notified about new snaps, friend requests, accepted requests, and streaks that are about to end. Turn them on from the banner on the Snaps screen or in your profile. Notifications only say *who* sent something. The snap itself stays end-to-end encrypted.
+- **Saved Klicks.** Klicks you receive stay in your inbox, so you can open them again whenever you like. They stay end-to-end encrypted, and only the friends a Klick was sent to can open it. If you unfriend someone, their Klicks are hidden until you're friends again.
+- **View your own Klicks.** Each Klick is also encrypted for you, so you can open it again from *Klicks → Sent*. As the sender, deleting a Klick removes it for everyone.
+- **Deleting Klicks.** Open a Klick and tap 🗑 to remove it from your inbox. Once every recipient has deleted it, the encrypted data is removed from the server for good.
+- **Favorites.** ⭐ Tap the star on any Klick (received or sent) to favorite it. The ★ button on the home screen shows all your favorites.
+- **Chats.** 💬 Message any friend from *Chats → New chat*, or the **Message** button on their friend card. Messages are end-to-end encrypted like Klicks: each message has its own key, wrapped for each person in the chat.
+- **Group chats.** 👥 *Chats → New group*: pick at least 2 friends and optionally a name. Anyone in the group can rename it, add their own friends, or leave. People who join later only see messages sent after they joined. (The group *name* isn't encrypted; messages are.)
+- **Streaks.** 🔥 A streak grows by one for each day both friends send each other a Klick. ⌛ means you'll lose it if you don't both send one today. A missed day resets it.
+- **Sent view.** Shows "Delivered" or "Opened" for Klicks you've sent.
+- **Push notifications.** 🔔 Get notified about new Klicks, messages, friend requests, accepted requests, and streaks that are about to end. Turn them on from the banner on the Klicks screen or in your profile. Notifications only say *who* sent something, never what.
 - **Light and dark mode.** Choose System, Light or Dark under *Appearance* on the sign-in screen or in your profile. The choice is remembered on that device.
 
 ## KoolKat Free vs KoolKat Unlimited
 
 | | KoolKat Free | KoolKat Unlimited ($4.99/month) |
 | --- | --- | --- |
-| Storage for snaps you've sent | 512 MB | 2.5 GB |
+| Storage for Klicks you've sent | 512 MB | 2.5 GB |
 | Kool badge 👑 next to your name | – | ✓ |
 | Kool flair (custom line under your name, default "i have nine lives") | – | ✓ |
 
-Storage counts the snaps you've sent that still exist. Deleting a sent snap (it's removed for everyone) frees the space. When it's full, KoolKat asks you to delete some or upgrade. Badges and flair are shown to your friends in their friend list, your profile and your snaps.
+Storage counts the Klicks you've sent that still exist. Deleting a sent Klick (it's removed for everyone) frees the space. When it's full, KoolKat asks you to delete some or upgrade. Badges and flair are shown to your friends in their friend list, your profile, your Klicks and chats.
 
 You can get Unlimited by paying through Stripe, by redeeming a code (*Profile → Have a code?*), or as a gift from an admin.
 
@@ -41,12 +46,18 @@ The account **`zalith9`** is the admin. Capitalisation doesn't matter, and usern
 
 ### Taking payments (Stripe)
 
-Without Stripe set up, the upgrade button explains that payments aren't available yet. Codes and gifts still work. To charge $4.99/month:
+Without Stripe, the upgrade button explains that payments aren't available yet. Codes and gifts still work. KoolKat sets up Stripe by itself, so the only thing you do is add one key:
 
-1. Create a [Stripe](https://stripe.com) account and copy your **secret key** (Developers → API keys).
-2. In Stripe, go to Developers → Webhooks → **Add endpoint** with the URL `https://<your-app>/api/stripe/webhook`, and choose the events `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated` and `customer.subscription.deleted`. Copy its **signing secret**.
-3. To let people cancel or manage their subscription, turn on the **customer portal** (Settings → Billing → Customer portal).
-4. On Railway, add the variables `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`. Optionally add `STRIPE_PRICE_ID` to use a price you created in Stripe instead of the built-in $4.99/month.
+1. **Create a [Stripe](https://stripe.com) account.** Stripe asks for your details and a bank account, so payouts can reach you.
+2. **Copy your secret key.** In Stripe, open **Developers → API keys** and copy the **Secret key**. Start with the **test mode** key (`sk_test_…`) to try it out safely.
+3. **Add it to Railway.** Open the KoolKat service → **Variables** → **New variable**, name it `STRIPE_SECRET_KEY` and paste the key. Railway redeploys.
+4. **Check it.** In KoolKat, open your profile → **🛠 Admin tools**. The **Payments** section should show three ✓s. On start, KoolKat registers its webhook in Stripe (using your Railway domain) and creates the "Manage subscription" page.
+5. **Try a test payment.** In test mode, tap *Get KoolKat Unlimited* and pay with card `4242 4242 4242 4242`, any future date and any CVC. Your plan should switch to Unlimited within a few seconds.
+6. **Go live.** In Stripe, switch to live mode, copy the live secret key (`sk_live_…`), and replace `STRIPE_SECRET_KEY` in Railway with it.
+
+Never share your secret key with anyone, and never paste it into a chat. It only belongs in Railway's Variables.
+
+Advanced: you can still provide `STRIPE_WEBHOOK_SECRET` (with your own webhook endpoint for `checkout.session.completed` and `customer.subscription.*`) and `STRIPE_PRICE_ID` (your own price instead of the built-in $4.99/month). Set `PUBLIC_URL` if you don't use a Railway-generated domain.
 
 ## End-to-end encryption
 
@@ -56,7 +67,7 @@ All encryption runs in the browser with the Web Crypto API (`public/js/crypto.js
    - an *auth secret*, which is sent to the server to log in and stored there as an scrypt hash;
    - a *vault key*, which never leaves the device and encrypts your private key.
 2. **Identity keys.** At sign-up the device generates a P-256 ECDH key pair. The public key is uploaded. The private key is uploaded only after it has been encrypted with the vault key, so you can sign in on another device and nobody else (including the server) can read it. On your device, the key is held as a *non-extractable* `CryptoKey` in IndexedDB.
-3. **Each snap** (photo + caption) is encrypted with a fresh random AES-256-GCM key. That key is then wrapped separately for each recipient: a new ephemeral ECDH key pair is combined with the friend's public key, HKDF turns the result into a wrapping key, and AES-GCM wraps the snap key. Only the recipient's private key can unwrap it.
+3. **Each Klick** (photo + caption) is encrypted with a fresh random AES-256-GCM key. That key is then wrapped separately for each recipient: a new ephemeral ECDH key pair is combined with the friend's public key, HKDF turns the result into a wrapping key, and AES-GCM wraps the Klick's key. Only the recipient's private key can unwrap it. The Klick's key is also wrapped for the sender, so they can view it later. Chat messages work the same way, wrapped for every member of the chat.
 4. **Safety codes.** Your profile and each friend's page show a fingerprint of the public key. If you and a friend see the same code, no one (not even the server) has swapped in their own key.
 
 > ⚠️ Because KoolKat can't see your password, **it can't reset it.** If you forget your password, you lose your account.
@@ -93,7 +104,7 @@ Configuration (environment variables):
 [Railway](https://railway.com) runs the backend **and** serves the app, so you get one `https://` link that works on phones (camera and notifications included). The repo already has a `railway.json`, so there's nothing to configure in code.
 
 1. **Create the service.** Sign in at railway.com, then go to **New Project → Deploy from GitHub repo** and pick `LinkyJayy/koolkat`. Railway installs and starts it automatically.
-2. **Attach a volume. Don't skip this.** Without one, every deploy or restart **deletes all accounts, friends and snaps**. In the project, right-click the KoolKat service (or press ⌘K / Ctrl+K and type *volume*), choose **Attach volume**, and use the mount path `/data`. KoolKat finds the volume and stores its database there automatically.
+2. **Attach a volume. Don't skip this.** Without one, every deploy or restart **deletes all accounts, friends, Klicks and chats**. In the project, right-click the KoolKat service (or press ⌘K / Ctrl+K and type *volume*), choose **Attach volume**, and use the mount path `/data`. KoolKat finds the volume and stores its database there automatically.
 3. **Get a link.** Open the service → **Settings → Networking → Generate Domain**. Your app is now at something like `https://koolkat-production.up.railway.app`.
 4. **Optional:** in the service's **Variables**, set `VAPID_SUBJECT` to `mailto:you@example.com` so push services can contact you.
 
@@ -144,7 +155,9 @@ server/
   auth.js       auth-secret hashing, sessions, rate limiting
   streaks.js    streak rules
   push.js       Web Push: subscriptions, notifications, streak reminders
-  plans.js      KoolKat Free / Unlimited, codes, admins, Stripe helpers
+  plans.js      KoolKat Free / Unlimited, codes, admins, Stripe (incl. automatic setup)
+  chats.js      direct and group chats (end-to-end encrypted messages)
+  http.js       shared request validation helpers
   db.js         SQLite schema
 public/
   index.html, css/styles.css
@@ -189,6 +202,14 @@ All endpoints are under `/api` and take and return JSON. Authenticated endpoints
 | POST | `/admin/grant` / `/admin/revoke` | Admin: give (`username, days?`) or take back gifted Unlimited |
 | POST | `/billing/checkout` / `/billing/portal` | Start a Stripe subscription / manage it |
 | POST | `/stripe/webhook` | Stripe events (signature-checked) |
+| POST / DELETE | `/snaps/:id/favorite` | Favorite / unfavorite a Klick |
+| GET | `/favorites` | Your favorite Klicks |
+| GET | `/chats` | Your chats (members with public keys, unread counts) |
+| POST | `/chats/direct` | `userId`: open the chat with a friend |
+| POST | `/chats/group` | `memberIds` (2+ friends), `name?`: create a group |
+| POST | `/chats/:id/members` / `/name` / `/leave` / `/read` | Add friends, rename, leave, mark read |
+| GET / POST | `/chats/:id/messages` | Read (`?before=`) / send an encrypted message (`iv, ephemeralPublicKey, ciphertext, keys[]`) |
+| GET | `/admin/payments` | Admin: is Stripe connected, webhook and portal ready |
 | GET | `/push/key` | The server's VAPID public key |
 | POST | `/push/subscribe` | Save this device's `PushSubscription` (as JSON) |
 | POST | `/push/unsubscribe` | `endpoint`: stop notifications for a device |

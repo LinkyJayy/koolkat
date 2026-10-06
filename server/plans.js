@@ -122,3 +122,81 @@ export function subscriptionPeriodEnd(sub) {
 }
 
 export const SUBSCRIPTION_GRACE_MS = DAY_MS; // keep perks a day past period end while renewal settles
+
+export const STRIPE_WEBHOOK_EVENTS = [
+  'checkout.session.completed',
+  'customer.subscription.created',
+  'customer.subscription.updated',
+  'customer.subscription.deleted',
+];
+
+/** The app's public https address: PUBLIC_URL, or the domain Railway generated. */
+export function publicUrlFromEnv(env = process.env) {
+  if (env.PUBLIC_URL) return env.PUBLIC_URL.replace(/\/+$/, '');
+  if (env.RAILWAY_PUBLIC_DOMAIN) return `https://${env.RAILWAY_PUBLIC_DOMAIN}`;
+  return null;
+}
+
+const readSetting = (db, key) => {
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
+  return row ? JSON.parse(row.value) : null;
+};
+const writeSetting = (db, key, value) =>
+  db
+    .prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
+    .run(key, JSON.stringify(value));
+
+/** Stripe details the server keeps for itself (webhook secret, portal config, last event). */
+export function loadStripeState(db, config) {
+  const webhook = readSetting(db, 'stripe_webhook');
+  return {
+    webhookSecret: config?.webhookSecret || webhook?.secret || null,
+    webhookSource: config?.webhookSecret ? 'env' : webhook?.secret ? 'auto' : null,
+    webhookUrl: webhook?.url || null,
+    portalConfigId: readSetting(db, 'stripe_portal')?.id || null,
+    lastEventAt: readSetting(db, 'stripe_last_event')?.at || null,
+  };
+}
+
+export const recordStripeEvent = (db, state, at) => {
+  state.lastEventAt = at;
+  writeSetting(db, 'stripe_last_event', { at });
+};
+
+/**
+ * One-time Stripe setup, so the only thing to configure is STRIPE_SECRET_KEY:
+ *  - registers this server's webhook endpoint and keeps its signing secret
+ *    (unless STRIPE_WEBHOOK_SECRET is set), and
+ *  - creates a customer-portal configuration for "Manage subscription".
+ * Safe to run on every start: it only creates what's missing.
+ */
+export async function ensureStripeSetup({ db, stripeRequest, state, publicUrl, log = console }) {
+  if (!state.webhookSecret || state.webhookSource === 'auto') {
+    const url = publicUrl && `${publicUrl}/api/stripe/webhook`;
+    if (!url) {
+      log.warn('Stripe: set PUBLIC_URL (or generate a Railway domain) so payment webhooks can be set up.');
+    } else if (state.webhookUrl !== url || !state.webhookSecret) {
+      const endpoint = await stripeRequest('POST', '/webhook_endpoints', {
+        url,
+        enabled_events: STRIPE_WEBHOOK_EVENTS,
+        description: 'KoolKat Unlimited subscriptions',
+      });
+      writeSetting(db, 'stripe_webhook', { id: endpoint.id, url, secret: endpoint.secret });
+      Object.assign(state, { webhookSecret: endpoint.secret, webhookSource: 'auto', webhookUrl: url });
+      log.log(`Stripe: webhook registered at ${url}`);
+    }
+  }
+  if (!state.portalConfigId) {
+    const portal = await stripeRequest('POST', '/billing_portal/configurations', {
+      business_profile: { headline: 'Manage your KoolKat Unlimited subscription' },
+      features: {
+        subscription_cancel: { enabled: true, mode: 'at_period_end' },
+        payment_method_update: { enabled: true },
+        invoice_history: { enabled: true },
+      },
+    });
+    writeSetting(db, 'stripe_portal', { id: portal.id });
+    state.portalConfigId = portal.id;
+    log.log('Stripe: customer portal configured');
+  }
+}

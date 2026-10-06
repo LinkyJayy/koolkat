@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#ffffff">
-  <meta name="description" content="KoolKat: private, end-to-end encrypted snaps for you and your friends.">
+  <meta name="description" content="KoolKat: private, end-to-end encrypted Klicks for you and your friends.">
   <title>KoolKat</title>
   <link rel="icon" href="icons/icon-32.png" sizes="32x32" type="image/png">
   <link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png">
@@ -27,7 +27,7 @@
     <div class="auth-card">
       <img src="icons/logo.png" alt="" class="logo-big">
       <h1>KoolKat</h1>
-      <p class="muted">Snaps for friends only. End-to-end encrypted.</p>
+      <p class="muted">Klicks for friends only. End-to-end encrypted.</p>
       <div class="tabs" role="tablist">
         <button type="button" role="tab" class="tab active" data-auth-tab="login">Sign in</button>
         <button type="button" role="tab" class="tab" data-auth-tab="register">Sign up</button>
@@ -81,15 +81,26 @@
       </button>
     </header>
     <footer class="overlay-bottom">
+      <span class="nav-group">
       <button type="button" class="nav-btn" id="btn-friends" aria-label="Friends">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm-8 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm0 2c-2.7 0-8 1.3-8 4v3h10v-3c0-1 .4-1.9 1.1-2.6C10 13.2 8.8 13 8 13Zm8 0c-2.7 0-8 1.3-8 4v3h16v-3c0-2.7-5.3-4-8-4Z"/></svg>
         <span class="badge" id="badge-friends" hidden></span>
       </button>
-      <button type="button" class="shutter" id="btn-shutter" aria-label="Take photo"></button>
-      <button type="button" class="nav-btn" id="btn-inbox" aria-label="Snaps">
+      <button type="button" class="nav-btn" id="btn-chats" aria-label="Chats">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2Z"/></svg>
+        <span class="badge" id="badge-chats" hidden></span>
+      </button>
+      </span>
+      <button type="button" class="shutter" id="btn-shutter" aria-label="Take photo"></button>
+      <span class="nav-group">
+      <button type="button" class="nav-btn" id="btn-inbox" aria-label="Klicks">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2ZM5 19l3.5-4.5 2.5 3 3.5-4.5 4.5 6H5Z"/></svg>
         <span class="badge" id="badge-inbox" hidden></span>
       </button>
+      <button type="button" class="nav-btn" id="btn-favorites" aria-label="Favorites">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17.3 18.2 21l-1.6-7L22 9.2l-7.2-.6L12 2 9.2 8.6 2 9.2 7.4 14l-1.6 7z"/></svg>
+      </button>
+      </span>
     </footer>
   </section>
 
@@ -97,7 +108,7 @@
   <section id="screen-preview" class="screen dark" hidden>
     <div class="stage" id="preview-stage">
       <div class="frame" id="preview-frame">
-        <img id="preview-img" alt="Your snap">
+        <img id="preview-img" alt="Your Klick">
         <div class="caption-bar editing" id="caption-bar" hidden>
           <input id="caption-input" maxlength="80" placeholder="Add a caption…" enterkeyhint="done" aria-label="Caption">
         </div>
@@ -128,7 +139,7 @@
     </header>
     <p class="lock-note"><span aria-hidden="true">🔒</span> Encrypted on this device. Only the friends you pick can open it.</p>
     <ul class="list" id="send-list"></ul>
-    <div class="empty" id="send-empty" hidden><img src="icons/logo.png" alt="" class="empty-logo">Add some friends first, then you can send them snaps.</div>
+    <div class="empty" id="send-empty" hidden><img src="icons/logo.png" alt="" class="empty-logo">Add some friends first, then you can send them Klicks.</div>
     <footer class="send-bar" id="send-bar" hidden>
       <span id="send-summary"></span>
       <button type="button" class="btn primary" id="btn-send">Send</button>
@@ -141,7 +152,7 @@
       <button type="button" class="icon-btn plain" data-back="camera" aria-label="Back to camera">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12Z"/></svg>
       </button>
-      <h2><img src="icons/logo.png" alt="" class="logo">Snaps</h2>
+      <h2><img src="icons/logo.png" alt="" class="logo">Klicks</h2>
       <button type="button" class="icon-btn plain" id="btn-inbox-refresh" aria-label="Refresh">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.7 6.3A8 8 0 1 0 19.7 14h-2.1a6 6 0 1 1-1.4-6.2L13 11h7V4Z"/></svg>
       </button>
@@ -151,7 +162,7 @@
       <button type="button" role="tab" class="tab" data-inbox-tab="sent">Sent</button>
     </div>
     <div class="notify-banner" id="notify-banner" hidden>
-      <span>🔔 Get notified when friends snap you</span>
+      <span>🔔 Get notified when friends send you Klicks</span>
       <span class="item-actions">
         <button type="button" class="btn small primary" id="btn-notify-banner">Turn on</button>
         <button type="button" class="icon-btn plain" id="btn-notify-dismiss" aria-label="Dismiss">
@@ -163,11 +174,11 @@
     <div class="empty" id="inbox-empty" hidden><img src="icons/logo.png" alt="" class="empty-logo"><span id="inbox-empty-text"></span></div>
   </section>
 
-  <!-- Snap viewer -->
+  <!-- Klick viewer -->
   <section id="screen-viewer" class="screen dark" hidden>
     <div class="stage" id="viewer-stage">
       <div class="frame" id="viewer-frame">
-        <img id="viewer-img" alt="Snap">
+        <img id="viewer-img" alt="Klick">
         <div class="caption-bar" id="viewer-caption" hidden></div>
       </div>
     </div>
@@ -176,11 +187,17 @@
         <strong id="viewer-from"></strong>
         <span class="muted" id="viewer-time"></span>
       </div>
-      <button type="button" class="icon-btn" id="btn-snap-delete" aria-label="Delete snap">
+      <span class="viewer-actions">
+      <button type="button" class="icon-btn" id="btn-snap-favorite" aria-label="Add to favorites" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true" class="star-empty"><path d="M22 9.24l-7.19-.62L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.63-7.03L22 9.24zM12 15.4l-3.76 2.27 1-4.28-3.32-2.88 4.38-.38L12 6.1l1.71 4.04 4.38.38-3.32 2.88 1 4.28L12 15.4z"/></svg>
+        <svg viewBox="0 0 24 24" aria-hidden="true" class="star-full"><path d="M12 17.3 18.2 21l-1.6-7L22 9.2l-7.2-.6L12 2 9.2 8.6 2 9.2 7.4 14l-1.6 7z"/></svg>
+      </button>
+      <button type="button" class="icon-btn" id="btn-snap-delete" aria-label="Delete Klick">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v1H4v2h16V4h-5V3H9Zm-3 5 1 13h10l1-13H6Zm4 2h1.5v9H10v-9Zm2.5 0H14v9h-1.5v-9Z"/></svg>
       </button>
+      </span>
     </header>
-    <p class="hint">Tap to close. 🔒 Only the friends it was sent to can see this snap.</p>
+    <p class="hint">Tap to close. 🔒 Only the friends it was sent to can see this Klick.</p>
   </section>
 
   <!-- Friends -->
@@ -205,6 +222,112 @@
     <ul class="list" id="outgoing-list"></ul>
   </section>
 
+  <!-- Favorites -->
+  <section id="screen-favorites" class="screen panel" hidden>
+    <header class="panel-header">
+      <button type="button" class="icon-btn plain" data-back="camera" aria-label="Back to camera">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12Z"/></svg>
+      </button>
+      <h2><img src="icons/logo.png" alt="" class="logo">Favorites</h2>
+      <span></span>
+    </header>
+    <ul class="list" id="favorites-list"></ul>
+    <div class="empty" id="favorites-empty" hidden>
+      <img src="icons/logo.png" alt="" class="empty-logo">
+      No favorites yet. Open a Klick and tap ☆ to keep it here.
+    </div>
+  </section>
+
+  <!-- Chats -->
+  <section id="screen-chats" class="screen panel" hidden>
+    <header class="panel-header">
+      <button type="button" class="icon-btn plain" data-back="camera" aria-label="Back to camera">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12Z"/></svg>
+      </button>
+      <h2><img src="icons/logo.png" alt="" class="logo">Chats</h2>
+      <span></span>
+    </header>
+    <div class="chat-actions">
+      <button type="button" class="btn primary" id="btn-new-chat">💬 New chat</button>
+      <button type="button" class="btn" id="btn-new-group">👥 New group</button>
+    </div>
+    <p class="lock-note"><span aria-hidden="true">🔒</span> Messages are end-to-end encrypted. Only the people in the chat can read them.</p>
+    <ul class="list" id="chats-list"></ul>
+    <div class="empty" id="chats-empty" hidden>
+      <img src="icons/logo.png" alt="" class="empty-logo">
+      No chats yet. Start one with a friend, or make a group with 2 or more friends.
+    </div>
+  </section>
+
+  <!-- Pick friends for a new chat / group -->
+  <section id="screen-chat-new" class="screen panel" hidden>
+    <header class="panel-header">
+      <button type="button" class="icon-btn plain" data-back="chats" aria-label="Back to chats">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12Z"/></svg>
+      </button>
+      <h2 id="chat-new-title">New chat</h2>
+      <span></span>
+    </header>
+    <div class="admin-form" id="group-name-row" hidden>
+      <label>Group name <span class="fineprint">Optional</span>
+        <input id="group-name" maxlength="40" placeholder="e.g. Kool Kats">
+      </label>
+    </div>
+    <p class="lock-note" id="chat-new-hint"></p>
+    <ul class="list" id="chat-new-list"></ul>
+    <div class="empty" id="chat-new-empty" hidden>Add some friends first, then you can message them.</div>
+    <footer class="send-bar" id="group-bar" hidden>
+      <span id="group-summary"></span>
+      <button type="button" class="btn" id="btn-create-group">Create group</button>
+    </footer>
+  </section>
+
+  <!-- A chat -->
+  <section id="screen-chat" class="screen chat-screen" hidden>
+    <header class="panel-header">
+      <button type="button" class="icon-btn plain" data-back="chats" aria-label="Back to chats">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12Z"/></svg>
+      </button>
+      <div class="chat-title">
+        <h2 id="chat-name"></h2>
+        <span class="fineprint" id="chat-members"></span>
+      </div>
+      <button type="button" class="icon-btn plain" id="btn-chat-menu" aria-label="Group options" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm0 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z"/></svg>
+      </button>
+    </header>
+    <div class="messages" id="messages">
+      <button type="button" class="btn small load-older" id="btn-older-messages" hidden>Show older messages</button>
+      <ol class="message-list" id="message-list"></ol>
+    </div>
+    <form class="composer" id="composer" autocomplete="off">
+      <input id="composer-input" maxlength="2000" placeholder="Message" enterkeyhint="send" aria-label="Message">
+      <button type="submit" class="btn primary" id="btn-send-message" aria-label="Send">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3.4 20.4 17.4-7.5a1 1 0 0 0 0-1.8L3.4 3.6a.9.9 0 0 0-1.3.9L2 9.1c0 .5.4.9.9 1L17 12 2.9 13.9c-.5.1-.9.5-.9 1l.1 4.6a.9.9 0 0 0 1.3.9Z"/></svg>
+      </button>
+    </form>
+  </section>
+
+  <!-- Group options -->
+  <dialog id="dialog-group">
+    <form method="dialog">
+      <h2>Group</h2>
+      <div class="admin-form">
+        <label>Group name
+          <input id="group-rename" maxlength="40">
+        </label>
+      </div>
+      <p class="fineprint">Members</p>
+      <ul class="list" id="group-members"></ul>
+      <div class="row wrap">
+        <button type="button" class="btn" id="btn-group-rename">Save name</button>
+        <button type="button" class="btn" id="btn-group-add">Add friends</button>
+        <button type="button" class="btn danger" id="btn-group-leave">Leave group</button>
+      </div>
+      <div class="row"><button class="btn" value="close">Close</button></div>
+    </form>
+  </dialog>
+
   <!-- Admin tools (only for admins) -->
   <section id="screen-admin" class="screen panel" hidden>
     <header class="panel-header">
@@ -214,6 +337,9 @@
       <h2><img src="icons/logo.png" alt="" class="logo">Admin</h2>
       <span></span>
     </header>
+
+    <h3 class="section-title">Payments</h3>
+    <div class="payments-status" id="payments-status">Checking…</div>
 
     <h3 class="section-title">Give KoolKat Unlimited</h3>
     <form id="grant-form" class="admin-form" novalidate>
@@ -327,9 +453,10 @@
       <p class="streak-line" id="friend-streak"></p>
       <p class="fineprint">Safety code</p>
       <code class="fingerprint" id="friend-fingerprint"></code>
-      <p class="fineprint">If this matches the code on your friend's profile screen, your snaps to them are encrypted to the right person.</p>
+      <p class="fineprint">If this matches the code on your friend's profile screen, your Klicks and messages to them are encrypted to the right person.</p>
       <div class="row">
         <button class="btn" value="close">Close</button>
+        <button class="btn primary" value="message">Message</button>
         <button class="btn danger" value="remove">Remove friend</button>
       </div>
       <p class="dialog-brand"><img src="icons/logo.png" alt="">KoolKat</p>

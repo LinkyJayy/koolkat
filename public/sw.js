@@ -4,7 +4,7 @@
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
 
-const VIEWS = ['inbox', 'friends', 'camera'];
+const VIEWS = ['inbox', 'friends', 'camera', 'chats'];
 const appUrl = (view) => new URL(VIEWS.includes(view) ? `./#${view}` : './', self.registration.scope).href;
 
 self.addEventListener('push', (event) => {

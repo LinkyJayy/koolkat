@@ -24,7 +24,11 @@ import {
   adminUsernames,
   cleanFlair,
   createStripeClient,
+  ensureStripeSetup,
   generateCode,
+  loadStripeState,
+  publicUrlFromEnv,
+  recordStripeEvent,
   hasUnlimited,
   isAdmin,
   normaliseCode,
@@ -35,6 +39,8 @@ import {
   verifyStripeSignature,
 } from './plans.js';
 import { DAY_MS } from './streaks.js';
+import { HttpError, base64Field, fail, pair, parseUserId, validatePublicKey } from './http.js';
+import { registerChatRoutes } from './chats.js';
 
 const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 
@@ -44,43 +50,6 @@ export const MAX_RECIPIENTS = 50;
 
 const USERNAME_RE = /^[a-zA-Z0-9_.]{3,20}$/;
 const HEX64_RE = /^[0-9a-f]{64}$/;
-const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
-
-class HttpError extends Error {
-  constructor(status, message) {
-    super(message);
-    this.status = status;
-  }
-}
-
-const fail = (status, message) => {
-  throw new HttpError(status, message);
-};
-
-function base64Field(value, name, { min = 1, max = Infinity } = {}) {
-  if (typeof value !== 'string' || value.length % 4 !== 0 || !BASE64_RE.test(value)) {
-    fail(400, `${name} must be base64`);
-  }
-  const bytes = Buffer.from(value, 'base64');
-  if (bytes.length < min || bytes.length > max) fail(400, `${name} has an invalid length`);
-  return bytes;
-}
-
-/** Accept only an uncompressed P-256 ECDH public key in SPKI/DER form. */
-function validatePublicKey(value, name = 'publicKey') {
-  const der = base64Field(value, name, { max: 200 });
-  try {
-    const key = crypto.createPublicKey({ key: der, format: 'der', type: 'spki' });
-    if (key.asymmetricKeyType !== 'ec' || key.asymmetricKeyDetails?.namedCurve !== 'prime256v1') {
-      throw new Error('wrong curve');
-    }
-  } catch {
-    fail(400, `${name} must be a P-256 public key`);
-  }
-  return value;
-}
-
-const pair = (a, b) => (a < b ? [a, b] : [b, a]);
 
 /** Origins (e.g. a GitHub Pages site) allowed to call the API from another domain. */
 export function parseAllowedOrigins(value = process.env.ALLOWED_ORIGINS || '') {
@@ -99,6 +68,9 @@ export function createApp({
   admins = adminUsernames(),
   stripe = stripeConfig(),
   stripeFetch = fetch,
+  // Register the webhook / portal in Stripe automatically on start.
+  stripeAutoSetup = Boolean(stripe && !process.env.KOOLKAT_SKIP_STRIPE_SETUP),
+  publicUrl = publicUrlFromEnv(),
 } = {}) {
   const app = express();
   app.disable('x-powered-by');
@@ -234,6 +206,18 @@ export function createApp({
       'UPDATE users SET stripe_customer_id = ?, stripe_subscription_id = COALESCE(?, stripe_subscription_id) WHERE id = ?'
     ),
     userByStripeCustomer: db.prepare('SELECT * FROM users WHERE stripe_customer_id = ?'),
+    favoriteIds: db.prepare('SELECT snap_id FROM favorites WHERE user_id = ?'),
+    addFavorite: db.prepare('INSERT OR IGNORE INTO favorites (user_id, snap_id, created_at) VALUES (?, ?, ?)'),
+    removeFavorite: db.prepare('DELETE FROM favorites WHERE user_id = ? AND snap_id = ?'),
+    favorites: db.prepare(`
+      SELECT f.created_at AS favorited_at, s.id, s.sender_id, s.created_at, s.ciphertext IS NOT NULL AS available,
+             s.sender_wrapped_key IS NOT NULL AS sender_viewable,
+             u.username, u.display_name, u.plan_until, u.sub_until, u.flair
+      FROM favorites f
+      JOIN snaps s ON s.id = f.snap_id
+      JOIN users u ON u.id = s.sender_id
+      WHERE f.user_id = ?
+      ORDER BY f.created_at DESC`),
     code: db.prepare('SELECT * FROM codes WHERE code = ?'),
     codes: db.prepare('SELECT * FROM codes ORDER BY created_at DESC'),
     insertCode: db.prepare(`
@@ -518,7 +502,27 @@ export function createApp({
 
   // ---------- billing (Stripe) ----------
   const stripeRequest = stripe && createStripeClient(stripe, stripeFetch);
-  const siteUrl = (req) => (process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
+  const stripeState = loadStripeState(db, stripe);
+  if (stripeRequest && stripeAutoSetup) {
+    app.locals.stripeSetup = ensureStripeSetup({ db, stripeRequest, state: stripeState, publicUrl }).catch((err) =>
+      console.error(`Stripe setup failed: ${err.message}`)
+    );
+  }
+  const siteUrl = (req) => (publicUrl || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
+
+  api.get(
+    '/admin/payments',
+    auth,
+    requireAdmin,
+    wrap(() => ({
+      configured: Boolean(stripe),
+      mode: stripe ? (stripe.secretKey.startsWith('sk_live') || stripe.secretKey.startsWith('rk_live') ? 'live' : 'test') : null,
+      webhook: stripeState.webhookSecret ? stripeState.webhookSource : null,
+      webhookUrl: stripeState.webhookUrl,
+      portal: Boolean(stripeState.portalConfigId),
+      lastEventAt: stripeState.lastEventAt,
+    }))
+  );
 
   api.post(
     '/billing/checkout',
@@ -562,6 +566,7 @@ export function createApp({
       const portal = await stripeRequest('POST', '/billing_portal/sessions', {
         customer: user.stripe_customer_id,
         return_url: `${siteUrl(req)}/`,
+        configuration: stripeState.portalConfigId || undefined,
       });
       return { url: portal.url };
     })
@@ -649,11 +654,6 @@ export function createApp({
     })
   );
 
-  const parseUserId = (value) => {
-    const id = Number(value);
-    if (!Number.isSafeInteger(id) || id <= 0) fail(400, 'Invalid user id');
-    return id;
-  };
 
   api.post(
     '/friends/:userId/accept',
@@ -702,7 +702,7 @@ export function createApp({
         const id = parseUserId(r?.userId);
         if (seen.has(id)) fail(400, 'Duplicate recipient');
         seen.add(id);
-        if (id === me || !areFriends(me, id)) fail(403, 'You can only send snaps to friends');
+        if (id === me || !areFriends(me, id)) fail(403, 'You can only send Klicks to friends');
         base64Field(r.wrappedKey, 'wrappedKey', { min: 48, max: 48 });
         base64Field(r.wrapIv, 'wrapIv', { min: 12, max: 12 });
       }
@@ -718,8 +718,8 @@ export function createApp({
         fail(
           413,
           plan.plan === 'unlimited'
-            ? 'Your KoolKat storage is full. Delete some of your sent snaps to make room.'
-            : 'Your 512 MB of KoolKat storage is full. Delete some of your sent snaps, or upgrade to KoolKat Unlimited for 2.5 GB.'
+            ? 'Your KoolKat storage is full. Delete some of your sent Klicks to make room.'
+            : 'Your 512 MB of KoolKat storage is full. Delete some of your sent Klicks, or upgrade to KoolKat Unlimited for 2.5 GB.'
         );
       }
 
@@ -738,7 +738,7 @@ export function createApp({
       });
       for (const r of recipients) {
         pusher.notify(Number(r.userId), {
-          body: `${req.user.displayName} sent you a snap 📸`,
+          body: `${req.user.displayName} sent you a Klick 📸`,
           tag: `snap-${me}`,
           view: 'inbox',
         });
@@ -754,6 +754,7 @@ export function createApp({
     wrap((req) => {
       const before = Number(req.query.before) || Number.MAX_SAFE_INTEGER;
       const rows = q.inbox.all(req.user.id, before, INBOX_PAGE_SIZE + 1);
+      const favorites = favoriteSet(req.user.id);
       return {
         snaps: rows.slice(0, INBOX_PAGE_SIZE).map((s) => ({
           id: s.id,
@@ -763,6 +764,7 @@ export function createApp({
           opened: s.viewed_at != null,
           openedAt: s.viewed_at,
           available: Boolean(s.available),
+          favorite: favorites.has(s.id),
         })),
         hasMore: rows.length > INBOX_PAGE_SIZE,
       };
@@ -774,9 +776,16 @@ export function createApp({
     auth,
     wrap((req) => {
       const byId = new Map();
+      const favorites = favoriteSet(req.user.id);
       for (const row of q.sent.all(req.user.id)) {
         if (!byId.has(row.id)) {
-          byId.set(row.id, { id: row.id, createdAt: row.created_at, viewable: Boolean(row.viewable), recipients: [] });
+          byId.set(row.id, {
+            id: row.id,
+            createdAt: row.created_at,
+            viewable: Boolean(row.viewable),
+            favorite: favorites.has(row.id),
+            recipients: [],
+          });
         }
         byId.get(row.id).recipients.push({
           ...publicUser({ ...row, id: row.recipient_id }),
@@ -796,11 +805,12 @@ export function createApp({
       // The sender viewing their own snap.
       const own = q.snapForSender.get(id, req.user.id);
       if (own) {
-        if (!own.sender_wrapped_key) fail(410, 'Snaps sent before this update can only be viewed by their recipients');
-        if (own.ciphertext == null) fail(410, 'This snap is no longer available');
+        if (!own.sender_wrapped_key) fail(410, 'Klicks sent before this update can only be viewed by their recipients');
+        if (own.ciphertext == null) fail(410, 'This Klick is no longer available');
         return {
           id: own.id,
           own: true,
+          favorite: favoriteSet(req.user.id).has(own.id),
           from: publicUser(q.userById.get(req.user.id)),
           to: q.snapRecipients.all(id).map(publicUser),
           createdAt: own.created_at,
@@ -812,13 +822,14 @@ export function createApp({
         };
       }
       const snap = q.snapForRecipient.get(req.user.id, id);
-      if (!snap) fail(404, 'Snap not found');
-      if (!areFriends(req.user.id, snap.sender_id)) fail(403, 'Snaps are only visible to friends');
+      if (!snap) fail(404, 'Klick not found');
+      if (!areFriends(req.user.id, snap.sender_id)) fail(403, 'Klicks are only visible to friends');
       // Only snaps from before snaps were kept can be missing their data.
-      if (snap.ciphertext == null) fail(410, 'This snap is no longer available');
+      if (snap.ciphertext == null) fail(410, 'This Klick is no longer available');
       return {
         id: snap.id,
         from: publicUser({ ...snap, id: snap.sender_id, username: snap.sender_username, display_name: snap.sender_display_name }),
+        favorite: favoriteSet(req.user.id).has(snap.id),
         createdAt: snap.created_at,
         iv: snap.iv,
         ephemeralPublicKey: snap.ephemeral_key,
@@ -835,7 +846,7 @@ export function createApp({
     wrap((req) => {
       const id = String(req.params.id);
       const snap = q.snapForRecipient.get(req.user.id, id);
-      if (!snap) fail(404, 'Snap not found');
+      if (!snap) fail(404, 'Klick not found');
       q.markViewed.run(clock(), id, req.user.id);
       return { ok: true };
     })
@@ -853,7 +864,7 @@ export function createApp({
         q.deleteSnap.run(id);
         return { ok: true, deletedForEveryone: true };
       }
-      if (!q.snapForRecipient.get(req.user.id, id)) fail(404, 'Snap not found');
+      if (!q.snapForRecipient.get(req.user.id, id)) fail(404, 'Klick not found');
       transaction(db, () => {
         q.removeRecipient.run(id, req.user.id);
         if (q.recipientCount.get(id).n === 0) q.deleteSnap.run(id);
@@ -861,6 +872,66 @@ export function createApp({
       return { ok: true };
     })
   );
+
+  // ---------- favorites ----------
+  const favoriteSet = (userId) => new Set(q.favoriteIds.all(userId).map((r) => r.snap_id));
+
+  /** Can this user open this Klick right now? (Its sender, or a recipient who's still a friend.) */
+  const canView = (id, userId) => {
+    const own = q.snapForSender.get(id, userId);
+    if (own) return Boolean(own.sender_wrapped_key);
+    const received = q.snapForRecipient.get(userId, id);
+    return Boolean(received && areFriends(userId, received.sender_id));
+  };
+
+  api.post(
+    '/snaps/:id/favorite',
+    auth,
+    wrap((req) => {
+      const id = String(req.params.id);
+      if (!canView(id, req.user.id)) fail(404, 'Klick not found');
+      q.addFavorite.run(req.user.id, id, clock());
+      return { favorite: true };
+    })
+  );
+
+  api.delete(
+    '/snaps/:id/favorite',
+    auth,
+    wrap((req) => {
+      q.removeFavorite.run(req.user.id, String(req.params.id));
+      return { favorite: false };
+    })
+  );
+
+  api.get(
+    '/favorites',
+    auth,
+    wrap((req) => {
+      const me = req.user.id;
+      const favorites = [];
+      for (const row of q.favorites.all(me)) {
+        const own = row.sender_id === me;
+        // Favorites from people you're no longer friends with stay hidden, like their Klicks.
+        if (!own && !areFriends(me, row.sender_id)) continue;
+        if (own && !row.sender_viewable) continue;
+        favorites.push({
+          id: row.id,
+          own,
+          from: publicUser({ ...row, id: row.sender_id }),
+          to: own ? q.snapRecipients.all(row.id).map(publicUser) : undefined,
+          createdAt: row.created_at,
+          favoritedAt: row.favorited_at,
+          available: Boolean(row.available),
+          favorite: true,
+        });
+      }
+      return { favorites };
+    })
+  );
+
+  // ---------- chats ----------
+  registerChatRoutes({ api, db, clock, auth, wrap, publicUser, areFriends, pusher });
 
   // ---------- push notifications ----------
   api.get('/push/key', (req, res) => res.json({ publicKey: pusher.publicKey }));
@@ -890,7 +961,7 @@ export function createApp({
   // eslint-disable-next-line no-unused-vars
   api.use((err, req, res, next) => {
     if (err instanceof HttpError) return res.status(err.status).json({ error: err.message });
-    if (err.type === 'entity.too.large') return res.status(413).json({ error: 'Snap is too large' });
+    if (err.type === 'entity.too.large') return res.status(413).json({ error: 'That Klick is too large' });
     if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'Invalid JSON' });
     console.error(err);
     res.status(500).json({ error: 'Something went wrong' });
@@ -899,9 +970,9 @@ export function createApp({
   // Stripe webhook: needs the raw body to check the signature, so it's mounted
   // before the JSON-parsing API router.
   app.post('/api/stripe/webhook', express.raw({ type: '*/*', limit: '1mb' }), (req, res) => {
-    if (!stripe?.webhookSecret) return res.status(503).json({ error: 'Webhooks not configured' });
+    if (!stripeState.webhookSecret) return res.status(503).json({ error: 'Webhooks not configured' });
     const raw = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : '';
-    if (!verifyStripeSignature(raw, req.get('stripe-signature'), stripe.webhookSecret, clock())) {
+    if (!verifyStripeSignature(raw, req.get('stripe-signature'), stripeState.webhookSecret, clock())) {
       return res.status(400).json({ error: 'Bad signature' });
     }
     let event;
@@ -911,6 +982,7 @@ export function createApp({
       return res.status(400).json({ error: 'Invalid JSON' });
     }
     handleStripeEvent(event);
+    recordStripeEvent(db, stripeState, clock());
     res.json({ received: true });
   });
 
