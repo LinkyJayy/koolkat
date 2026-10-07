@@ -36,6 +36,12 @@
   }
 
   apply(get());
+
+  // Emojis: Apple devices keep Apple's own; everything else uses KoolKat's
+  // Android (Noto Color Emoji) set so they look the same on every device.
+  var apple = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent);
+  if (!apple) document.documentElement.classList.add('android-emoji');
+
   if (window.matchMedia) {
     matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
       apply(get());

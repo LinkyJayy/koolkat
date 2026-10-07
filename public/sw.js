@@ -16,6 +16,7 @@ const PRECACHE = [
   'index.html',
   'manifest.webmanifest',
   'css/styles.css',
+  'css/emoji.css',
   'js/app.js',
   'js/api.js',
   'js/boot-check.js',
