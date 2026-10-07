@@ -23,6 +23,8 @@ import {
 } from './crypto.js';
 import { drawQr, friendLink, parseFriendCode, scanVideo } from './qr.js';
 import { compose, grabFrame, openCamera, stopStream, waitForPicture } from './katcam.js';
+import { checkActive, initCalls, startCall, startCallEvents, stopCallEvents, usingCamera } from './calls.js';
+import { playNotification, setSoundsOn, soundsOn } from './sounds.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -245,7 +247,8 @@ async function logout() {
 
 function signedOut() {
   stopMapSharing();
-  clearInterval(presenceWatch.timer);
+  stopCallEvents();
+  alertCounts = null;
   applyAppIcon(null);
   setToken(null);
   clearIdentity();
@@ -277,7 +280,7 @@ function enterApp() {
     if (document.visibilityState === 'visible') refresh();
   }, 10000);
   resyncPush();
-  watchFriendsPresence();
+  startCallEvents();
   refreshMe()
     .then(() => resumeMapSharing())
     .catch(() => {});
@@ -298,18 +301,9 @@ function openView(view) {
     else toast("That friend link isn't valid", { error: true });
     return;
   }
-  // Back from connecting Spotify.
-  if (view.startsWith('presence/')) {
-    const result = view.slice('presence/'.length);
-    const messages = {
-      spotify: ['🎵 Spotify connected! Friends can see what you play.', false],
-      cancelled: ['Spotify was not connected', true],
-      expired: ['That took too long. Try connecting Spotify again.', true],
-      failed: ["Couldn't connect Spotify. Try again.", true],
-      not_allowed: ["Spotify connected, but Spotify won't share your music yet. See Profile → Rich Presence.", true],
-    };
-    const [text, error] = messages[result] ?? messages.failed;
-    toast(text, { error });
+  // A Call or FaceTime notification: show the call that's ringing.
+  if (view === 'call') {
+    checkActive();
     return;
   }
   if (view === 'inbox') openInbox();
@@ -343,9 +337,25 @@ async function refreshInbox() {
   badge.textContent = unopened;
 }
 
+// New friend requests, Klicks and messages since the last check play the
+// notification sound (not on the first check after opening KoolKat).
+let alertCounts = null;
+
+function playSoundForNewThings() {
+  const counts = {
+    requests: state.incoming.length,
+    klicks: state.inbox.filter((s) => !s.opened).length,
+    messages: state.unreadMessages ?? 0,
+  };
+  const before = alertCounts;
+  alertCounts = counts;
+  if (before && Object.keys(counts).some((k) => counts[k] > before[k])) playNotification();
+}
+
 async function refresh() {
   try {
     await Promise.all([refreshFriends(), refreshInbox(), refreshChats(), refreshNewsBadge()]);
+    playSoundForNewThings();
     if (state.screen === 'chats') renderChats();
     if (state.screen === 'friends') {
       renderFriends();
@@ -386,6 +396,8 @@ const CAMERA_ERRORS = {
 };
 
 async function startCamera() {
+  // FaceTime is using the camera; it comes back when the call ends.
+  if (usingCamera()) return;
   const run = ++cameraRun;
   releaseCamera();
   hideCameraMessage();
@@ -1103,6 +1115,7 @@ const chat = { current: null, messages: [], decrypted: new Map(), hasMore: false
 async function refreshChats() {
   const { chats, unread } = await api('GET', '/chats');
   state.chats = chats;
+  state.unreadMessages = unread;
   const badge = $('badge-chats');
   badge.hidden = unread === 0;
   badge.textContent = unread;
@@ -1258,9 +1271,12 @@ function renderChatHeader() {
   $('chat-members').textContent =
     c.kind === 'group' ? `You, ${others.map((m) => m.displayName).join(', ')}` : others[0]?.flair || `@${others[0]?.username ?? ''}`;
   $('btn-chat-menu').hidden = c.kind !== 'group';
+  // Calls and FaceTime are one-to-one, with friends.
+  const callable = c.kind !== 'group' && state.friends.some((f) => f.id === others[0]?.id);
+  $('btn-chat-call').hidden = !callable;
+  $('btn-chat-facetime').hidden = !callable;
   const friend = c.kind === 'group' ? null : state.friends.find((f) => f.id === others[0]?.id);
-  if (friend?.activity) showActivity($('chat-activity'), friend.activity);
-  else showActivity($('chat-activity'), friend?.nowPlaying && { emoji: '🎵', text: musicLabel(friend.nowPlaying).slice(3) });
+  showActivity($('chat-activity'), friend?.activity);
 }
 
 async function decryptAll(messages) {
@@ -1517,8 +1533,7 @@ function friendRow(f) {
         { class: 'item-main' },
         nameEl(f),
         el('div', { class: 'item-sub', text: sub }),
-        f.activity ? el('div', { class: 'activity-bubble small', text: activityLabel(f.activity) }) : null,
-        f.nowPlaying ? el('div', { class: 'activity-bubble small music-bubble', text: musicLabel(f.nowPlaying) }) : null
+        f.activity ? el('div', { class: 'activity-bubble small', text: activityLabel(f.activity) }) : null
       ),
       bffImg(f),
       streakBadge(f.streak)
@@ -1563,18 +1578,14 @@ async function runSearch() {
   }
 }
 
-let openFriendId = null;
-
 async function openFriend(friend) {
   const dialog = $('dialog-friend');
-  openFriendId = friend.id;
   $('friend-avatar').textContent = friend.displayName[0];
   $('friend-name').replaceChildren(...nodes(friend.displayName, badgeImg(friend)));
   $('friend-username').textContent = `@${friend.username}`;
   $('friend-flair').textContent = friend.flair || '';
   $('friend-flair').hidden = !friend.flair;
   showActivity($('friend-activity'), friend.activity);
-  $('friend-now-playing').replaceChildren(...nodes(friend.nowPlaying && nowPlayingCard(friend.nowPlaying)));
   $('friend-streak').textContent =
     friend.streak.count > 0 ? `🔥 ${friend.streak.count} day streak${friend.streak.expiring ? ' ⌛' : ''}` : 'No streak yet. Send each other Klicks every day to start one!';
   $('friend-fingerprint').textContent = await fingerprint(friend.publicKey);
@@ -1583,6 +1594,10 @@ async function openFriend(friend) {
   dialog.onclose = () => {
     if (dialog.returnValue === 'message') {
       startDirectChat(friend.id).catch((err) => toast(err.message, { error: true }));
+      return;
+    }
+    if (dialog.returnValue === 'call' || dialog.returnValue === 'facetime') {
+      startCall(friend, dialog.returnValue === 'facetime' ? 'video' : 'audio');
       return;
     }
     if (dialog.returnValue === 'remove' && confirm(`Remove ${friend.displayName} as a friend? Your streak will be lost.`)) {
@@ -1606,6 +1621,7 @@ $('btn-profile').addEventListener('click', async () => {
     .catch(() => {});
   $('profile-fingerprint').textContent = await fingerprint(state.me.publicKey);
   renderNotifyRow();
+  renderSoundsRow();
   renderInstallRow();
   renderCameraInfo();
   api('GET', '/health')
@@ -1979,7 +1995,6 @@ function renderPersonalisation(plan) {
   $('btn-badge-reset').disabled = !plan.customBadge;
   renderActivityEditor(plan);
   renderChatThemeEditor(plan);
-  loadPresence();
 }
 
 async function loadImageFile(file) {
@@ -2930,125 +2945,50 @@ $('katmap-modes').addEventListener('click', async (e) => {
   }
 });
 
-// ---------- KoolKat Unlimited: Rich Presence ----------
-const musicLabel = (np) => `🎵 ${np.title}${np.artist ? ` · ${np.artist}` : ''}`;
 
-function nowPlayingCard(np) {
-  const parts = [
-    np.art ? el('img', { src: np.art, alt: '', referrerpolicy: 'no-referrer' }) : el('span', { class: 'np-icon', text: '🎵' }),
-    el('span', { class: 'np-text' }, el('strong', { text: np.title }), el('span', { text: [np.artist, np.album].filter(Boolean).join(' · ') })),
-    el('span', { class: 'np-source', text: np.source === 'spotify' ? 'Spotify' : 'Last.fm' }),
-  ];
-  return np.url
-    ? el('a', { class: 'now-playing', href: np.url, target: '_blank', rel: 'noopener noreferrer' }, ...parts)
-    : el('div', { class: 'now-playing' }, ...parts);
-}
-
-// Friends' songs change often, so while you're looking at friends or a chat
-// they're checked every few seconds (the rest of the app refreshes every 10).
-const presenceWatch = { timer: null, busy: false };
-
-function presenceVisible() {
-  return state.screen === 'friends' || state.screen === 'chat' || $('dialog-friend').open;
-}
-
-async function refreshFriendsPresence() {
-  if (presenceWatch.busy || document.visibilityState !== 'visible' || !state.me || !presenceVisible()) return;
-  presenceWatch.busy = true;
-  try {
-    const { playing } = await api('GET', '/presence/friends');
-    let changed = false;
-    for (const f of state.friends) {
-      const np = playing[f.id] ?? null;
-      if (JSON.stringify(np) !== JSON.stringify(f.nowPlaying ?? null)) {
-        f.nowPlaying = np;
-        changed = true;
-        if ($('dialog-friend').open && openFriendId === f.id) {
-          $('friend-now-playing').replaceChildren(...nodes(np && nowPlayingCard(np)));
-        }
-      }
-    }
-    if (!changed) return;
-    if (state.screen === 'friends') renderFriends();
-    if (state.screen === 'chat' && chat.current) renderChatHeader();
-  } catch {
-    // Offline: try again next time.
-  } finally {
-    presenceWatch.busy = false;
-  }
-}
-
-function watchFriendsPresence() {
-  clearInterval(presenceWatch.timer);
-  presenceWatch.timer = setInterval(refreshFriendsPresence, 4000);
-}
-
-function renderPresence(p) {
-  state.presence = p;
-  const connected = p.source;
-  $('presence-status').textContent = !connected
-    ? p.spotifyAvailable || p.lastfmAvailable
-      ? "Show your friends what you're listening to."
-      : "Rich Presence isn't set up on this server yet (an admin needs to add the Spotify or Last.fm keys)."
-    : p.source === 'spotify'
-      ? `Connected to Spotify. ${p.nowPlaying ? 'Your friends see:' : 'Nothing playing right now.'}`
-      : `Connected to Last.fm as ${p.lastfmUser}. ${p.nowPlaying ? 'Your friends see:' : 'Nothing playing right now.'}`;
-  if (p.error === 'not_allowed') {
-    $('presence-status').textContent =
-      "Connected, but Spotify won't share your music with KoolKat yet. KoolKat's Spotify app only works for people the admin has added: ask an admin to add the email address of your Spotify account, then tap Try again.";
-  }
-  $('btn-presence-retry').hidden = p.error !== 'not_allowed';
-  $('presence-now').replaceChildren(...nodes(p.nowPlaying && nowPlayingCard(p.nowPlaying)));
-  $('btn-spotify-connect').hidden = connected || !p.spotifyAvailable;
-  // Last.fm is an optional extra: tucked away under Spotify, or open when it's the only choice.
-  $('lastfm-option').hidden = connected || !p.lastfmAvailable;
-  if (!p.spotifyAvailable && p.lastfmAvailable) $('lastfm-option').open = true;
-  $('btn-presence-disconnect').hidden = !connected;
-  $('profile-now-playing').replaceChildren(...nodes(p.nowPlaying && nowPlayingCard(p.nowPlaying)));
-}
-
-async function loadPresence() {
-  try {
-    const p = await api('POST', '/presence/refresh');
-    renderPresence(p);
-  } catch {
-    // Not Unlimited, or offline.
-  }
-}
-
-$('btn-spotify-connect').addEventListener('click', (e) =>
-  withBusy(e.currentTarget, async () => {
-    const { url } = await api('POST', '/presence/spotify/start', { returnTo: location.origin + location.pathname });
-    location.href = url;
-  })
-);
-$('btn-lastfm-connect').addEventListener('click', (e) =>
-  withBusy(e.currentTarget, async () => {
-    const username = $('lastfm-input').value.trim();
-    if (!username) throw new Error('Type your Last.fm username');
-    renderPresence(await api('POST', '/presence/lastfm', { username }));
-    toast('🎵 Last.fm connected');
-  })
-);
-$('lastfm-input').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    $('btn-lastfm-connect').click();
-  }
+// ---------- Calls and FaceTime ----------
+initCalls({
+  me: () => state.me,
+  findFriend: (id) => state.friends.find((f) => f.id === id),
+  toast,
+  beforeShow: () => {
+    for (const dialog of document.querySelectorAll('dialog[open]')) dialog.close();
+  },
+  beforeMedia: async (kind) => {
+    // Phones can't use the camera twice: FaceTime takes it from the KoolKat camera.
+    if (kind === 'video' && state.screen === 'camera') stopCamera();
+  },
+  afterCall: (kind) => {
+    if (kind === 'video' && state.screen === 'camera') startCamera();
+  },
 });
-$('btn-presence-retry').addEventListener('click', (e) =>
-  withBusy(e.currentTarget, async () => {
-    const p = await api('POST', '/presence/refresh');
-    renderPresence(p);
-    toast(p.error ? 'Spotify still says no. Ask an admin to add your Spotify email.' : '🎵 Working now!', { error: Boolean(p.error) });
-  })
-);
-$('btn-presence-disconnect').addEventListener('click', (e) =>
-  withBusy(e.currentTarget, async () => {
-    renderPresence(await api('DELETE', '/presence'));
-    toast('Rich Presence turned off');
-  })
-);
+
+function chatPeer() {
+  const other = chat.current?.members.find((m) => m.id !== state.me.userId);
+  return other && state.friends.find((f) => f.id === other.id);
+}
+$('btn-chat-call').addEventListener('click', () => {
+  const friend = chatPeer();
+  if (friend) startCall(friend, 'audio');
+});
+$('btn-chat-facetime').addEventListener('click', () => {
+  const friend = chatPeer();
+  if (friend) startCall(friend, 'video');
+});
+
+// ---------- sounds ----------
+function renderSoundsRow() {
+  const on = soundsOn();
+  $('sounds-status').textContent = on
+    ? 'A sound plays for new Klicks, messages and requests while KoolKat is open'
+    : 'Off (calls still ring)';
+  $('btn-sounds').textContent = on ? 'Turn off' : 'Turn on';
+}
+$('btn-sounds').addEventListener('click', () => {
+  setSoundsOn(!soundsOn());
+  renderSoundsRow();
+  if (soundsOn()) playNotification();
+});
 
 async function boot() {
   setAuthMode('login');

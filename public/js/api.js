@@ -26,7 +26,11 @@ export function setUnauthorizedHandler(fn) {
   onUnauthorized = fn;
 }
 
-export async function api(method, path, body) {
+/**
+ * Call the KoolKat API. `timeout` (ms) can be raised for requests that wait on
+ * purpose; `keepalive` lets a request finish while the page is closing.
+ */
+export async function api(method, path, body, { timeout = 20000, keepalive = false } = {}) {
   const headers = {};
   const token = getToken();
   if (token) headers.authorization = `Bearer ${token}`;
@@ -37,7 +41,8 @@ export async function api(method, path, body) {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout?.(20000),
+      signal: AbortSignal.timeout?.(timeout),
+      keepalive,
     });
   } catch (err) {
     throw new Error(

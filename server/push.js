@@ -102,15 +102,16 @@ export function createPusher({ db, clock = Date.now, send = webpush.sendNotifica
    * must not break the request that triggered it.
    * Payloads only ever contain names and counts, never snap contents.
    */
-  async function notify(userId, { title = 'KoolKat', body, tag, view }) {
-    const payload = JSON.stringify({ title, body, tag, view });
+  async function notify(userId, { title = 'KoolKat', body, tag, view, kind, ttl = 24 * 60 * 60 }) {
+    // kind: 'call' (keeps ringing on screen), 'call-ended' / 'missed-call' (replace it).
+    const payload = JSON.stringify({ title, body, tag, view, kind });
     const subs = q.forUser.all(userId);
     await Promise.all(
       subs.map(async (s) => {
         try {
           await send({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, {
             vapidDetails,
-            TTL: 24 * 60 * 60,
+            TTL: ttl,
             urgency: 'high',
           });
         } catch (err) {

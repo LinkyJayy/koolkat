@@ -37,7 +37,7 @@ import { registerNewsRoutes } from './news.js';
 import { manifestHandler, registerCustomizeRoutes } from './customize.js';
 import { activityOf, chatThemeOf, cleanupFriendCodes, registerSocialRoutes } from './social.js';
 import { registerKatMapRoutes } from './katmap.js';
-import { presenceOf, registerPresenceRoutes } from './presence.js';
+import { registerCallRoutes } from './calls.js';
 
 const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 
@@ -68,9 +68,8 @@ export function createApp({
   // Whether the database survives updates (see storageStatus in db.js).
   storage = { persistent: true, reason: 'unknown' },
   admins = adminUsernames(),
-  // Rich Presence settings (Spotify / Last.fm keys) and the fetch used to reach them.
-  env = process.env,
-  fetchImpl = fetch,
+  // How long a call rings before it's missed (shortened in tests).
+  callRingTimeout,
 } = {}) {
   const app = express();
   app.disable('x-powered-by');
@@ -93,14 +92,13 @@ export function createApp({
   app.use((req, res, next) => {
     res.set({
       'Content-Security-Policy':
-        // Map tiles (OpenStreetMap) and album art (Spotify, Last.fm) are the only outside images.
-        "default-src 'self'; img-src 'self' blob: data: https://tile.openstreetmap.org https://i.scdn.co " +
-        "https://lastfm.freetls.fastly.net; media-src 'self' blob:; " +
+        // Map tiles (OpenStreetMap) are the only outside images.
+        "default-src 'self'; img-src 'self' blob: data: https://tile.openstreetmap.org; media-src 'self' blob:; " +
         "style-src 'self'; script-src 'self'; connect-src 'self'; object-src 'none'; " +
         "base-uri 'none'; frame-ancestors 'none'",
       'X-Content-Type-Options': 'nosniff',
       'Referrer-Policy': 'no-referrer',
-      'Permissions-Policy': 'camera=(self), microphone=(), geolocation=(self)',
+      'Permissions-Policy': 'camera=(self), microphone=(self), geolocation=(self)',
       'Cross-Origin-Opener-Policy': 'same-origin',
     });
     next();
@@ -144,8 +142,7 @@ export function createApp({
     friendship: db.prepare('SELECT * FROM friendships WHERE user_low = ? AND user_high = ?'),
     friendshipsOf: db.prepare(`
       SELECT f.*, u.id AS other_id, u.username, u.display_name, u.public_key,
-             u.plan_until, u.flair, u.badge_id, u.activity_emoji, u.activity_text, u.activity_until,
-             u.presence_track, u.presence_at
+             u.plan_until, u.flair, u.badge_id, u.activity_emoji, u.activity_text, u.activity_until
       FROM friendships f
       JOIN users u ON u.id = CASE WHEN f.user_low = ? THEN f.user_high ELSE f.user_low END
       WHERE f.user_low = ? OR f.user_high = ?`),
@@ -325,20 +322,6 @@ export function createApp({
   // ---------- QR / Nearby friending, Activity Bubbles, chat themes ----------
   registerSocialRoutes({ api, db, clock, auth, wrap, publicUser, hasUnlimitedUser, pusher, rateLimiter });
   registerKatMapRoutes({ api, db, clock, auth, wrap, publicUser, hasUnlimitedUser, rateLimiter, activityOf });
-  const { pollAll: pollPresence } = registerPresenceRoutes({
-    api,
-    db,
-    clock,
-    auth,
-    wrap,
-    hasUnlimitedUser,
-    allowedOrigins,
-    canonicalHost,
-    env,
-    fetchImpl,
-  });
-  // The server checks Spotify / Last.fm on a timer (see index.js).
-  app.locals.pollPresence = pollPresence;
 
   const version = (process.env.RAILWAY_GIT_COMMIT_SHA || process.env.KOOLKAT_VERSION || 'dev').slice(0, 7);
   api.get('/health', (req, res) =>
@@ -635,7 +618,6 @@ export function createApp({
             streak: describeStreak(row, me, now),
             bff: bffs.has(row.other_id),
             activity: activityOf({ ...row, id: row.other_id }, now, hasUnlimitedUser),
-            nowPlaying: presenceOf({ ...row, id: row.other_id }, now, hasUnlimitedUser),
           });
         } else if (row.requester_id === me) {
           outgoing.push({ ...user, requestedAt: row.created_at });
@@ -1055,6 +1037,21 @@ export function createApp({
 
   // ---------- chats ----------
   registerChatRoutes({ api, db, clock, auth, wrap, publicUser, areFriends, pusher, bffSet });
+
+  // ---------- Calls and FaceTime ----------
+  const callRoutes = registerCallRoutes({
+    api,
+    db,
+    clock,
+    auth,
+    wrap,
+    publicUser,
+    areFriends,
+    pusher,
+    ...(callRingTimeout ? { ringTimeout: callRingTimeout } : {}),
+  });
+  // Ends calls where one side disappeared (see index.js).
+  app.locals.sweepCalls = callRoutes.sweep;
 
   // ---------- news ----------
   const isAdminUser = (user) => isAdmin(user?.username, admins);

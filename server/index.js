@@ -38,9 +38,8 @@ cleanup(db);
 setInterval(() => cleanup(db), 60 * 60 * 1000).unref();
 // Streak reminders go out in the last hours of each (UTC) day.
 setInterval(() => pusher.runStreakReminders().catch((err) => console.error(err)), 10 * 60 * 1000).unref();
-// Rich Presence: check what connected Spotify / Last.fm accounts are playing.
-// (Each account is only checked when it's due; see presence.js.)
-setInterval(() => app.locals.pollPresence().catch((err) => console.error(err)), 1000).unref();
+// Calls: end ones where a phone disappeared without hanging up.
+setInterval(() => app.locals.sweepCalls(), 5000).unref();
 
 server.listen(port, host, () => {
   const scheme = TLS_CERT && TLS_KEY ? 'https' : 'http';

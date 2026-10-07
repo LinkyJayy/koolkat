@@ -23,6 +23,10 @@ const PRECACHE = [
   'js/crypto.js',
   'js/keystore.js',
   'js/push.js',
+  'js/calls.js',
+  'js/sounds.js',
+  'sounds/koolkat_notification.wav',
+  'sounds/koolkat_calling.wav',
   'js/qr.js',
   'js/katcam.js',
   'js/theme.js',
@@ -112,7 +116,7 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-const VIEWS = ['inbox', 'friends', 'camera', 'chats', 'news'];
+const VIEWS = ['inbox', 'friends', 'camera', 'chats', 'news', 'call'];
 const appUrl = (view) => new URL(VIEWS.includes(view) ? `./#${view}` : './', self.registration.scope).href;
 
 self.addEventListener('push', (event) => {
@@ -124,14 +128,25 @@ self.addEventListener('push', (event) => {
   }
   event.waitUntil(
     (async () => {
+      const call = data.kind === 'call';
+      // The call was answered on another device: replace the ringing notification quietly, then clear it.
+      const answered = data.kind === 'call-ended';
       await self.registration.showNotification(data.title || 'KoolKat', {
         body: data.body || 'You have something new on KoolKat',
         tag: data.tag,
-        renotify: Boolean(data.tag),
+        renotify: Boolean(data.tag) && !answered,
+        silent: answered,
+        // Incoming Calls and FaceTimes stay on screen and buzz until answered.
+        requireInteraction: call,
+        vibrate: call ? [500, 250, 500, 250, 500, 250, 500] : undefined,
         icon: new URL('icons/icon-192.png', self.registration.scope).href,
         badge: new URL('icons/icon-64.png', self.registration.scope).href,
         data: { view: data.view },
       });
+      if (answered) {
+        await new Promise((r) => setTimeout(r, 1000));
+        for (const n of await self.registration.getNotifications({ tag: data.tag })) n.close();
+      }
       // Let open tabs refresh their inbox and friend list straight away.
       const windows = await self.clients.matchAll({ type: 'window' });
       for (const client of windows) client.postMessage({ type: 'refresh' });

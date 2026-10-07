@@ -20,6 +20,8 @@ Photos taken in KoolKat are called **Klicks**.
 - **Favorites.** ⭐ Tap the star on any Klick (received or sent) to favorite it. The ★ button on the home screen shows all your favorites.
 - **Chats.** 💬 Message any friend from *Chats → New chat*, or the **Message** button on their friend card. Messages are end-to-end encrypted like Klicks: each message has its own key, wrapped for each person in the chat.
 - **Group chats.** 👥 *Chats → New group*: pick at least 2 friends and optionally a name. Anyone in the group can rename it, add their own friends, or leave. People who join later only see messages sent after they joined. (The group *name* isn't encrypted; messages are.)
+- **Calls and FaceTime.** 📞 Voice **Calls** and 📹 **FaceTime** (video) with any friend: tap the phone or camera button at the top of a chat, or *Call* / *FaceTime* on their friend card. Answer or decline on the incoming-call screen; during a call you can mute, and on FaceTime turn your camera off or flip it. The sound and picture go straight between the two phones, encrypted by WebRTC, and the messages that set the call up are end-to-end encrypted with your KoolKat keys, so the server can't listen in or join. If KoolKat is closed, an incoming call arrives as a notification that stays on screen until you tap it (with notifications turned on); calls you don't answer within 45 seconds show as missed. Calls are one-to-one.
+- **Sounds.** 🔔 `koolkat_notification.wav` plays for new Klicks, messages and friend requests while KoolKat is open, and `koolkat_calling.wav` rings while you're calling someone and when a Call or FaceTime comes in. Turn the notification sound off in your profile (calls still ring). When KoolKat is closed, your phone plays its normal notification sound: websites can't choose that.
 - **Streaks.** 🔥 A streak grows by one for each day both friends send each other a Klick. ⌛ means you'll lose it if you don't both send one today. A missed day resets it.
 - **Sent view.** Shows "Delivered" or "Opened" for Klicks you've sent.
 - **Push notifications.** 🔔 Get notified about new Klicks, messages, friend requests, accepted requests, and streaks that are about to end. Turn them on from the banner on the Klicks screen or in your profile. Notifications only say *who* sent something, never what.
@@ -42,8 +44,7 @@ KoolKat is completely free, and so is **KoolKat Unlimited**. Unlimited isn't sol
 | Chat themes: background (presets, any colour, or your own picture) and bubble colour | – | ✓ |
 | Activity Bubbles 🫧: show friends what you're up to | – | ✓ |
 | Kat Map 🗺: see where your friends are | – | ✓ |
-| Rich Presence 🎵: show what you're listening to (Spotify or Last.fm) | – | ✓ |
-| QR friending, Nearby, KatCam | ✓ | ✓ |
+| QR friending, Nearby, KatCam, Calls and FaceTime | ✓ | ✓ |
 
 Storage counts the Klicks you've sent that still exist. Deleting a sent Klick (it's removed for everyone) frees the space. When it's full, KoolKat asks you to delete some. Badges and flair are shown to your friends in their friend list, your profile, your Klicks and chats.
 
@@ -54,10 +55,6 @@ Storage counts the Klicks you've sent that still exist. Deleting a sent Klick (i
 - **Chat themes.** Pick a background (Midnight, Sunset, Ocean, Forest, Candy, any colour, or a picture from your gallery) and the colour of your own message bubbles. The text colour adjusts automatically so it stays readable. Themes change how chats look for you; your background picture is only ever sent to you.
 - **Activity Bubbles.** Choose an emoji, write what you're doing (up to 40 characters), and show it until you clear it or for 1, 4, 8 or 24 hours. Your friends see it in their friends list, on your friend card, and at the top of your chat; you see it on your profile. People who aren't your friends never see it.
 - **Kat Map.** *Friends → 🗺* shows you and your friends on a map (OpenStreetMap). Sharing is **off (👻 Ghost)** until you pick **💙 BFFs** (only friends you've made BFFs) or **👥 Friends**. Tap a friend in the list to fly to them, or their pin to open their card. KoolKat sends your location while it's open on your screen (every 30 seconds, or sooner when you move); friends see your last spot with how long ago it was, and spots older than 24 hours disappear. Going back to Ghost deletes your location from the server. Both people need Unlimited. **Background:** websites and installed web apps can't get your location while they're in the background or closed (browsers block it), so your friends see where you were when you last had KoolKat open. Live background tracking would need a native app from the app stores.
-- **Rich Presence.** *Profile → Rich Presence* shows friends what you're listening to: in their friends list, on your friend card, and at the top of your chat, with the album art and a link to the song. Songs disappear when you stop playing.
-  - **Spotify:** tap *Connect Spotify* and approve. The server keeps checking even when KoolKat is closed. While a song plays it works out when the song ends and doesn't ask Spotify again until then, so there's about one request per song. When nothing is playing it checks every 10 seconds just after you stop, then every 30 seconds. Friends never see how far into a song you are. If you skip or pause partway through, friends see the change when the old song would have ended, or straight away when you open your own profile. Friends looking at their friends list or your chat see changes within about 4 seconds of the server.
-  - **Apple Music (and others) via Last.fm (optional):** Apple doesn't let other apps see what you're playing in Apple Music. Instead, connect a scrobbler app (like Marvis Pro or QuietScrob on iPhone) to Last.fm, then enter your Last.fm username. Spotify users can link Last.fm too (in Spotify's settings). KoolKat looks up each song's length on Last.fm once, then waits for it to end in the same way.
-  - The admin has to set this up first (see *Rich Presence setup* below).
 - **BFFs.** Open a friend's card and tap **Make BFF**. BFFs get their own section at the top of *Friends*, and their chats are pinned to the top of *Chats*, with the 💙 heart. Only you see who your BFFs are. Unfriending someone removes the heart.
 
 There are three ways to get Unlimited:
@@ -79,12 +76,9 @@ The account **`zalith9`** is the admin. Capitalisation doesn't matter, and usern
 
 > Admin rights come from the username. If the database is ever lost (for example, Railway without a volume), whoever registers `zalith9` first becomes admin. Keep a volume attached.
 
-### Rich Presence setup
+### Calls on difficult networks (optional TURN server)
 
-Both are free, and you can set up either one, both, or neither. Put the keys in Railway → your service → **Variables** (never in the code or a chat):
-
-- **Spotify:** go to [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard), *Create app*, choose *Web API*, and add the redirect URI `https://kool-kat.com/api/presence/spotify/callback`. Copy the *Client ID* and *Client secret* into `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET`. **Limit:** new Spotify apps are in *Development mode*, where only up to 25 people you add under *User Management* (their Spotify email) can connect. Spotify only lifts that limit for large companies, so for everyone else Last.fm is the way. If someone connects but isn't on that list, KoolKat tells them in their profile ("Spotify won't share your music with KoolKat yet") with a **Try again** button, and the Railway logs show `Spotify refused this account … for KoolKat user <name>` so you know who to add.
-- **Last.fm (optional):** skip this and Rich Presence is Spotify-only; the Last.fm option doesn't appear in the app. If you set it up, it shows as a folded *Use Last.fm instead* option under *Connect Spotify*. Removing the key later switches it off again (people connected through Last.fm just stop showing a song). To set it up, create an API account at [last.fm/api/account/create](https://www.last.fm/api/account/create) and put the *API key* in `LASTFM_API_KEY`. There's no user limit.
+Calls connect the two phones directly, which works on most Wi-Fi and mobile networks. Some networks (some mobile carriers, school or work Wi-Fi) block direct connections; then the call says *"Couldn't connect the call"*. A **TURN server** fixes that by relaying the (still encrypted) call. For example, [Metered](https://www.metered.ca/stun-turn) has a free tier: create an app, then put the TURN addresses, username and password it shows into Railway → **Variables** as `TURN_URLS`, `TURN_USERNAME` and `TURN_CREDENTIAL`. Without these, KoolKat uses public STUN servers only.
 
 ## End-to-end encryption
 
@@ -122,11 +116,11 @@ Configuration (environment variables):
 | `ALLOWED_ORIGINS` | – | Comma-separated sites allowed to use the API from another domain, e.g. `https://linkyjayy.github.io` for GitHub Pages |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | generated | Web Push keys. If you don't set them, a key pair is generated once and saved in the database. Generate your own with `npx web-push generate-vapid-keys` |
 | `CANONICAL_HOST` | – | The app's own domain, e.g. `kool-kat.com`. Visits to the `….up.railway.app` address redirect there |
+| `TURN_URLS` | – | Optional: TURN server(s) for Calls and FaceTime, comma-separated (e.g. `turn:global.relay.metered.ca:80,turns:global.relay.metered.ca:443?transport=tcp`) |
+| `TURN_USERNAME` / `TURN_CREDENTIAL` | – | The TURN server's username and password |
+| `TURN_SECRET` | – | Instead of a fixed password: coturn's shared secret, for short-lived passwords |
 | `KOOLKAT_ADMINS` | `zalith9` | Usernames (any capitalisation, comma-separated) that get admin tools |
 | `VAPID_SUBJECT` | repo URL | Contact URL or `mailto:` address sent to push services |
-| `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` | – | Turns on *Connect Spotify* for Rich Presence |
-| `SPOTIFY_REDIRECT_URI` | `https://<CANONICAL_HOST>/api/presence/spotify/callback` | Only needed if it differs from that |
-| `LASTFM_API_KEY` | – | Optional: turns on Last.fm (Apple Music) for Rich Presence |
 
 ## Deploying to Railway
 
@@ -206,7 +200,7 @@ server/
   customize.js  Unlimited app icons, custom badges, BFFs, per-icon manifest
   social.js     QR friend codes, Nearby, Activity Bubbles, chat themes
   katmap.js     Kat Map sharing settings and friends' locations
-  presence.js   Rich Presence: Spotify / Last.fm connections and polling
+  calls.js      Calls and FaceTime: ringing, answering, passing encrypted call setup between phones
   chats.js      direct and group chats (end-to-end encrypted messages)
   http.js       shared request validation helpers
   db.js         SQLite schema
@@ -216,6 +210,9 @@ public/
   js/crypto.js    end-to-end encryption (shared with the tests)
   js/qr.js        drawing and scanning friend QR codes
   js/katcam.js    KatCam: both cameras in one Klick
+  js/calls.js     Calls and FaceTime (WebRTC) and the call screen
+  js/sounds.js    notification and calling sounds
+  sounds/         koolkat_notification.wav, koolkat_calling.wav
   vendor/         qrcode-generator (MIT), jsQR (Apache-2.0) and Leaflet (BSD-2), served locally
   js/api.js       API client
   js/keystore.js  IndexedDB storage for the unlocked private key
@@ -276,15 +273,15 @@ All endpoints are under `/api` and take and return JSON. Authenticated endpoints
 | POST / DELETE | `/me/activity` | Unlimited: set (`emoji, text, hours?`) / clear your Activity Bubble |
 | POST | `/me/chat-theme` | Unlimited: `background, color?, bubble?, image?` (JPEG base64) |
 | GET | `/me/chat-background` | Your own chat background picture |
+| POST | `/calls` | `to, kind` (`audio` = Call, `video` = FaceTime), `device`: ring a friend |
+| POST | `/calls/:id/answer` / `decline` / `end` | Answer (`device`), decline, or hang up / cancel |
+| POST | `/calls/:id/signal` | `device, data`: an encrypted call setup message for the other phone |
+| GET | `/calls/events?device=&after=` | Waits up to 25 s for call events (incoming, answered, ended, signal) |
+| GET | `/calls/active` | The call ringing for you (or in progress) |
+| GET | `/calls/ice` | STUN/TURN servers for calls |
 | POST | `/map/settings` | Unlimited: `mode` = `off` (deletes your location), `bffs` or `friends` |
 | POST | `/map/location` | Unlimited: `lat, lng, accuracy` while sharing |
 | GET | `/map` | Unlimited: your sharing mode and location, and friends sharing with you |
-| GET / DELETE | `/presence` | Your Rich Presence connection / disconnect |
-| POST | `/presence/spotify/start` | Unlimited: `returnTo`; returns the Spotify approval link |
-| GET | `/presence/spotify/callback` | Where Spotify sends you back |
-| POST | `/presence/lastfm` | Unlimited: `username` |
-| POST | `/presence/refresh` | Check what you're playing now |
-| GET | `/presence/friends` | What your friends are playing (the app checks this every 4 seconds) |
 | GET | `/news` / `/news/unread` | News posts / unread count |
 | POST | `/news/seen` | Mark News as read |
 | POST / DELETE | `/news` / `/news/:id` | Admin: post (`title, body?, code?, notify?`) / delete |

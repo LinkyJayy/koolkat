@@ -225,7 +225,8 @@ const MIGRATIONS = [
   ['users', 'map_lng', 'REAL'],
   ['users', 'map_accuracy', 'REAL'],
   ['users', 'map_at', 'INTEGER'],
-  // Rich Presence: 'spotify' | 'lastfm', the account, and the song last seen playing (JSON).
+  // Unused: left from Rich Presence (Spotify / Last.fm), which was removed. Their
+  // contents (including Spotify tokens) are wiped on startup, see migrate().
   ['users', 'presence_source', 'TEXT'],
   ['users', 'lastfm_user', 'TEXT'],
   ['users', 'spotify_refresh', 'TEXT'],
@@ -234,7 +235,6 @@ const MIGRATIONS = [
   ['users', 'presence_track', 'TEXT'],
   ['users', 'presence_at', 'INTEGER'],
   ['users', 'presence_retry_at', 'INTEGER'],
-  // Why the last check failed in a way the person can fix (e.g. 'not_allowed' by Spotify).
   ['users', 'presence_error', 'TEXT'],
 ];
 
@@ -243,6 +243,11 @@ function migrate(db) {
     const exists = db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
     if (!exists) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
   }
+  // Rich Presence was removed: don't keep anyone's Spotify tokens or listening data.
+  db.exec(`UPDATE users SET presence_source = NULL, lastfm_user = NULL, spotify_refresh = NULL, spotify_access = NULL,
+                            spotify_expires = NULL, presence_track = NULL, presence_at = NULL, presence_retry_at = NULL,
+                            presence_error = NULL
+           WHERE presence_source IS NOT NULL OR spotify_refresh IS NOT NULL OR presence_track IS NOT NULL`);
 }
 
 /**

@@ -204,3 +204,49 @@ export async function decryptMessage(message, privateKey, myUserId) {
   const { text } = JSON.parse(dec.decode(plain));
   return typeof text === 'string' ? text : '';
 }
+
+// ---------- calls ----------
+// Call audio and video are encrypted by WebRTC itself (DTLS-SRTP). The messages
+// that set a call up travel through the server, so they're encrypted too, with
+// a key only the two friends can work out: ECDH(my identity key, their identity
+// key) -> HKDF, bound to this call. The server can't read or forge them, so it
+// can't put itself in the middle of the call.
+
+/** The AES-GCM key for one call's setup messages. Both friends get the same key. */
+export async function callKey(privateKey, peerPublicKeyB64, callId, callerId, calleeId) {
+  const shared = await subtle.deriveBits({ name: 'ECDH', public: await importPublicKey(peerPublicKeyB64) }, privateKey, 256);
+  const hkdf = await subtle.importKey('raw', shared, 'HKDF', false, ['deriveKey']);
+  return subtle.deriveKey(
+    {
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: new Uint8Array(32),
+      info: enc.encode(`koolkat-call:${callId}:${callerId}:${calleeId}`),
+    },
+    hkdf,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
+}
+
+/** Encrypt a call setup message. `fromUserId` is bound in, so a message can't be bounced back to its sender. */
+export async function sealSignal(key, message, fromUserId) {
+  const iv = randomBytes(12);
+  const ciphertext = await subtle.encrypt(
+    { name: 'AES-GCM', iv, additionalData: enc.encode(`from:${fromUserId}`) },
+    key,
+    enc.encode(JSON.stringify(message))
+  );
+  return { iv: toBase64(iv), ciphertext: toBase64(ciphertext) };
+}
+
+/** Decrypt a call setup message from `fromUserId`. Throws if it was tampered with. */
+export async function openSignal(key, data, fromUserId) {
+  const plain = await subtle.decrypt(
+    { name: 'AES-GCM', iv: fromBase64(data.iv), additionalData: enc.encode(`from:${fromUserId}`) },
+    key,
+    fromBase64(data.ciphertext)
+  );
+  return JSON.parse(dec.decode(plain));
+}
