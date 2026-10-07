@@ -132,7 +132,7 @@
       <div class="frame" id="preview-frame">
         <img id="preview-img" alt="Your Klick">
         <div class="caption-bar editing" id="caption-bar" hidden>
-          <input id="caption-input" maxlength="80" placeholder="Add a caption…" enterkeyhint="done" aria-label="Caption">
+          <textarea id="caption-input" maxlength="150" rows="1" placeholder="Add a caption…" enterkeyhint="done" aria-label="Caption"></textarea>
         </div>
       </div>
     </div>
@@ -219,7 +219,7 @@
       </button>
       </span>
     </header>
-    <p class="hint">Tap to close. 🔒 Only the friends it was sent to can see this Klick.</p>
+    <p class="hint viewer-hint" id="viewer-hint">Tap to close. 🔒 Only the friends it was sent to can see this Klick.</p>
   </section>
 
   <!-- Friends -->
@@ -281,6 +281,22 @@
         <div class="news-media-preview" id="news-media-preview" hidden>
           <div id="news-media-preview-item"></div>
           <button type="button" class="btn small" id="btn-news-media-remove">Remove</button>
+        </div>
+      </div>
+      <div class="poll-editor">
+        <button type="button" class="btn small" id="btn-news-poll">📊 Add a poll</button>
+        <div id="news-poll-fields" hidden>
+          <label>Poll question <span class="fineprint">Optional (the post title is used if blank)</span>
+            <input name="pollQuestion" maxlength="80" placeholder="e.g. What should we add next?">
+          </label>
+          <div class="poll-option-inputs">
+            <input name="pollOption" maxlength="60" placeholder="Choice 1" aria-label="Choice 1">
+            <input name="pollOption" maxlength="60" placeholder="Choice 2" aria-label="Choice 2">
+            <input name="pollOption" maxlength="60" placeholder="Choice 3 (optional)" aria-label="Choice 3">
+            <input name="pollOption" maxlength="60" placeholder="Choice 4 (optional)" aria-label="Choice 4">
+          </div>
+          <p class="fineprint" id="news-poll-note">Anyone can vote once and change their vote.</p>
+          <button type="button" class="btn small" id="btn-news-poll-remove">Remove poll</button>
         </div>
       </div>
       <label class="check"><input type="checkbox" name="notify"> Send everyone a notification</label>
@@ -485,6 +501,18 @@
       <span></span>
     </header>
 
+    <div id="admins-section" hidden>
+      <h3 class="section-title">Admins (only you can change these)</h3>
+      <ul class="list" id="admins-list"></ul>
+      <form id="admins-form" class="admin-form" novalidate>
+        <label>Make someone an admin
+          <input name="username" required autocapitalize="none" spellcheck="false" placeholder="Username">
+        </label>
+        <p class="fineprint">Admins get Admin tools (codes, gifts, News, resets) and KoolKat Unlimited. Only you can add or remove admins.</p>
+        <button type="submit" class="btn primary">Make admin</button>
+      </form>
+    </div>
+
     <h3 class="section-title">Unlimited requests</h3>
     <div class="admin-form">
       <label>Approve for how many days? <span class="fineprint">Blank = forever</span>
@@ -559,6 +587,7 @@
       <p class="flair-line" id="profile-flair" hidden></p>
       <p class="activity-bubble" id="profile-activity" hidden></p>
       <button type="button" class="btn small" id="btn-profile-qr">🔳 My QR code</button>
+      <button type="button" class="btn small" id="btn-profile-birthday">🎂 Birthday</button>
 
       <p class="storage-warning" id="storage-warning" role="alert" hidden></p>
       <section class="plan-card" aria-labelledby="plan-name">
@@ -769,6 +798,40 @@
         <button type="button" class="btn" id="btn-qr-share">Share link</button>
         <button type="button" class="btn primary" id="btn-qr-scan">Scan a code</button>
       </div>
+    </form>
+  </dialog>
+
+  <!-- Comments on a News post -->
+  <dialog id="dialog-comments" class="sheet">
+    <div class="sheet-head">
+      <h2 id="comments-title">Comments</h2>
+      <button type="button" class="icon-btn plain" id="btn-comments-close" aria-label="Close">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12Z"/></svg>
+      </button>
+    </div>
+    <ol class="comment-list" id="comment-list"></ol>
+    <p class="empty" id="comments-empty" hidden>No comments yet. Be the first!</p>
+    <form class="composer comment-composer" id="comment-form" autocomplete="off">
+      <textarea id="comment-input" maxlength="500" rows="1" placeholder="Add a comment…" aria-label="Comment"></textarea>
+      <button type="submit" class="btn primary" id="btn-comment-send">Post</button>
+    </form>
+  </dialog>
+
+  <!-- Birthday: asked once (month and day only) -->
+  <dialog id="dialog-birthday">
+    <form method="dialog" id="birthday-form">
+      <div class="birthday-hero" aria-hidden="true">🎂</div>
+      <h2>When's your birthday?</h2>
+      <p class="birthday-why">Just the month and day, never the year. <strong>It's only used to show other people a 🎉 next to your name on your birthday.</strong> Nobody sees the date itself.</p>
+      <div class="birthday-pick">
+        <label>Month <select id="birthday-month" required></select></label>
+        <label>Day <select id="birthday-day" required></select></label>
+      </div>
+      <div class="row">
+        <button type="button" class="btn" id="btn-birthday-skip">Not now</button>
+        <button type="submit" class="btn primary" id="btn-birthday-save">Save</button>
+      </div>
+      <button type="button" class="link-btn" id="btn-birthday-remove" hidden>Remove my birthday</button>
     </form>
   </dialog>
 

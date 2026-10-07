@@ -27,6 +27,42 @@ export const isAdmin = (username, admins = adminUsernames()) =>
 export const unlimitedUntil = (u, admins = adminUsernames()) => (isAdmin(u.username, admins) ? FOREVER : u.plan_until ?? 0);
 export const hasUnlimited = (u, now, admins) => unlimitedUntil(u, admins) > now;
 
+// ---------- birthdays ----------
+const DAYS_IN_MONTH = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+export const validBirthday = (month, day) =>
+  Number.isInteger(month) && month >= 1 && month <= 12 && Number.isInteger(day) && day >= 1 && day <= DAYS_IN_MONTH[month - 1];
+
+export function validTimeZone(tz) {
+  if (typeof tz !== 'string' || tz.length > 64) return false;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const dayFormats = new Map();
+/** Today's month and day in a time zone. */
+function todayIn(tz, now) {
+  let format = dayFormats.get(tz);
+  if (!format) {
+    format = new Intl.DateTimeFormat('en-US', { timeZone: tz, month: 'numeric', day: 'numeric', year: 'numeric' });
+    dayFormats.set(tz, format);
+  }
+  const parts = Object.fromEntries(format.formatToParts(new Date(now)).map((p) => [p.type, Number(p.value)]));
+  return parts;
+}
+
+/** Whether it's someone's birthday right now (where they live). 29 February is celebrated on the 28th in other years. */
+export function isBirthday(u, now) {
+  if (!u?.birth_month || !u?.birth_day) return false;
+  const { month, day, year } = todayIn(validTimeZone(u.birth_tz) ? u.birth_tz : 'UTC', now);
+  if (u.birth_month === month && u.birth_day === day) return true;
+  const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+  return u.birth_month === 2 && u.birth_day === 29 && !leap && month === 2 && day === 28;
+}
+
 /** The badge and flair other people see next to a user's name. */
 export function perks(u, now, admins) {
   if (!hasUnlimited(u, now, admins)) return { badge: false, flair: null, badgeUrl: null };

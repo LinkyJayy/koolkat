@@ -165,6 +165,23 @@ CREATE TABLE IF NOT EXISTS news (
   created_at  INTEGER NOT NULL
 );
 
+-- Poll votes and comments on News posts (anyone signed in can vote and comment).
+CREATE TABLE IF NOT EXISTS news_votes (
+  post_id     INTEGER NOT NULL REFERENCES news(id) ON DELETE CASCADE,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  choice      INTEGER NOT NULL,
+  created_at  INTEGER NOT NULL,
+  PRIMARY KEY (post_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS news_comments (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  post_id     INTEGER NOT NULL REFERENCES news(id) ON DELETE CASCADE,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body        TEXT NOT NULL,
+  created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_news_comments_post ON news_comments(post_id, created_at);
+
 -- Hearts and saves (Favorite Articles) on News posts.
 CREATE TABLE IF NOT EXISTS news_likes (
   post_id     INTEGER NOT NULL REFERENCES news(id) ON DELETE CASCADE,
@@ -233,6 +250,9 @@ const MIGRATIONS = [
   ['news', 'media_type', 'TEXT'],
   // When an admin last edited the post.
   ['news', 'edited_at', 'INTEGER'],
+  // A poll on the post: the question and its options (JSON array of strings).
+  ['news', 'poll_question', 'TEXT'],
+  ['news', 'poll_options', 'TEXT'],
   // KoolKat Unlimited customisation: app icon choice ('crown' | 'glow' | 'custom'),
   // an uploaded icon (served by a random public id), and a custom badge image.
   ['users', 'app_icon', 'TEXT'],
@@ -244,6 +264,14 @@ const MIGRATIONS = [
   // Profile picture (everyone): a square JPEG, served by a random public id.
   ['users', 'avatar_id', 'TEXT'],
   ['users', 'avatar_jpeg', 'BLOB'],
+  // Admins given by an owner in Admin tools (owners come from KOOLKAT_ADMINS).
+  ['users', 'admin_granted_at', 'INTEGER'],
+  ['users', 'admin_granted_by', 'INTEGER'],
+  // Birthday (month and day only, never the year) and the time zone it's celebrated in.
+  ['users', 'birth_month', 'INTEGER'],
+  ['users', 'birth_day', 'INTEGER'],
+  ['users', 'birth_tz', 'TEXT'],
+  ['users', 'birthday_asked_at', 'INTEGER'],
   // Lets the sender open their own snaps (the snap key wrapped for the sender).
   ['snaps', 'sender_wrapped_key', 'TEXT'],
   ['snaps', 'sender_wrap_iv', 'TEXT'],

@@ -13,7 +13,7 @@ Photos taken in KoolKat are called **Klicks**.
 - **Friends-only.** The server refuses to deliver a Klick to anyone who isn't an accepted friend. It also refuses to let a recipient download a Klick after the two of them stop being friends.
 - **Camera.** Uses the front or rear camera with a flip button. Selfies are mirrored like a normal selfie camera.
 - **KatCam.** 😺 The two-camera button on the camera screen puts both cameras in one Klick: the back camera fills the picture and your selfie sits in the corner (flip swaps them). If the phone can run both cameras at once you see both live. Most phones can't, so KatCam takes the second picture right after the first ("Now smile! 📸"). It's sent as one normal, end-to-end encrypted Klick.
-- **Captions.** Tap the photo to add a caption, and tap somewhere else to move it. The caption is encrypted along with the photo.
+- **Captions.** Tap the photo to add a caption, and tap somewhere else to move it. Long captions (up to 150 characters) wrap onto more lines. The caption is encrypted along with the photo.
 - **Saved Klicks.** Klicks you receive stay in your inbox, so you can open them again whenever you like. They stay end-to-end encrypted, and only the friends a Klick was sent to can open it. If you unfriend someone, their Klicks are hidden until you're friends again.
 - **View your own Klicks.** Each Klick is also encrypted for you, so you can open it again from *Klicks → Sent*. As the sender, deleting a Klick removes it for everyone.
 - **Deleting Klicks.** Open a Klick and tap 🗑 to remove it from your inbox. Once every recipient has deleted it, the encrypted data is removed from the server for good.
@@ -26,12 +26,14 @@ Photos taken in KoolKat are called **Klicks**.
 - **Sent view.** Shows "Delivered" or "Opened" for Klicks you've sent.
 - **Push notifications.** 🔔 Get notified about new Klicks, messages, friend requests, accepted requests, and streaks that are about to end. Turn them on from the banner on the Klicks screen or in your profile. Notifications only say *who* sent something, never what.
 - **News.** 📣 The megaphone button on the home screen opens News: codes, events and updates posted by admins. Posts can include a code with a one-tap **Redeem** button. A badge shows when there's something new. Admins can add **one photo or video** to a post (*Add photo or video* when writing it): photos up to 15 MB (JPEG, PNG, GIF, WebP), videos up to 100 MB (MP4 plays everywhere; MOV and WebM too, where the phone supports them). Files are kept in a `media` folder next to the database, so on Railway they're on the volume and survive updates; deleting a post deletes its file. Admins can **edit** posts afterwards (title, text, code, and keep, swap or remove the photo/video); edited posts say *Updated*.
+- **News polls and comments.** Admins can add a poll (optional question, 2–4 choices) when writing or editing a post; anyone can vote once, see the results, and change or undo their vote (changing the choices restarts the vote). Anyone can comment with 💬 (in both styles); you can delete your own comments, and admins can delete any.
 - **News styles.** Switch at the top of News (remembered on each device):
   - 📰 **Formal**: like reading a newspaper: serif headline, "By @username" byline with the date, the photo or video across the page, and a big first letter on longer articles.
   - 📱 **TikTok**: a full-screen feed you swipe up through, one post per screen. The @username above the title opens their profile; *...more* shows the whole title and text; ❤️ likes the post (with a count) and ⭐ saves it to **Favorite Articles** (*Favorites → Favorite Articles*, separate from Favorite Klicks). Videos play muted while they're on screen; tap for sound.
 - **Profiles and profile pictures.** Tap your picture in *Profile* to choose one from your gallery (cropped to a square), or *Remove picture*. It shows everywhere your name does. Tapping someone's name in News opens their profile (picture, badge, flair, admin tag, when they joined, and *Add friend* or *Message*). Admins can reset a profile picture in *Admin tools*.
 - **Installable app (PWA).** KoolKat installs like a normal app, with its own icon, full screen and no browser bars. On Android and desktop, use *Profile → Install KoolKat*. On iPhone, use Safari's *Share → Add to Home Screen*. Long-press the icon for shortcuts to the camera, Klicks and Chats. It opens even offline, and when a new version is deployed it shows *"A new version of KoolKat is ready → Reload"*.
 - **Emojis.** 😺 iPhones, iPads and Macs show Apple's own emojis. Everyone else (Android, Windows, Linux) sees the newest Android emojis: Google's **Android 17 "Noto 3D"** designs, including the Unicode 17 ones, even on older phones. The emoji font is split into pieces and each device only downloads the ones it shows (most pieces are 20–900 KB; people, hands and skin tones together are about 5 MB, downloaded the first time one appears, then kept). Browsers that can't draw the 3D format (e.g. Firefox) get the previous flat Android designs. (Apple's emoji font can't be included: Apple only licenses it for its own devices.)
+- **Birthdays.** 🎉 shows next to your name on your birthday. After signing up (or the first sign-in with this version) KoolKat asks for your birthday: just the month and day, never the year, and only to show the 🎉; nobody sees the date itself. You can skip it, and change or remove it any time with *Profile → Birthday*. It follows your time zone, and 29 February birthdays are celebrated on the 28th in other years.
 - **Inter Display font and text style.** All text uses Inter Display. In *Profile → Text style* choose **Regular text, SemiBold headings** (the default) or **Semibold text, Bold headings**; the choice is remembered on that device.
 - **Light and dark mode.** Choose System, Light or Dark under *Appearance* on the sign-in screen or in your profile. The choice is remembered on that device.
 
@@ -72,6 +74,8 @@ There are three ways to get Unlimited:
 ### Admin tools
 
 The account **`zalith9`** is the admin. Capitalisation doesn't matter, and usernames are unique regardless of capitalisation, so there can only be one zalith9. Set `KOOLKAT_ADMINS` to a comma-separated list to change it. Admins always have **KoolKat Unlimited forever** (it can't expire or be taken away), and get an **Admin tools** button in their profile, where they can:
+
+- **(owner only) make other people admins, or remove them** (*Admins*). The owner is the account in `KOOLKAT_ADMINS` (zalith9); only the owner sees this section, and the owner can't be removed. Admins added this way are saved in the database;
 
 - **create redeemable codes** with their own text (or a random `KOOL-XXXX-XXXX`), a **usage limit**, an **expiry date**, and how many days of Unlimited they give (or forever). Each person can use a code once;
 - see how many times each code has been used, and copy or delete codes;
@@ -299,6 +303,12 @@ All endpoints are under `/api` and take and return JSON. Authenticated endpoints
 | POST / DELETE | `/news/:id/like` / `/news/:id/save` | Heart / save (Favorite Articles) a post, or undo |
 | GET | `/news/saved` | Your Favorite Articles |
 | GET | `/users/:id` | Someone's profile |
+| POST / DELETE | `/news/:id/vote` | `choice`: vote in a post's poll / undo |
+| GET / POST | `/news/:id/comments` | Comments on a post / add one (`body`) |
+| DELETE | `/news/comments/:id` | Delete your comment (admins: any) |
+| GET / POST | `/admin/admins` | Owner: list admins / make someone an admin (`username`) |
+| DELETE | `/admin/admins/:username` | Owner: remove an admin |
+| POST / DELETE | `/me/birthday` | `month, day, timeZone` (or `skip`) / remove your birthday |
 | POST / DELETE | `/me/avatar` | `image` (square JPEG, base64): set / remove your profile picture |
 | GET | `/news/media/:id` | A post's photo or video |
 | GET | `/push/key` | The server's VAPID public key |

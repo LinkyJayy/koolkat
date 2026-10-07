@@ -87,10 +87,15 @@ const avatar = (user, cls = '') => fillAvatar(el('span', { class: `avatar ${cls}
 /** A user's display name, with the Kool badge if they have KoolKat Unlimited. */
 // The default Kool badge, or the custom badge picture someone uploaded.
 const badgeSrc = (user) => (user?.badgeUrl ? `${API_BASE}/api/${user.badgeUrl}` : 'icons/kool-badge.png');
-const badgeImg = (user) =>
-  user?.badge
-    ? el('img', { src: badgeSrc(user), alt: 'KoolKat Unlimited', title: 'KoolKat Unlimited', class: 'kool-badge' })
-    : null;
+/** The Kool badge (Unlimited) and, on their birthday, a 🎉, to go after someone's name. */
+const badgeImg = (user) => {
+  const parts = nodes(
+    user?.badge && el('img', { src: badgeSrc(user), alt: 'KoolKat Unlimited', title: 'KoolKat Unlimited', class: 'kool-badge' }),
+    user?.birthday && el('span', { class: 'birthday-pop', title: "It's their birthday!", 'aria-label': "It's their birthday", text: '🎉' })
+  );
+  if (parts.length < 2) return parts[0] ?? null;
+  return el('span', { class: 'name-marks' }, ...parts);
+};
 const bffImg = (user) => (user?.bff ? el('img', { src: 'icons/bff-heart.png', alt: 'BFF', title: 'BFF', class: 'bff-heart' }) : null);
 /** Drop empty parts, so replaceChildren() doesn't print "null". */
 const nodes = (...parts) => parts.filter((p) => p != null && p !== false);
@@ -295,7 +300,10 @@ function enterApp() {
   resyncPush();
   startCallEvents();
   refreshMe()
-    .then(() => resumeMapSharing())
+    .then(() => {
+      maybeAskBirthday();
+      return resumeMapSharing();
+    })
     .catch(() => {});
   // Opened from a notification: jump to what it was about.
   const view = location.hash.slice(1);
@@ -712,6 +720,7 @@ function editCaption(y) {
   placeCaption(bar, state.caption.y);
   bar.hidden = false;
   $('caption-hint').hidden = true;
+  fitCaptionInput();
   $('caption-input').focus();
 }
 
@@ -722,7 +731,21 @@ $('preview-frame').addEventListener('click', (e) => {
 });
 $('btn-caption').addEventListener('click', () => editCaption());
 $('caption-input').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') e.target.blur();
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    e.target.blur();
+  }
+});
+// Grow the caption box onto more lines as it fills the width.
+function fitCaptionInput() {
+  const input = $('caption-input');
+  input.style.height = 'auto';
+  input.style.height = `${input.scrollHeight}px`;
+}
+$('caption-input').addEventListener('input', (e) => {
+  // Pasted line breaks become spaces: the caption wraps by itself.
+  if (/\n/.test(e.target.value)) e.target.value = e.target.value.replace(/\s*\n\s*/g, ' ');
+  fitCaptionInput();
 });
 $('caption-input').addEventListener('blur', (e) => {
   if (!e.target.value.trim()) $('caption-bar').hidden = true;
@@ -950,6 +973,12 @@ async function openSnap(summary) {
     cap.textContent = opened.caption;
     cap.hidden = !opened.caption;
     placeCaption(cap, opened.captionY);
+    // Keep the hint away from the caption, and let it fade out.
+    const hint = $('viewer-hint');
+    hint.classList.toggle('top', Boolean(opened.caption) && opened.captionY > 0.6);
+    hint.classList.remove('faded');
+    clearTimeout(hint.fadeTimer);
+    hint.fadeTimer = setTimeout(() => hint.classList.add('faded'), 3000);
 
     show('viewer');
     fitFrame($('viewer-frame'), img.naturalWidth, img.naturalHeight);
@@ -1177,6 +1206,7 @@ function formalArticle(p, { saved = false } = {}) {
               ...p.body.split(/\n{2,}/).map((para) => el('p', { text: para }))
             )
           : null,
+        pollBox(p, draw),
         codeBox(p),
         el(
           'div',
@@ -1184,6 +1214,7 @@ function formalArticle(p, { saved = false } = {}) {
           ...reactionButtons(p, {
             onChange: () => (saved && !p.saved ? node.remove() : draw()),
           }),
+          commentsButton(p, 'reaction', draw),
           ...(saved ? [] : adminButtons(p))
         )
       )
@@ -1240,6 +1271,7 @@ function tiktokPost(p) {
   const drawRail = () =>
     rail.replaceChildren(
       ...reactionButtons(p, { cls: 'tt-action', onChange: drawRail }),
+      commentsButton(p, 'tt-action', drawRail),
       ...(news.canPost
         ? [
             el('button', { type: 'button', class: 'tt-action', 'aria-label': 'Edit post', onclick: () => {
@@ -1277,6 +1309,7 @@ function tiktokPost(p) {
         authorButton(p.author, 'tt-author'),
         text,
         more,
+        pollBox(p, () => node.querySelector('.poll')?.replaceWith(pollBox(p, null))),
         codeBox(p),
         el('span', { class: 'tt-date', text: `${timeAgo(p.createdAt)}${p.editedAt ? ' · edited' : ''}` })
       )
@@ -1289,9 +1322,166 @@ function tiktokPost(p) {
   return node;
 }
 
+// ---------- polls ----------
+function pollBox(p, redraw) {
+  const poll = p.poll;
+  if (!poll) return null;
+  const box = el('div', { class: `poll${poll.myVote == null ? '' : ' voted'}` });
+  const vote = async (choice) => {
+    try {
+      const res =
+        choice === poll.myVote ? await api('DELETE', `/news/${p.id}/vote`) : await api('POST', `/news/${p.id}/vote`, { choice });
+      p.poll = res.poll;
+      if (redraw) redraw();
+      else box.replaceWith(pollBox(p, null));
+    } catch (err) {
+      toast(err.message, { error: true });
+    }
+  };
+  const showResults = poll.myVote != null;
+  box.append(
+    el('p', { class: 'poll-question', text: `📊 ${poll.question || p.title}` }),
+    ...poll.options.map((o, i) => {
+      const pct = poll.total ? Math.round((o.votes / poll.total) * 100) : 0;
+      const mine = poll.myVote === i;
+      const button = el(
+        'button',
+        { type: 'button', class: `poll-option${mine ? ' mine' : ''}`, 'aria-pressed': String(mine), onclick: () => vote(i) },
+        el('span', { class: 'poll-label', text: `${mine ? '✓ ' : ''}${o.text}` }),
+        showResults ? el('span', { class: 'poll-pct', text: `${pct}%` }) : null
+      );
+      if (showResults) button.style.setProperty('--pct', `${pct}%`);
+      return button;
+    }),
+    el('p', {
+      class: 'poll-total',
+      text: `${poll.total} ${poll.total === 1 ? 'vote' : 'votes'}${showResults ? ' · tap your choice again to undo' : ''}`,
+    })
+  );
+  return box;
+}
+
+// ---------- comments ----------
+const comments = { post: null, onChange: null };
+
+function commentsButton(p, cls, onChange) {
+  return el(
+    'button',
+    { type: 'button', class: `${cls} comments-btn`, 'aria-label': 'Comments', onclick: () => openComments(p, onChange) },
+    el('span', { class: 'reaction-icon', text: '💬' }),
+    el('span', { class: 'reaction-count', text: String(p.comments ?? 0) })
+  );
+}
+
+async function openComments(p, onChange) {
+  comments.post = p;
+  comments.onChange = onChange;
+  $('comments-title').textContent = `Comments on “${p.title}”`;
+  $('comment-list').replaceChildren();
+  $('comments-empty').hidden = true;
+  $('dialog-comments').showModal();
+  await loadComments();
+}
+
+async function loadComments() {
+  const p = comments.post;
+  try {
+    const { comments: list } = await api('GET', `/news/${p.id}/comments`);
+    if (comments.post !== p) return;
+    p.comments = list.length;
+    comments.onChange?.();
+    $('comments-empty').hidden = list.length > 0;
+    $('comment-list').replaceChildren(
+      ...list.map((c) =>
+        el(
+          'li',
+          { class: 'comment' },
+          el('button', { type: 'button', class: 'comment-avatar', 'aria-label': `@${c.author.username}`, onclick: () => openUserProfile(c.author.id) }, avatar(c.author)),
+          el(
+            'div',
+            { class: 'comment-main' },
+            el(
+              'div',
+              { class: 'comment-head' },
+              el('button', { type: 'button', class: 'author-link', onclick: () => openUserProfile(c.author.id) }, el('span', { text: c.author.displayName }), badgeImg(c.author)),
+              el('span', { class: 'comment-time', text: timeAgo(c.createdAt) })
+            ),
+            el('p', { class: 'comment-body', text: c.body }),
+            c.canDelete
+              ? el('button', {
+                  type: 'button',
+                  class: 'link-btn comment-delete',
+                  text: c.mine ? 'Delete' : 'Delete (admin)',
+                  onclick: async () => {
+                    if (!confirm('Delete this comment?')) return;
+                    try {
+                      await api('DELETE', `/news/comments/${c.id}`);
+                      await loadComments();
+                    } catch (err) {
+                      toast(err.message, { error: true });
+                    }
+                  },
+                })
+              : null
+          )
+        )
+      )
+    );
+    const listEl = $('comment-list');
+    listEl.scrollTop = listEl.scrollHeight;
+  } catch (err) {
+    toast(err.message, { error: true });
+  }
+}
+
+$('btn-comments-close').addEventListener('click', () => $('dialog-comments').close());
+$('comment-input').addEventListener('input', (e) => {
+  e.target.style.height = 'auto';
+  e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
+});
+$('comment-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const input = $('comment-input');
+  const body = input.value.trim();
+  if (!body || !comments.post) return;
+  await withBusy($('btn-comment-send'), async () => {
+    await api('POST', `/news/${comments.post.id}/comments`, { body });
+    input.value = '';
+    input.style.height = 'auto';
+    await loadComments();
+  });
+});
+
+// ---------- poll editor (admins) ----------
+function setPollEditor(poll) {
+  const form = $('news-form');
+  const on = Boolean(poll);
+  $('news-poll-fields').hidden = !on;
+  $('btn-news-poll').hidden = on;
+  form.pollQuestion.value = poll?.question ?? '';
+  [...form.querySelectorAll('[name=pollOption]')].forEach((input, i) => {
+    input.value = poll?.options?.[i]?.text ?? poll?.options?.[i] ?? '';
+  });
+  $('news-poll-note').textContent =
+    news.edit && news.edit.poll
+      ? 'Changing the choices starts the vote again.'
+      : 'Anyone can vote once and change their vote.';
+}
+$('btn-news-poll').addEventListener('click', () => setPollEditor({ question: '', options: [] }));
+$('btn-news-poll-remove').addEventListener('click', () => setPollEditor(null));
+
+/** The poll in the form: undefined (unchanged/none), null (removed) or { question, options }. */
+function readPollEditor() {
+  const form = $('news-form');
+  if ($('news-poll-fields').hidden) return news.edit?.poll ? null : undefined;
+  const options = [...form.querySelectorAll('[name=pollOption]')].map((i) => i.value.trim()).filter(Boolean);
+  if (options.length < 2) throw new Error('A poll needs at least 2 choices');
+  return { question: form.pollQuestion.value.trim(), options };
+}
+
 // ---------- editing ----------
 function startEditingNews(p) {
-  news.edit = { id: p.id, media: p.media, removeMedia: false };
+  news.edit = { id: p.id, media: p.media, removeMedia: false, poll: p.poll };
   const form = $('news-form');
   form.title.value = p.title;
   form.body.value = p.body;
@@ -1303,6 +1493,7 @@ function startEditingNews(p) {
   $('btn-news-cancel-edit').hidden = false;
   setNewsFile(null);
   showExistingNewsMedia();
+  setPollEditor(p.poll);
   form.hidden = false;
   form.scrollIntoView({ behavior: 'smooth', block: 'start' });
   form.title.focus({ preventScroll: true });
@@ -1317,6 +1508,7 @@ function stopEditingNews() {
   $('btn-news-submit').textContent = 'Post';
   $('btn-news-cancel-edit').hidden = true;
   setNewsFile(null);
+  setPollEditor(null);
 }
 $('btn-news-cancel-edit').addEventListener('click', stopEditingNews);
 
@@ -1412,8 +1604,9 @@ $('news-form').addEventListener('submit', async (e) => {
   await withBusy($('btn-news-submit'), async () => {
     const title = form.title.value.trim();
     if (!title) throw new Error('Give the post a title');
+    const poll = readPollEditor();
     const mediaId = newsUpload.file ? (await uploadNewsMedia(newsUpload.file)).mediaId : null;
-    const body = { title, body: form.body.value, code: form.code.value.trim() || null, mediaId };
+    const body = { title, body: form.body.value, code: form.code.value.trim() || null, mediaId, poll };
     if (news.edit) {
       await api('POST', `/news/${news.edit.id}`, { ...body, removeMedia: news.edit.removeMedia });
       stopEditingNews();
@@ -1422,6 +1615,7 @@ $('news-form').addEventListener('submit', async (e) => {
       await api('POST', '/news', { ...body, notify: form.notify.checked });
       form.reset();
       setNewsFile(null);
+      setPollEditor(null);
       toast('📣 Posted to News');
     }
     await loadNews();
@@ -2099,6 +2293,7 @@ async function refreshMe() {
     badgeUrl: me.user.badgeUrl,
     flair: me.user.flair,
     avatarUrl: me.user.avatarUrl,
+    birthday: me.user.birthday,
   });
   renderMyAvatar();
   applyAppIcon(me.plan.appIcon);
@@ -2210,6 +2405,51 @@ $('btn-admin').addEventListener('click', () => {
   show('admin');
   loadCodes();
   loadRequests();
+  $('admins-section').hidden = !state.plan?.isOwner;
+  if (state.plan?.isOwner) loadAdmins();
+});
+
+// Only the owner (zalith9) can add or remove admins.
+async function loadAdmins() {
+  try {
+    const { admins } = await api('GET', '/admin/admins');
+    $('admins-list').replaceChildren(
+      ...admins.map((a) =>
+        userRow(
+          a,
+          a.owner ? `@${a.username} · Owner` : `@${a.username} · Admin since ${formatDate(a.grantedAt)}`,
+          a.owner
+            ? null
+            : actionButton(
+                'Remove',
+                async () => {
+                  if (!confirm(`Remove ${a.displayName} as an admin?`)) return;
+                  await api('DELETE', `/admin/admins/${encodeURIComponent(a.username)}`);
+                  toast(`${a.displayName} is no longer an admin`);
+                  await loadAdmins();
+                },
+                'danger'
+              )
+        )
+      )
+    );
+  } catch (err) {
+    toast(err.message, { error: true });
+  }
+}
+
+$('admins-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.currentTarget;
+  await withBusy(form.querySelector('button[type=submit]'), async () => {
+    const username = form.username.value.trim();
+    if (!username) throw new Error('Type a username');
+    if (!confirm(`Make ${username} an admin? They'll be able to use Admin tools and post News.`)) return;
+    const { admin } = await api('POST', '/admin/admins', { username });
+    form.reset();
+    toast(`🛠 ${admin.displayName} is now an admin`);
+    await loadAdmins();
+  });
 });
 
 async function loadRequests() {
@@ -3514,6 +3754,75 @@ async function openUserProfile(userId) {
   $('user-actions').replaceChildren(...nodes(el('button', { class: 'btn', value: 'close', text: 'Close' }), ...actions));
   dialog.showModal();
 }
+
+// ---------- birthdays ----------
+const MONTHS = Array.from({ length: 12 }, (_, i) => new Date(2000, i, 1).toLocaleDateString(undefined, { month: 'long' }));
+const DAYS_IN = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+function fillBirthdayDays() {
+  const month = Number($('birthday-month').value) || 1;
+  const keep = Number($('birthday-day').value) || 1;
+  $('birthday-day').replaceChildren(
+    ...Array.from({ length: DAYS_IN[month - 1] }, (_, i) => el('option', { value: String(i + 1), text: String(i + 1) }))
+  );
+  $('birthday-day').value = String(Math.min(keep, DAYS_IN[month - 1]));
+}
+$('birthday-month').replaceChildren(...MONTHS.map((name, i) => el('option', { value: String(i + 1), text: name })));
+$('birthday-month').addEventListener('change', fillBirthdayDays);
+
+function openBirthday() {
+  const current = state.plan?.birthday;
+  $('birthday-month').value = String(current?.month ?? new Date().getMonth() + 1);
+  fillBirthdayDays();
+  $('birthday-day').value = String(current?.day ?? 1);
+  $('btn-birthday-remove').hidden = !current;
+  $('btn-birthday-skip').textContent = current ? 'Cancel' : 'Not now';
+  $('dialog-birthday').showModal();
+}
+
+/** Ask once, after signing up or the first sign-in with this version. */
+function maybeAskBirthday() {
+  if (state.plan && !state.plan.birthdayAsked && !document.querySelector('dialog[open]')) openBirthday();
+}
+
+$('birthday-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  await withBusy($('btn-birthday-save'), async () => {
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const { birthday } = await api('POST', '/me/birthday', {
+      month: Number($('birthday-month').value),
+      day: Number($('birthday-day').value),
+      timeZone,
+    });
+    Object.assign(state.plan, { birthday, birthdayAsked: true });
+    $('dialog-birthday').close();
+    toast(`🎂 Saved! You'll get a 🎉 on ${MONTHS[birthday.month - 1]} ${birthday.day}`);
+    refreshMe().catch(() => {});
+  });
+});
+$('btn-birthday-skip').addEventListener('click', () => {
+  $('dialog-birthday').close();
+  if (state.plan && !state.plan.birthdayAsked) {
+    state.plan.birthdayAsked = true;
+    api('POST', '/me/birthday', { skip: true }).catch(() => {});
+    toast('No problem. You can add it any time in your profile.');
+  }
+});
+$('btn-birthday-remove').addEventListener('click', async () => {
+  try {
+    await api('DELETE', '/me/birthday');
+    Object.assign(state.plan, { birthday: null, birthdayAsked: true });
+    $('dialog-birthday').close();
+    toast('Birthday removed');
+    refreshMe().catch(() => {});
+  } catch (err) {
+    toast(err.message, { error: true });
+  }
+});
+$('btn-profile-birthday').addEventListener('click', () => {
+  $('dialog-profile').close();
+  openBirthday();
+});
 
 async function boot() {
   setAuthMode('login');

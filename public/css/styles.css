@@ -323,16 +323,42 @@ h1, h2, h3, h4, strong, b, th { font-weight: var(--w-heading); }
   padding: 8px 12px;
   overflow-wrap: anywhere;
 }
-.caption-bar input {
+.caption-bar { white-space: pre-wrap; line-height: 1.3; }
+/* Long captions wrap onto more lines instead of running off the photo. */
+.caption-bar textarea {
+  display: block;
   width: 100%;
   border: 0;
+  padding: 0;
+  margin: 0;
   background: transparent;
   color: #fff;
   text-align: center;
+  font: inherit;
   font-size: 18px;
+  line-height: 1.3;
+  resize: none;
+  overflow: hidden;
   outline: none;
 }
-.caption-bar input::placeholder { color: rgba(255, 255, 255, 0.6); }
+.caption-bar textarea::placeholder { color: rgba(255, 255, 255, 0.6); }
+/* The viewer's hint has its own background so it never mixes with a caption,
+   moves to the top when the caption is low down, and fades after a moment. */
+.viewer-hint {
+  left: 16px;
+  right: 16px;
+  width: fit-content;
+  margin: 0 auto;
+  bottom: calc(24px + var(--safe-bottom));
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.6);
+  text-shadow: none;
+  transition: opacity 0.6s;
+  z-index: 3;
+}
+.viewer-hint.top { bottom: auto; top: calc(76px + var(--safe-top)); }
+.viewer-hint.faded { opacity: 0; }
 .hint {
   position: absolute;
   left: 0;
@@ -1216,3 +1242,107 @@ img.tt-media { object-fit: contain; background: #111; }
 }
 .tt-action .reaction-icon { font-size: 34px; line-height: 1; filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.5)); }
 .tt-empty { height: 100%; display: grid; place-items: center; padding: 24px; text-align: center; opacity: 0.8; }
+
+/* ---------- birthdays ---------- */
+.birthday-pop { margin-left: 4px; font-size: 0.95em; }
+.name-marks { display: inline-flex; align-items: center; }
+.birthday-hero { font-size: 56px; line-height: 1; margin-bottom: 6px; }
+.birthday-why { color: var(--muted); font-size: 14px; margin: 6px 0 14px; }
+.birthday-why strong { color: var(--text); }
+.birthday-pick { display: flex; gap: 10px; justify-content: center; }
+.birthday-pick label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); text-align: left; }
+.birthday-pick select {
+  min-width: 120px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 16px;
+}
+#btn-profile-birthday { margin: 0 0 10px; }
+
+/* ---------- News polls ---------- */
+.poll { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; font-family: var(--font-text); }
+.poll-question { margin: 0; font-weight: var(--w-heading); }
+.poll-option {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  overflow: hidden;
+}
+.poll-option > span { position: relative; z-index: 1; }
+/* After voting: each choice fills to its share of the votes. */
+.poll.voted .poll-option::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--pct, 0%);
+  background: var(--brand-soft);
+  transition: width 0.4s;
+}
+.poll-option.mine { border-color: var(--brand); font-weight: var(--w-heading); }
+.poll-pct { font-variant-numeric: tabular-nums; font-weight: var(--w-heading); }
+.poll-total { margin: 0; font-size: 12px; color: var(--muted); }
+.tt-info .poll { width: 100%; margin: 4px 0; text-shadow: none; }
+.tt-info .poll-option { background: rgba(255, 255, 255, 0.15); border-color: rgba(255, 255, 255, 0.35); color: #fff; padding: 8px 12px; }
+.tt-info .poll.voted .poll-option::before { background: rgba(255, 255, 255, 0.3); }
+.tt-info .poll-option.mine { border-color: #fff; }
+.tt-info .poll-total { color: rgba(255, 255, 255, 0.8); }
+.poll-editor { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin: 4px 0 8px; }
+#news-poll-fields { width: 100%; display: flex; flex-direction: column; gap: 6px; }
+.poll-option-inputs { display: grid; gap: 6px; }
+#news-poll-note { margin: 0; }
+
+/* ---------- comments (a sheet from the bottom) ---------- */
+dialog.sheet {
+  text-align: left;
+  width: 100%;
+  max-width: 560px;
+  height: min(80vh, 640px);
+  margin: auto auto 0;
+  padding: 0;
+  border-radius: 20px 20px 0 0;
+  display: none;
+  flex-direction: column;
+}
+dialog.sheet[open] { display: flex; }
+.sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 12px 10px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.sheet-head h2 { font-size: 17px; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.comment-list { list-style: none; margin: 0; padding: 8px 16px; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+#comments-empty { flex: 1; }
+.comment { display: flex; gap: 10px; align-items: flex-start; }
+.comment-avatar { border: none; background: none; padding: 0; }
+.comment-main { min-width: 0; flex: 1; }
+.comment-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.comment-time { font-size: 12px; color: var(--muted); }
+.comment-body { margin: 2px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.comment-delete { padding: 2px 0; color: var(--danger); }
+.comment-composer { align-items: flex-end; }
+.comment-composer textarea {
+  flex: 1;
+  resize: none;
+  max-height: 120px;
+  padding: 10px 14px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}

@@ -27,9 +27,12 @@ import {
   generateCode,
   hasUnlimited,
   isAdmin,
+  isBirthday,
   normaliseCode,
   perks,
   unlimitedUntil,
+  validBirthday,
+  validTimeZone,
 } from './plans.js';
 import { DAY_MS } from './streaks.js';
 import { HttpError, base64Field, fail, pair, parseUserId, validatePublicKey } from './http.js';
@@ -74,6 +77,14 @@ export function createApp({
   // Where News photos and videos are kept (next to the database, on the volume).
   mediaDir = fs.mkdtempSync(path.join(os.tmpdir(), 'koolkat-media-')),
 } = {}) {
+  // Owners (KOOLKAT_ADMINS, e.g. zalith9) can make other people admins; the
+  // admins they add are stored in the database and added to this list.
+  admins = [...admins];
+  const owners = new Set(admins);
+  const isOwner = (username) => typeof username === 'string' && owners.has(username.toLowerCase());
+  for (const row of db.prepare('SELECT username FROM users WHERE admin_granted_at IS NOT NULL').all()) {
+    if (!admins.includes(row.username.toLowerCase())) admins.push(row.username.toLowerCase());
+  }
   const app = express();
   app.disable('x-powered-by');
   // Number of reverse proxies in front of the server (so rate limiting sees the
@@ -145,7 +156,7 @@ export function createApp({
     friendship: db.prepare('SELECT * FROM friendships WHERE user_low = ? AND user_high = ?'),
     friendshipsOf: db.prepare(`
       SELECT f.*, u.id AS other_id, u.username, u.display_name, u.public_key,
-             u.plan_until, u.flair, u.badge_id, u.avatar_id, u.activity_emoji, u.activity_text, u.activity_until
+             u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz, u.activity_emoji, u.activity_text, u.activity_until
       FROM friendships f
       JOIN users u ON u.id = CASE WHEN f.user_low = ? THEN f.user_high ELSE f.user_low END
       WHERE f.user_low = ? OR f.user_high = ?`),
@@ -161,7 +172,7 @@ export function createApp({
       SET low_last_day = ?, high_last_day = ?, streak_count = ?, streak_day = ?
       WHERE user_low = ? AND user_high = ?`),
     searchUsers: db.prepare(`
-      SELECT id, username, display_name, plan_until, flair, badge_id, avatar_id FROM users
+      SELECT id, username, display_name, plan_until, flair, badge_id, avatar_id, birth_month, birth_day, birth_tz FROM users
       WHERE username LIKE ? ESCAPE '\\' AND id != ?
       ORDER BY length(username), username LIMIT 20`),
     insertSnap: db.prepare(`
@@ -174,7 +185,7 @@ export function createApp({
     // Received snaps from people who are still friends, newest first, one page at a time.
     inbox: db.prepare(`
       SELECT s.id, s.created_at, s.size, s.ciphertext IS NOT NULL AS available, r.viewed_at,
-             u.id AS sender_id, u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id
+             u.id AS sender_id, u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz
       FROM snap_recipients r
       JOIN snaps s ON s.id = r.snap_id
       JOIN users u ON u.id = s.sender_id
@@ -184,7 +195,7 @@ export function createApp({
       ORDER BY s.created_at DESC LIMIT ?`),
     sent: db.prepare(`
       SELECT s.id, s.created_at, s.sender_wrapped_key IS NOT NULL AND s.ciphertext IS NOT NULL AS viewable,
-             r.viewed_at, u.id AS recipient_id, u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id
+             r.viewed_at, u.id AS recipient_id, u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz
       FROM snaps s
       JOIN snap_recipients r ON r.snap_id = s.id
       JOIN users u ON u.id = r.recipient_id
@@ -193,7 +204,7 @@ export function createApp({
     snapForRecipient: db.prepare(`
       SELECT s.*, r.wrapped_key, r.wrap_iv, r.viewed_at,
              u.username AS sender_username, u.display_name AS sender_display_name,
-             u.plan_until, u.flair, u.badge_id, u.avatar_id
+             u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz
       FROM snaps s
       JOIN snap_recipients r ON r.snap_id = s.id AND r.recipient_id = ?
       JOIN users u ON u.id = s.sender_id
@@ -206,7 +217,7 @@ export function createApp({
     deleteSnap: db.prepare('DELETE FROM snaps WHERE id = ?'),
     snapForSender: db.prepare('SELECT * FROM snaps WHERE id = ? AND sender_id = ?'),
     snapRecipients: db.prepare(`
-      SELECT u.id, u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id
+      SELECT u.id, u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz
       FROM snap_recipients r JOIN users u ON u.id = r.recipient_id WHERE r.snap_id = ?`),
     storageUsed: db.prepare(
       'SELECT COALESCE(SUM(size), 0) AS used FROM snaps WHERE sender_id = ? AND ciphertext IS NOT NULL'
@@ -219,7 +230,7 @@ export function createApp({
     favorites: db.prepare(`
       SELECT f.created_at AS favorited_at, s.id, s.sender_id, s.created_at, s.ciphertext IS NOT NULL AS available,
              s.sender_wrapped_key IS NOT NULL AS sender_viewable,
-             u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id
+             u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz
       FROM favorites f
       JOIN snaps s ON s.id = f.snap_id
       JOIN users u ON u.id = s.sender_id
@@ -229,7 +240,7 @@ export function createApp({
     request: db.prepare('SELECT * FROM unlimited_requests WHERE id = ?'),
     insertRequest: db.prepare('INSERT INTO unlimited_requests (user_id, message, created_at) VALUES (?, ?, ?)'),
     pendingRequests: db.prepare(`
-      SELECT r.*, u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id
+      SELECT r.*, u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz
       FROM unlimited_requests r JOIN users u ON u.id = r.user_id
       WHERE r.status = 'pending' ORDER BY r.created_at`),
     handleRequest: db.prepare(
@@ -253,6 +264,8 @@ export function createApp({
     username: u.username,
     displayName: u.display_name,
     avatarUrl: u.avatar_id ? `avatars/${u.avatar_id}.jpg` : null,
+    // 🎉 next to their name on their birthday (the date itself isn't shared).
+    birthday: isBirthday(u, clock()),
     ...perks(u, clock(), admins),
   });
 
@@ -272,6 +285,9 @@ export function createApp({
       flair: unlimited ? u.flair || DEFAULT_FLAIR : null,
       request: describeRequest(q.latestRequest.get(u.id)),
       isAdmin: isAdmin(u.username, admins),
+      isOwner: isOwner(u.username),
+      birthday: u.birth_month ? { month: u.birth_month, day: u.birth_day } : null,
+      birthdayAsked: Boolean(u.birthday_asked_at || u.birth_month),
       // Only admins are told when accounts would be lost on the next update.
       storageWarning: isAdmin(u.username, admins) && !storage.persistent ? storage.reason : null,
       appIcon: { icon: unlimited ? u.app_icon || 'default' : 'default', customId: u.app_icon_id ?? null },
@@ -414,6 +430,43 @@ export function createApp({
         privateKeyIv: user.private_key_iv,
         plan: planFor(user),
       };
+    })
+  );
+
+  // Birthday: month and day only (never the year), just to show a 🎉 on the day.
+  api.post(
+    '/me/birthday',
+    auth,
+    wrap((req) => {
+      const now = clock();
+      if (req.body?.skip) {
+        db.prepare('UPDATE users SET birthday_asked_at = ? WHERE id = ?').run(now, req.user.id);
+        return { birthday: null };
+      }
+      const month = Number(req.body?.month);
+      const day = Number(req.body?.day);
+      if (!validBirthday(month, day)) fail(400, 'Pick a real date');
+      const tz = validTimeZone(req.body?.timeZone) ? req.body.timeZone : 'UTC';
+      db.prepare('UPDATE users SET birth_month = ?, birth_day = ?, birth_tz = ?, birthday_asked_at = ? WHERE id = ?').run(
+        month,
+        day,
+        tz,
+        now,
+        req.user.id
+      );
+      return { birthday: { month, day } };
+    })
+  );
+
+  api.delete(
+    '/me/birthday',
+    auth,
+    wrap((req) => {
+      db.prepare('UPDATE users SET birth_month = NULL, birth_day = NULL, birth_tz = NULL, birthday_asked_at = ? WHERE id = ?').run(
+        clock(),
+        req.user.id
+      );
+      return { birthday: null };
     })
   );
 
@@ -570,6 +623,61 @@ export function createApp({
         });
       }
       return { user: publicUser(q.userById.get(target.id)), reset };
+    })
+  );
+
+  // ---------- admins (only owners, e.g. zalith9, can add or remove them) ----------
+  const requireOwner = (req, res, next) => {
+    if (!isOwner(req.user?.username)) return res.status(403).json({ error: 'Only the KoolKat owner can manage admins' });
+    next();
+  };
+  const describeAdmin = (u) => ({
+    ...publicUser(u),
+    owner: isOwner(u.username),
+    grantedAt: u.admin_granted_at ?? null,
+  });
+
+  api.get(
+    '/admin/admins',
+    auth,
+    requireOwner,
+    wrap(() => {
+      const list = [];
+      for (const name of admins) {
+        const u = q.userByName.get(name);
+        if (u) list.push(describeAdmin(u));
+      }
+      return { admins: list.sort((a, b) => Number(b.owner) - Number(a.owner) || a.username.localeCompare(b.username)) };
+    })
+  );
+
+  api.post(
+    '/admin/admins',
+    auth,
+    requireOwner,
+    wrap((req) => {
+      const target = q.userByName.get(String(req.body?.username ?? '').trim());
+      if (!target) fail(404, 'No user with that username');
+      if (isAdmin(target.username, admins)) fail(409, `${target.display_name} is already an admin`);
+      db.prepare('UPDATE users SET admin_granted_at = ?, admin_granted_by = ? WHERE id = ?').run(clock(), req.user.id, target.id);
+      admins.push(target.username.toLowerCase());
+      pusher.notify(target.id, { body: '🛠 You are now a KoolKat admin. Find Admin tools in your profile.', tag: 'admin', view: 'camera' });
+      return { admin: describeAdmin(q.userById.get(target.id)) };
+    })
+  );
+
+  api.delete(
+    '/admin/admins/:username',
+    auth,
+    requireOwner,
+    wrap((req) => {
+      const target = q.userByName.get(String(req.params.username));
+      if (!target || !isAdmin(target.username, admins)) fail(404, 'That user is not an admin');
+      if (isOwner(target.username)) fail(403, "The owner's admin can't be removed");
+      db.prepare('UPDATE users SET admin_granted_at = NULL, admin_granted_by = NULL WHERE id = ?').run(target.id);
+      const i = admins.indexOf(target.username.toLowerCase());
+      if (i >= 0) admins.splice(i, 1);
+      return { ok: true };
     })
   );
 
@@ -1095,7 +1203,7 @@ export function createApp({
 
   // ---------- news ----------
   const isAdminUser = (user) => isAdmin(user?.username, admins);
-  const news = registerNewsRoutes({ api, db, clock, auth, wrap, publicUser, isAdminUser, pusher, mediaDir });
+  const news = registerNewsRoutes({ api, db, clock, auth, wrap, publicUser, isAdminUser, pusher, mediaDir, rateLimiter });
   app.locals.cleanupNewsUploads = news.cleanupUploads;
 
   // ---------- push notifications ----------
