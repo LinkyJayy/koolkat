@@ -145,7 +145,7 @@ export function createApp({
     friendship: db.prepare('SELECT * FROM friendships WHERE user_low = ? AND user_high = ?'),
     friendshipsOf: db.prepare(`
       SELECT f.*, u.id AS other_id, u.username, u.display_name, u.public_key,
-             u.plan_until, u.flair, u.badge_id, u.activity_emoji, u.activity_text, u.activity_until
+             u.plan_until, u.flair, u.badge_id, u.avatar_id, u.activity_emoji, u.activity_text, u.activity_until
       FROM friendships f
       JOIN users u ON u.id = CASE WHEN f.user_low = ? THEN f.user_high ELSE f.user_low END
       WHERE f.user_low = ? OR f.user_high = ?`),
@@ -161,7 +161,7 @@ export function createApp({
       SET low_last_day = ?, high_last_day = ?, streak_count = ?, streak_day = ?
       WHERE user_low = ? AND user_high = ?`),
     searchUsers: db.prepare(`
-      SELECT id, username, display_name, plan_until, flair, badge_id FROM users
+      SELECT id, username, display_name, plan_until, flair, badge_id, avatar_id FROM users
       WHERE username LIKE ? ESCAPE '\\' AND id != ?
       ORDER BY length(username), username LIMIT 20`),
     insertSnap: db.prepare(`
@@ -174,7 +174,7 @@ export function createApp({
     // Received snaps from people who are still friends, newest first, one page at a time.
     inbox: db.prepare(`
       SELECT s.id, s.created_at, s.size, s.ciphertext IS NOT NULL AS available, r.viewed_at,
-             u.id AS sender_id, u.username, u.display_name, u.plan_until, u.flair, u.badge_id
+             u.id AS sender_id, u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id
       FROM snap_recipients r
       JOIN snaps s ON s.id = r.snap_id
       JOIN users u ON u.id = s.sender_id
@@ -184,7 +184,7 @@ export function createApp({
       ORDER BY s.created_at DESC LIMIT ?`),
     sent: db.prepare(`
       SELECT s.id, s.created_at, s.sender_wrapped_key IS NOT NULL AND s.ciphertext IS NOT NULL AS viewable,
-             r.viewed_at, u.id AS recipient_id, u.username, u.display_name, u.plan_until, u.flair, u.badge_id
+             r.viewed_at, u.id AS recipient_id, u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id
       FROM snaps s
       JOIN snap_recipients r ON r.snap_id = s.id
       JOIN users u ON u.id = r.recipient_id
@@ -193,7 +193,7 @@ export function createApp({
     snapForRecipient: db.prepare(`
       SELECT s.*, r.wrapped_key, r.wrap_iv, r.viewed_at,
              u.username AS sender_username, u.display_name AS sender_display_name,
-             u.plan_until, u.flair, u.badge_id
+             u.plan_until, u.flair, u.badge_id, u.avatar_id
       FROM snaps s
       JOIN snap_recipients r ON r.snap_id = s.id AND r.recipient_id = ?
       JOIN users u ON u.id = s.sender_id
@@ -206,7 +206,7 @@ export function createApp({
     deleteSnap: db.prepare('DELETE FROM snaps WHERE id = ?'),
     snapForSender: db.prepare('SELECT * FROM snaps WHERE id = ? AND sender_id = ?'),
     snapRecipients: db.prepare(`
-      SELECT u.id, u.username, u.display_name, u.plan_until, u.flair, u.badge_id
+      SELECT u.id, u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id
       FROM snap_recipients r JOIN users u ON u.id = r.recipient_id WHERE r.snap_id = ?`),
     storageUsed: db.prepare(
       'SELECT COALESCE(SUM(size), 0) AS used FROM snaps WHERE sender_id = ? AND ciphertext IS NOT NULL'
@@ -219,7 +219,7 @@ export function createApp({
     favorites: db.prepare(`
       SELECT f.created_at AS favorited_at, s.id, s.sender_id, s.created_at, s.ciphertext IS NOT NULL AS available,
              s.sender_wrapped_key IS NOT NULL AS sender_viewable,
-             u.username, u.display_name, u.plan_until, u.flair, u.badge_id
+             u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id
       FROM favorites f
       JOIN snaps s ON s.id = f.snap_id
       JOIN users u ON u.id = s.sender_id
@@ -229,7 +229,7 @@ export function createApp({
     request: db.prepare('SELECT * FROM unlimited_requests WHERE id = ?'),
     insertRequest: db.prepare('INSERT INTO unlimited_requests (user_id, message, created_at) VALUES (?, ?, ?)'),
     pendingRequests: db.prepare(`
-      SELECT r.*, u.username, u.display_name, u.plan_until, u.flair, u.badge_id
+      SELECT r.*, u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id
       FROM unlimited_requests r JOIN users u ON u.id = r.user_id
       WHERE r.status = 'pending' ORDER BY r.created_at`),
     handleRequest: db.prepare(
@@ -252,6 +252,7 @@ export function createApp({
     id: u.id,
     username: u.username,
     displayName: u.display_name,
+    avatarUrl: u.avatar_id ? `avatars/${u.avatar_id}.jpg` : null,
     ...perks(u, clock(), admins),
   });
 
@@ -533,7 +534,8 @@ export function createApp({
       const badge = Boolean(req.body?.badge);
       const icon = Boolean(req.body?.icon);
       const activity = Boolean(req.body?.activity);
-      if (!badge && !icon && !activity) fail(400, 'Choose the badge, the icon, the activity, or all of them');
+      const avatar = Boolean(req.body?.avatar);
+      if (!badge && !icon && !activity && !avatar) fail(400, 'Choose what to reset');
       const reset = [];
       transaction(db, () => {
         if (badge && target.badge_id) {
@@ -552,9 +554,13 @@ export function createApp({
           );
           reset.push('activity');
         }
+        if (avatar && target.avatar_id) {
+          db.prepare('UPDATE users SET avatar_id = NULL, avatar_jpeg = NULL WHERE id = ?').run(target.id);
+          reset.push('avatar');
+        }
       });
       if (reset.length) {
-        const names = { badge: 'badge', icon: 'app icon', activity: 'Activity Bubble' };
+        const names = { badge: 'badge', icon: 'app icon', activity: 'Activity Bubble', avatar: 'profile picture' };
         const parts = reset.map((r) => names[r]);
         const list = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts[0];
         pusher.notify(target.id, {
@@ -598,6 +604,37 @@ export function createApp({
         return { ...publicUser(u), relationship };
       });
       return { users };
+    })
+  );
+
+  // Someone's KoolKat profile (e.g. tapping a name in News).
+  api.get(
+    '/users/:userId',
+    auth,
+    wrap((req) => {
+      const id = parseUserId(req.params.userId);
+      const u = q.userById.get(id);
+      if (!u) fail(404, 'No such user');
+      const me = req.user.id;
+      let relationship = 'none';
+      if (id === me) relationship = 'you';
+      else {
+        const [low, high] = pair(me, id);
+        const f = q.friendship.get(low, high);
+        if (f?.status === 'accepted') relationship = 'friends';
+        else if (f) relationship = f.requester_id === me ? 'outgoing' : 'incoming';
+      }
+      const close = relationship === 'friends' || relationship === 'you';
+      return {
+        user: {
+          ...publicUser(u),
+          relationship,
+          joinedAt: u.created_at,
+          isAdmin: isAdmin(u.username, admins),
+          // What they're up to is only for friends.
+          activity: close ? activityOf(u, clock(), hasUnlimitedUser) : null,
+        },
+      };
     })
   );
 

@@ -32,9 +32,12 @@ export function readPng(value, name, { maxBytes, width: wantWidth, height: wantH
 const newPublicId = () => crypto.randomBytes(12).toString('base64url');
 const ID_RE = /^[A-Za-z0-9_-]{16}$/;
 
-function sendImage(res, bytes) {
+const MAX_AVATAR_BYTES = 400 * 1024;
+const JPEG_SIGNATURE = Buffer.from([0xff, 0xd8, 0xff]);
+
+function sendImage(res, bytes, type = 'image/png') {
   res.set({
-    'Content-Type': 'image/png',
+    'Content-Type': type,
     // Each upload gets a new id, so a given URL never changes.
     'Cache-Control': 'public, max-age=31536000, immutable',
     'Cross-Origin-Resource-Policy': 'cross-origin',
@@ -52,6 +55,8 @@ export function registerCustomizeRoutes({ api, db, clock, auth, wrap, hasUnlimit
     iconById: db.prepare('SELECT app_icon_512, app_icon_192 FROM users WHERE app_icon_id = ?'),
     setBadge: db.prepare('UPDATE users SET badge_id = ?, badge_png = ? WHERE id = ?'),
     badgeById: db.prepare('SELECT badge_png FROM users WHERE badge_id = ?'),
+    setAvatar: db.prepare('UPDATE users SET avatar_id = ?, avatar_jpeg = ? WHERE id = ?'),
+    avatarById: db.prepare('SELECT avatar_jpeg FROM users WHERE avatar_id = ?'),
     bffs: db.prepare('SELECT friend_id FROM bffs WHERE user_id = ?'),
     addBff: db.prepare('INSERT OR IGNORE INTO bffs (user_id, friend_id, created_at) VALUES (?, ?, ?)'),
     removeBff: db.prepare('DELETE FROM bffs WHERE user_id = ? AND friend_id = ?'),
@@ -124,6 +129,35 @@ export function registerCustomizeRoutes({ api, db, clock, auth, wrap, hasUnlimit
     const row = ID_RE.test(req.params.id) ? q.badgeById.get(req.params.id) : null;
     if (!row?.badge_png) return res.status(404).json({ error: 'Not found' });
     sendImage(res, row.badge_png);
+  });
+
+  // ---------- profile pictures (everyone) ----------
+  // The app crops the picture to a square JPEG before uploading it.
+  api.post(
+    '/me/avatar',
+    auth,
+    wrap((req) => {
+      const bytes = base64Field(req.body?.image, 'image', { min: 100, max: MAX_AVATAR_BYTES });
+      if (!bytes.subarray(0, 3).equals(JPEG_SIGNATURE)) fail(400, 'The picture must be a JPEG');
+      const id = newPublicId();
+      q.setAvatar.run(id, bytes, req.user.id);
+      return { avatarUrl: `avatars/${id}.jpg` };
+    })
+  );
+
+  api.delete(
+    '/me/avatar',
+    auth,
+    wrap((req) => {
+      q.setAvatar.run(null, null, req.user.id);
+      return { avatarUrl: null };
+    })
+  );
+
+  api.get('/avatars/:id.jpg', (req, res) => {
+    const row = ID_RE.test(req.params.id) ? q.avatarById.get(req.params.id) : null;
+    if (!row?.avatar_jpeg) return res.status(404).json({ error: 'Not found' });
+    sendImage(res, row.avatar_jpeg, 'image/jpeg');
   });
 
   // ---------- BFFs ----------

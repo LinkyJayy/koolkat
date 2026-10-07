@@ -72,8 +72,17 @@ function el(tag, props = {}, ...children) {
   return node;
 }
 
-const avatar = (user, cls = '') =>
-  el('span', { class: `avatar ${cls}`, text: (user.displayName || user.username || '?').trim()[0] });
+/** Show someone's profile picture in an avatar circle, or their first letter if they have none. */
+function fillAvatar(node, user) {
+  const letter = (user?.displayName || user?.username || '?').trim()[0] || '?';
+  if (user?.avatarUrl) {
+    node.replaceChildren(el('img', { src: `${API_BASE}/api/${user.avatarUrl}`, alt: '', loading: 'lazy' }));
+  } else {
+    node.textContent = letter;
+  }
+  return node;
+}
+const avatar = (user, cls = '') => fillAvatar(el('span', { class: `avatar ${cls}` }), user);
 
 /** A user's display name, with the Kool badge if they have KoolKat Unlimited. */
 // The default Kool badge, or the custom badge picture someone uploaded.
@@ -128,6 +137,10 @@ function show(name) {
   if (state.screen === 'scan' && name !== 'scan') stopScanner();
   if (state.screen === 'nearby' && name !== 'nearby') stopNearby();
   if (state.screen === 'katmap' && name !== 'katmap') stopKatMap();
+  // Don't leave News videos playing in the background.
+  if (state.screen === 'news' && name !== 'news') {
+    for (const video of document.querySelectorAll('#screen-news video')) video.pause();
+  }
   for (const s of document.querySelectorAll('.screen')) s.hidden = s.id !== `screen-${name}`;
   state.screen = name;
   if (name === 'camera') startCamera();
@@ -272,7 +285,7 @@ setUnauthorizedHandler(() => {
 });
 
 function enterApp() {
-  $('my-avatar').textContent = (state.me.displayName || state.me.username)[0];
+  fillAvatar($('my-avatar'), state.me);
   show('camera');
   refresh();
   clearInterval(state.pollTimer);
@@ -981,8 +994,18 @@ async function refreshNewsBadge() {
   $('badge-news').textContent = unread;
 }
 
+// News has two styles (remembered on this device): Formal, like reading a
+// newspaper, and TikTok, a full-screen feed you swipe through.
+const news = { posts: [], canPost: false, mode: 'formal', edit: null, observer: null };
+try {
+  news.mode = localStorage.getItem('koolkat.newsMode') === 'tiktok' ? 'tiktok' : 'formal';
+} catch {
+  // Private mode: start in Formal.
+}
+
 function openNews() {
   show('news');
+  renderNewsMode();
   loadNews();
 }
 $('btn-news').addEventListener('click', openNews);
@@ -990,8 +1013,9 @@ $('btn-news').addEventListener('click', openNews);
 async function loadNews() {
   try {
     const { posts, canPost } = await api('GET', '/news');
-    $('news-form').hidden = !canPost;
-    renderNews(posts, canPost);
+    news.posts = posts;
+    news.canPost = canPost;
+    renderNews();
     await api('POST', '/news/seen');
     $('badge-news').hidden = true;
   } catch (err) {
@@ -999,40 +1023,310 @@ async function loadNews() {
   }
 }
 
-function renderNews(posts, canPost) {
-  $('news-empty').hidden = posts.length > 0;
-  $('news-list').replaceChildren(
-    ...posts.map((p) =>
-      el(
-        'li',
-        { class: 'news-post' },
-        el('h3', { text: p.title }),
-        el('div', { class: 'news-meta' }, p.author ? p.author.displayName : 'KoolKat', badgeImg(p.author), ` · ${timeAgo(p.createdAt)}`),
-        p.body ? el('p', { class: 'news-body', text: p.body }) : null,
+function setNewsMode(mode) {
+  news.mode = mode;
+  try {
+    localStorage.setItem('koolkat.newsMode', mode);
+  } catch {
+    // Remembering it is only a convenience.
+  }
+  renderNewsMode();
+  renderNews();
+}
+
+function renderNewsMode() {
+  const tiktok = news.mode === 'tiktok';
+  for (const tab of document.querySelectorAll('#news-modes .tab')) {
+    const on = tab.dataset.mode === news.mode;
+    tab.classList.toggle('active', on);
+    tab.setAttribute('aria-checked', String(on));
+  }
+  $('screen-news').classList.toggle('news-tiktok', tiktok);
+}
+$('news-modes').addEventListener('click', (e) => {
+  const tab = e.target.closest('.tab');
+  if (tab) setNewsMode(tab.dataset.mode);
+});
+
+const longDate = (ms) => new Date(ms).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+function renderNews() {
+  const tiktok = news.mode === 'tiktok';
+  // In TikTok style, admins write and edit posts by switching back to Formal.
+  $('news-form').hidden = !news.canPost || tiktok;
+  $('news-list').hidden = tiktok;
+  $('news-feed').hidden = !tiktok;
+  $('news-empty').hidden = news.posts.length > 0;
+  $('news-list').className = 'news-list news-formal';
+  if (tiktok) renderTikTok();
+  else $('news-list').replaceChildren(...news.posts.map((p) => formalArticle(p)));
+}
+
+// ---------- shared pieces ----------
+function authorButton(author, cls) {
+  if (!author) return el('span', { class: cls, text: 'KoolKat' });
+  return el(
+    'button',
+    { type: 'button', class: `${cls} author-link`, onclick: () => openUserProfile(author.id) },
+    avatar(author, 'small'),
+    el('span', { text: `@${author.username}` }),
+    badgeImg(author)
+  );
+}
+
+function codeBox(p) {
+  if (!p.code) return null;
+  return el(
+    'div',
+    { class: 'news-code' },
+    el('code', { text: p.code }),
+    actionButton('Redeem', async () => {
+      const res = await api('POST', '/codes/redeem', { code: p.code });
+      await refreshMe().catch(() => {});
+      toast(res.forever ? '🎉 KoolKat Unlimited is yours forever!' : `🎉 KoolKat Unlimited until ${formatDate(res.unlimitedUntil)}!`);
+    }),
+    actionButton('Copy', () => copyText(p.code), '')
+  );
+}
+
+/** ❤️ and ⭐ buttons for a post. `onChange` redraws whatever shows it. */
+function reactionButtons(p, { onChange, cls = 'reaction' } = {}) {
+  const heart = el(
+    'button',
+    {
+      type: 'button',
+      class: `${cls} heart`,
+      'aria-pressed': String(p.liked),
+      'aria-label': p.liked ? 'Unlike' : 'Like',
+      onclick: () =>
+        toggleReaction(p, 'like', 'liked').then(onChange, (err) => toast(err.message, { error: true })),
+    },
+    el('span', { class: 'reaction-icon', text: p.liked ? '❤️' : '🤍' }),
+    el('span', { class: 'reaction-count', text: String(p.likes) })
+  );
+  const star = el(
+    'button',
+    {
+      type: 'button',
+      class: `${cls} star`,
+      'aria-pressed': String(p.saved),
+      'aria-label': p.saved ? 'Remove from Favorite Articles' : 'Save to Favorite Articles',
+      onclick: () =>
+        toggleReaction(p, 'save', 'saved')
+          .then(() => {
+            toast(p.saved ? '⭐ Saved to Favorite Articles' : 'Removed from Favorite Articles');
+            onChange?.();
+          })
+          .catch((err) => toast(err.message, { error: true })),
+    },
+    el('span', { class: 'reaction-icon', text: p.saved ? '⭐' : '☆' }),
+    el('span', { class: 'reaction-count', text: p.saved ? 'Saved' : 'Save' })
+  );
+  return [heart, star];
+}
+
+async function toggleReaction(p, kind, field) {
+  const on = !p[field];
+  const res = await api(on ? 'POST' : 'DELETE', `/news/${p.id}/${kind}`);
+  p[field] = res[field];
+  p.likes = res.likes;
+  // Keep the same post in the other lists in step.
+  for (const other of news.posts) {
+    if (other.id === p.id && other !== p) Object.assign(other, { [field]: p[field], likes: p.likes });
+  }
+}
+
+function adminButtons(p) {
+  if (!news.canPost) return [];
+  return [
+    actionButton('Edit', () => startEditingNews(p), ''),
+    actionButton(
+      'Delete',
+      async () => {
+        if (!confirm(`Delete “${p.title}”?`)) return;
+        await api('DELETE', `/news/${p.id}`);
+        if (news.edit?.id === p.id) stopEditingNews();
+        await loadNews();
+      },
+      'danger'
+    ),
+  ];
+}
+
+// ---------- Formal: like a newspaper article ----------
+function formalArticle(p, { saved = false } = {}) {
+  const node = el('li', { class: 'news-post article' });
+  const draw = () =>
+    node.replaceChildren(
+      ...nodes(
+        el('p', { class: 'article-kicker', text: 'KoolKat News' }),
+        el('h3', { class: 'article-headline', text: p.title }),
+        el(
+          'div',
+          { class: 'article-byline' },
+          el('span', { text: 'By ' }),
+          authorButton(p.author, 'byline-author'),
+          el('span', { class: 'article-date', text: ` · ${longDate(p.createdAt)}${p.editedAt ? ' · Updated' : ''}` })
+        ),
         newsMedia(p.media),
-        p.code
+        p.body
           ? el(
               'div',
-              { class: 'news-code' },
-              el('code', { text: p.code }),
-              actionButton('Redeem', async () => {
-                const res = await api('POST', '/codes/redeem', { code: p.code });
-                await refreshMe().catch(() => {});
-                toast(res.forever ? '🎉 KoolKat Unlimited is yours forever!' : `🎉 KoolKat Unlimited until ${formatDate(res.unlimitedUntil)}!`);
-              }),
-              actionButton('Copy', () => copyText(p.code), '')
+              // A big first letter, newspaper style, for proper articles (not one-liners).
+              { class: `article-body${p.body.length > 140 ? ' drop-cap' : ''}` },
+              ...p.body.split(/\n{2,}/).map((para) => el('p', { text: para }))
             )
           : null,
-        canPost
-          ? actionButton('Delete post', async () => {
-              if (!confirm(`Delete “${p.title}”?`)) return;
-              await api('DELETE', `/news/${p.id}`);
-              await loadNews();
-            }, 'danger')
-          : null
+        codeBox(p),
+        el(
+          'div',
+          { class: 'article-actions' },
+          ...reactionButtons(p, {
+            onChange: () => (saved && !p.saved ? node.remove() : draw()),
+          }),
+          ...(saved ? [] : adminButtons(p))
+        )
+      )
+    );
+  draw();
+  return node;
+}
+
+// ---------- TikTok: one post per screen, swipe up for the next ----------
+function renderTikTok() {
+  news.observer?.disconnect();
+  const feed = $('news-feed');
+  feed.replaceChildren(...news.posts.map((p) => tiktokPost(p)));
+  if (!news.posts.length) {
+    feed.replaceChildren(el('div', { class: 'tt-empty', text: 'No news yet. Check back soon!' }));
+    return;
+  }
+  // Videos play (muted) while they're on screen and pause when you swipe away.
+  news.observer = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        const video = entry.target.querySelector('video');
+        if (!video) continue;
+        if (entry.isIntersecting && entry.intersectionRatio > 0.6) video.play().catch(() => {});
+        else video.pause();
+      }
+    },
+    { root: feed, threshold: [0, 0.6, 1] }
+  );
+  for (const post of feed.querySelectorAll('.tt-post')) news.observer.observe(post);
+}
+
+function tiktokPost(p) {
+  const node = el('article', { class: 'tt-post' });
+  let media = null;
+  if (p.media?.kind === 'video') {
+    media = el('video', {
+      class: 'tt-media',
+      src: `${API_BASE}/api/${p.media.url}`,
+      muted: true,
+      loop: true,
+      playsinline: true,
+      preload: 'metadata',
+    });
+    media.muted = true;
+    // Tap the video for sound.
+    media.addEventListener('click', () => {
+      media.muted = !media.muted;
+      toast(media.muted ? '🔇 Sound off' : '🔊 Sound on');
+    });
+  } else if (p.media?.kind === 'image') {
+    media = el('img', { class: 'tt-media', src: `${API_BASE}/api/${p.media.url}`, alt: '' });
+  }
+  const drawRail = () =>
+    rail.replaceChildren(
+      ...reactionButtons(p, { cls: 'tt-action', onChange: drawRail }),
+      ...(news.canPost
+        ? [
+            el('button', { type: 'button', class: 'tt-action', 'aria-label': 'Edit post', onclick: () => {
+              setNewsMode('formal');
+              startEditingNews(p);
+            } }, el('span', { class: 'reaction-icon', text: '✏️' }), el('span', { class: 'reaction-count', text: 'Edit' })),
+          ]
+        : [])
+    );
+  const rail = el('div', { class: 'tt-rail' });
+  drawRail();
+  const text = el(
+    'div',
+    { class: 'tt-text' },
+    el('h3', { class: 'tt-title', text: p.title }),
+    p.body ? el('p', { class: 'tt-body', text: p.body }) : null
+  );
+  const more = el('button', {
+    type: 'button',
+    class: 'tt-more',
+    text: '...more',
+    onclick: () => {
+      const open = node.classList.toggle('expanded');
+      more.textContent = open ? 'less' : '...more';
+    },
+  });
+  node.append(
+    ...nodes(
+      media ?? el('div', { class: 'tt-media tt-plain' }),
+      el('div', { class: 'tt-shade' }),
+      rail,
+      el(
+        'div',
+        { class: 'tt-info' },
+        authorButton(p.author, 'tt-author'),
+        text,
+        more,
+        codeBox(p),
+        el('span', { class: 'tt-date', text: `${timeAgo(p.createdAt)}${p.editedAt ? ' · edited' : ''}` })
       )
     )
   );
+  // Only offer "...more" when there's more to show.
+  requestAnimationFrame(() => {
+    if (text.scrollHeight <= text.clientHeight + 2) more.hidden = true;
+  });
+  return node;
+}
+
+// ---------- editing ----------
+function startEditingNews(p) {
+  news.edit = { id: p.id, media: p.media, removeMedia: false };
+  const form = $('news-form');
+  form.title.value = p.title;
+  form.body.value = p.body;
+  form.code.value = p.code ?? '';
+  form.notify.checked = false;
+  form.notify.closest('label').hidden = true;
+  $('news-form-title').textContent = 'Edit post';
+  $('btn-news-submit').textContent = 'Save changes';
+  $('btn-news-cancel-edit').hidden = false;
+  setNewsFile(null);
+  showExistingNewsMedia();
+  form.hidden = false;
+  form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  form.title.focus({ preventScroll: true });
+}
+
+function stopEditingNews() {
+  news.edit = null;
+  const form = $('news-form');
+  form.reset();
+  form.notify.closest('label').hidden = false;
+  $('news-form-title').textContent = 'New post (admins only)';
+  $('btn-news-submit').textContent = 'Post';
+  $('btn-news-cancel-edit').hidden = true;
+  setNewsFile(null);
+}
+$('btn-news-cancel-edit').addEventListener('click', stopEditingNews);
+
+/** While editing: the post's current photo/video, until it's removed or replaced. */
+function showExistingNewsMedia() {
+  const current = news.edit && !news.edit.removeMedia ? news.edit.media : null;
+  if (!current || newsUpload.file) return;
+  $('news-media-preview').hidden = false;
+  $('btn-news-media').hidden = true;
+  $('news-media-preview-item').replaceChildren(newsMedia(current));
 }
 
 // ---------- News photos and videos ----------
@@ -1066,7 +1360,11 @@ function setNewsFile(file) {
 }
 
 $('btn-news-media').addEventListener('click', () => $('news-media-file').click());
-$('btn-news-media-remove').addEventListener('click', () => setNewsFile(null));
+$('btn-news-media-remove').addEventListener('click', () => {
+  if (news.edit && !newsUpload.file) news.edit.removeMedia = true;
+  setNewsFile(null);
+  showExistingNewsMedia();
+});
 $('news-media-file').addEventListener('change', (e) => {
   const file = e.target.files[0];
   e.target.value = '';
@@ -1111,20 +1409,21 @@ function uploadNewsMedia(file) {
 $('news-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const form = e.currentTarget;
-  await withBusy(form.querySelector('button[type=submit]'), async () => {
+  await withBusy($('btn-news-submit'), async () => {
     const title = form.title.value.trim();
     if (!title) throw new Error('Give the post a title');
     const mediaId = newsUpload.file ? (await uploadNewsMedia(newsUpload.file)).mediaId : null;
-    await api('POST', '/news', {
-      title,
-      body: form.body.value,
-      code: form.code.value.trim() || null,
-      notify: form.notify.checked,
-      mediaId,
-    });
-    form.reset();
-    setNewsFile(null);
-    toast('📣 Posted to News');
+    const body = { title, body: form.body.value, code: form.code.value.trim() || null, mediaId };
+    if (news.edit) {
+      await api('POST', `/news/${news.edit.id}`, { ...body, removeMedia: news.edit.removeMedia });
+      stopEditingNews();
+      toast('✏️ Post updated');
+    } else {
+      await api('POST', '/news', { ...body, notify: form.notify.checked });
+      form.reset();
+      setNewsFile(null);
+      toast('📣 Posted to News');
+    }
     await loadNews();
   });
 });
@@ -1147,9 +1446,46 @@ $('btn-snap-favorite').addEventListener('click', (e) =>
   })
 );
 
+let favoritesTab = 'klicks';
+
 function openFavorites() {
   show('favorites');
-  loadFavorites();
+  setFavoritesTab(favoritesTab);
+}
+
+function setFavoritesTab(tab) {
+  favoritesTab = tab;
+  for (const t of document.querySelectorAll('#favorites-tabs .tab')) {
+    const on = t.dataset.tab === tab;
+    t.classList.toggle('active', on);
+    t.setAttribute('aria-selected', String(on));
+  }
+  const articles = tab === 'articles';
+  $('favorites-list').hidden = articles;
+  $('saved-articles').hidden = !articles;
+  if (articles) {
+    $('favorites-empty').hidden = true;
+    loadSavedArticles();
+  } else {
+    $('saved-articles-empty').hidden = true;
+    loadFavorites();
+  }
+}
+$('favorites-tabs').addEventListener('click', (e) => {
+  const tab = e.target.closest('.tab');
+  if (tab) setFavoritesTab(tab.dataset.tab);
+});
+
+// Favorite Articles: News posts saved with the ⭐ (separate from favorite Klicks).
+async function loadSavedArticles() {
+  try {
+    const { posts } = await api('GET', '/news/saved');
+    if (favoritesTab !== 'articles') return;
+    $('saved-articles-empty').hidden = posts.length > 0;
+    $('saved-articles').replaceChildren(...posts.map((p) => formalArticle(p, { saved: true })));
+  } catch (err) {
+    toast(err.message, { error: true });
+  }
 }
 $('btn-favorites').addEventListener('click', openFavorites);
 
@@ -1657,7 +1993,7 @@ async function runSearch() {
 
 async function openFriend(friend) {
   const dialog = $('dialog-friend');
-  $('friend-avatar').textContent = friend.displayName[0];
+  fillAvatar($('friend-avatar'), friend);
   $('friend-name').replaceChildren(...nodes(friend.displayName, badgeImg(friend)));
   $('friend-username').textContent = `@${friend.username}`;
   $('friend-flair').textContent = friend.flair || '';
@@ -1685,9 +2021,51 @@ async function openFriend(friend) {
 }
 
 // ---------- profile ----------
+// ---------- profile picture ----------
+function renderMyAvatar() {
+  fillAvatar($('my-avatar'), state.me);
+  fillAvatar($('profile-avatar'), state.me);
+  $('btn-avatar-remove').hidden = !state.me.avatarUrl;
+}
+
+$('btn-avatar').addEventListener('click', () => $('avatar-file').click());
+$('avatar-file').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  try {
+    const img = await loadImageFile(file);
+    // A centred square, small enough to load quickly everywhere it's shown.
+    const size = 320;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = size;
+    const side = Math.min(img.naturalWidth, img.naturalHeight);
+    canvas
+      .getContext('2d')
+      .drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, size, size);
+    const image = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+    const { avatarUrl } = await api('POST', '/me/avatar', { image });
+    state.me.avatarUrl = avatarUrl;
+    renderMyAvatar();
+    toast('📸 Profile picture updated');
+  } catch (err) {
+    toast(err.message, { error: true });
+  }
+});
+$('btn-avatar-remove').addEventListener('click', async () => {
+  try {
+    await api('DELETE', '/me/avatar');
+    state.me.avatarUrl = null;
+    renderMyAvatar();
+    toast('Profile picture removed');
+  } catch (err) {
+    toast(err.message, { error: true });
+  }
+});
+
 $('btn-profile').addEventListener('click', async () => {
   const dialog = $('dialog-profile');
-  $('profile-avatar').textContent = (state.me.displayName || state.me.username)[0];
+  renderMyAvatar();
   $('profile-username').textContent = `@${state.me.username}`;
   renderPlan();
   refreshMe()
@@ -1720,7 +2098,9 @@ async function refreshMe() {
     badge: me.user.badge,
     badgeUrl: me.user.badgeUrl,
     flair: me.user.flair,
+    avatarUrl: me.user.avatarUrl,
   });
+  renderMyAvatar();
   applyAppIcon(me.plan.appIcon);
   return me;
 }
@@ -1984,7 +2364,8 @@ for (const button of document.querySelectorAll('#reset-form [data-reset]')) {
         badge: 'custom badge',
         icon: 'custom app icon',
         activity: 'Activity Bubble',
-        all: 'custom badge, app icon and Activity Bubble',
+        avatar: 'profile picture',
+        all: 'custom badge, app icon, Activity Bubble and profile picture',
       }[which];
       if (!confirm(`Reset ${username}'s ${label}?`)) return;
       const res = await api('POST', '/admin/reset-customization', {
@@ -1992,8 +2373,9 @@ for (const button of document.querySelectorAll('#reset-form [data-reset]')) {
         badge: which === 'badge' || which === 'all',
         icon: which === 'icon' || which === 'all',
         activity: which === 'activity' || which === 'all',
+        avatar: which === 'avatar' || which === 'all',
       });
-      const names = { badge: 'badge', icon: 'app icon', activity: 'Activity Bubble' };
+      const names = { badge: 'badge', icon: 'app icon', activity: 'Activity Bubble', avatar: 'profile picture' };
       const done = res.reset.map((r) => names[r]);
       toast(
         done.length === 0
@@ -3095,6 +3477,43 @@ $('btn-sounds').addEventListener('click', () => {
   renderSoundsRow();
   if (soundsOn()) playNotification();
 });
+
+// ---------- someone's profile ----------
+async function openUserProfile(userId) {
+  if (userId === state.me.userId) {
+    $('btn-profile').click();
+    return;
+  }
+  let user;
+  try {
+    ({ user } = await api('GET', `/users/${userId}`));
+  } catch (err) {
+    toast(err.message, { error: true });
+    return;
+  }
+  const dialog = $('dialog-user');
+  fillAvatar($('user-avatar'), user);
+  $('user-name').replaceChildren(...nodes(user.displayName, badgeImg(user)));
+  $('user-username').textContent = `@${user.username}`;
+  $('user-admin').hidden = !user.isAdmin;
+  $('user-flair').textContent = user.flair || '';
+  $('user-flair').hidden = !user.flair;
+  showActivity($('user-activity'), user.activity);
+  $('user-joined').textContent = `On KoolKat since ${formatDate(user.joinedAt)}`;
+  const friend = state.friends.find((f) => f.id === user.id);
+  const close = () => dialog.close();
+  const actions = {
+    friends: [
+      el('button', { type: 'button', class: 'btn primary', text: 'Message', onclick: () => { close(); startDirectChat(user.id).catch((err) => toast(err.message, { error: true })); } }),
+      friend && el('button', { type: 'button', class: 'btn', text: '📞 Call', onclick: () => { close(); startCall(friend, 'audio'); } }),
+    ],
+    none: [actionButton('Add friend', async () => { await addFriend(user); close(); })],
+    incoming: [actionButton('Accept friend request', async () => { await acceptFriend(user); close(); })],
+    outgoing: [el('button', { type: 'button', class: 'btn', disabled: true, text: 'Request sent' })],
+  }[user.relationship] ?? [];
+  $('user-actions').replaceChildren(...nodes(el('button', { class: 'btn', value: 'close', text: 'Close' }), ...actions));
+  dialog.showModal();
+}
 
 async function boot() {
   setAuthMode('login');

@@ -43,10 +43,30 @@ export function registerNewsRoutes({ api, db, clock, auth, wrap, publicUser, isA
 
   const q = {
     posts: db.prepare(`
-      SELECT n.*, u.username, u.display_name, u.plan_until, u.flair, u.badge_id
+      SELECT n.*, u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id
       FROM news n LEFT JOIN users u ON u.id = n.author_id
       ORDER BY n.created_at DESC, n.id DESC LIMIT ?`),
     post: db.prepare('SELECT * FROM news WHERE id = ?'),
+    postWithAuthor: db.prepare(`
+      SELECT n.*, u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id
+      FROM news n LEFT JOIN users u ON u.id = n.author_id WHERE n.id = ?`),
+    update: db.prepare(`
+      UPDATE news SET title = ?, body = ?, code = ?, media_id = ?, media_kind = ?, media_type = ?, edited_at = ?
+      WHERE id = ?`),
+    likeCounts: db.prepare('SELECT post_id, COUNT(*) AS n FROM news_likes GROUP BY post_id'),
+    likeCount: db.prepare('SELECT COUNT(*) AS n FROM news_likes WHERE post_id = ?'),
+    myLikes: db.prepare('SELECT post_id FROM news_likes WHERE user_id = ?'),
+    mySaves: db.prepare('SELECT post_id FROM news_saves WHERE user_id = ?'),
+    like: db.prepare('INSERT OR IGNORE INTO news_likes (post_id, user_id, created_at) VALUES (?, ?, ?)'),
+    unlike: db.prepare('DELETE FROM news_likes WHERE post_id = ? AND user_id = ?'),
+    save: db.prepare('INSERT OR IGNORE INTO news_saves (post_id, user_id, created_at) VALUES (?, ?, ?)'),
+    unsave: db.prepare('DELETE FROM news_saves WHERE post_id = ? AND user_id = ?'),
+    saved: db.prepare(`
+      SELECT n.*, u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id, s.created_at AS saved_at
+      FROM news_saves s JOIN news n ON n.id = s.post_id LEFT JOIN users u ON u.id = n.author_id
+      WHERE s.user_id = ? ORDER BY s.created_at DESC LIMIT ?`),
+    removeReactions: db.prepare('DELETE FROM news_likes WHERE post_id = ?'),
+    removeSaves: db.prepare('DELETE FROM news_saves WHERE post_id = ?'),
     insert: db.prepare(`
       INSERT INTO news (author_id, title, body, code, created_at, media_id, media_kind, media_type)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
@@ -68,8 +88,19 @@ export function registerNewsRoutes({ api, db, clock, auth, wrap, publicUser, isA
 
   const unreadFor = (userId) => q.unread.get(q.seenAt.get(userId)?.news_seen_at ?? 0, userId).n;
 
-  const describe = (p) => ({
+  /** Hearts and saves for the person reading. */
+  const reactionsFor = (userId) => ({
+    counts: new Map(q.likeCounts.all().map((r) => [r.post_id, r.n])),
+    liked: new Set(q.myLikes.all(userId).map((r) => r.post_id)),
+    saved: new Set(q.mySaves.all(userId).map((r) => r.post_id)),
+  });
+
+  const describe = (p, r) => ({
     id: p.id,
+    likes: r ? r.counts.get(p.id) ?? 0 : 0,
+    liked: r ? r.liked.has(p.id) : false,
+    saved: r ? r.saved.has(p.id) : false,
+    editedAt: p.edited_at ?? null,
     title: p.title,
     body: p.body,
     code: p.code,
@@ -86,12 +117,56 @@ export function registerNewsRoutes({ api, db, clock, auth, wrap, publicUser, isA
   api.get(
     '/news',
     auth,
-    wrap((req) => ({
-      posts: q.posts.all(NEWS_LIMIT).map(describe),
-      unread: unreadFor(req.user.id),
-      canPost: isAdminUser(req.user),
-    }))
+    wrap((req) => {
+      const r = reactionsFor(req.user.id);
+      return {
+        posts: q.posts.all(NEWS_LIMIT).map((p) => describe(p, r)),
+        unread: unreadFor(req.user.id),
+        canPost: isAdminUser(req.user),
+      };
+    })
   );
+
+  // Favorite Articles: posts you've saved with the ⭐.
+  api.get(
+    '/news/saved',
+    auth,
+    wrap((req) => {
+      const r = reactionsFor(req.user.id);
+      return { posts: q.saved.all(req.user.id, NEWS_LIMIT).map((p) => ({ ...describe(p, r), savedAt: p.saved_at })) };
+    })
+  );
+
+  const postOr404 = (req) => {
+    const id = Number(req.params.id);
+    const post = Number.isInteger(id) ? q.post.get(id) : null;
+    if (!post) fail(404, 'Post not found');
+    return post;
+  };
+
+  for (const [path_, add, remove, field] of [
+    ['like', q.like, q.unlike, 'liked'],
+    ['save', q.save, q.unsave, 'saved'],
+  ]) {
+    api.post(
+      `/news/:id/${path_}`,
+      auth,
+      wrap((req) => {
+        const post = postOr404(req);
+        add.run(post.id, req.user.id, clock());
+        return { [field]: true, likes: q.likeCount.get(post.id).n };
+      })
+    );
+    api.delete(
+      `/news/:id/${path_}`,
+      auth,
+      wrap((req) => {
+        const post = postOr404(req);
+        remove.run(post.id, req.user.id);
+        return { [field]: false, likes: q.likeCount.get(post.id).n };
+      })
+    );
+  }
 
   api.get(
     '/news/unread',
@@ -143,25 +218,31 @@ export function registerNewsRoutes({ api, db, clock, auth, wrap, publicUser, isA
     });
   });
 
+  /** The title, text, code and (newly uploaded) photo/video of a post being written or edited. */
+  function readPost(req) {
+    const title = cleanText(req.body?.title, MAX_NEWS_TITLE);
+    const body = cleanText(req.body?.body ?? '', MAX_NEWS_BODY, { multiline: true });
+    if (!title) fail(400, 'Give the post a title');
+    let code = null;
+    if (req.body?.code) {
+      code = normaliseCode(req.body.code);
+      if (!CODE_RE.test(code)) fail(400, 'Codes are 4-32 letters, numbers or dashes');
+      if (!q.codeExists.get(code)) fail(400, `There's no code called ${code}. Create it in Admin tools first.`);
+    }
+    let media = null;
+    if (req.body?.mediaId) {
+      media = q.upload.get(String(req.body.mediaId));
+      if (!media || media.created_by !== req.user.id) fail(400, 'That photo or video has expired. Add it again.');
+    }
+    return { title, body: body ?? '', code, media };
+  }
+
   api.post(
     '/news',
     auth,
     requireAdmin,
     wrap((req, res) => {
-      const title = cleanText(req.body?.title, MAX_NEWS_TITLE);
-      const body = cleanText(req.body?.body ?? '', MAX_NEWS_BODY, { multiline: true });
-      if (!title) fail(400, 'Give the post a title');
-      let code = null;
-      if (req.body?.code) {
-        code = normaliseCode(req.body.code);
-        if (!CODE_RE.test(code)) fail(400, 'Codes are 4-32 letters, numbers or dashes');
-        if (!q.codeExists.get(code)) fail(400, `There's no code called ${code}. Create it in Admin tools first.`);
-      }
-      let media = null;
-      if (req.body?.mediaId) {
-        media = q.upload.get(String(req.body.mediaId));
-        if (!media || media.created_by !== req.user.id) fail(400, 'That photo or video has expired. Add it again.');
-      }
+      const { title, body, code, media } = readPost(req);
       const now = clock();
       const id = Number(
         q.insert.run(req.user.id, title, body ?? '', code, now, media?.id ?? null, media?.kind ?? null, media?.mime ?? null)
@@ -174,7 +255,26 @@ export function registerNewsRoutes({ api, db, clock, auth, wrap, publicUser, isA
         }
       }
       res.status(201);
-      return { post: describe({ ...q.post.get(id), username: req.user.username, display_name: req.user.displayName }) };
+      return { post: describe(q.postWithAuthor.get(id), reactionsFor(req.user.id)) };
+    })
+  );
+
+  // Edit a post: new title/text/code, and keep, replace (mediaId) or remove (removeMedia) its photo/video.
+  api.post(
+    '/news/:id',
+    auth,
+    requireAdmin,
+    wrap((req) => {
+      const post = postOr404(req);
+      const { title, body, code, media } = readPost(req);
+      let keep = { id: post.media_id, kind: post.media_kind, mime: post.media_type };
+      if (media || req.body?.removeMedia) {
+        if (post.media_id) removeFile(post.media_id);
+        keep = media ?? { id: null, kind: null, mime: null };
+      }
+      q.update.run(title, body, code, keep.id, keep.kind, keep.mime, clock(), post.id);
+      if (media) q.removeUpload.run(media.id);
+      return { post: describe(q.postWithAuthor.get(post.id), reactionsFor(req.user.id)) };
     })
   );
 
@@ -186,6 +286,8 @@ export function registerNewsRoutes({ api, db, clock, auth, wrap, publicUser, isA
       const id = Number(req.params.id);
       const post = q.post.get(id);
       if (!post) fail(404, 'Post not found');
+      q.removeReactions.run(id);
+      q.removeSaves.run(id);
       q.remove.run(id);
       if (post.media_id) removeFile(post.media_id);
       return { ok: true };

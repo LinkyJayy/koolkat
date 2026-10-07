@@ -262,8 +262,13 @@
       <h2><img src="icons/logo.png" alt="" class="logo">News</h2>
       <span></span>
     </header>
+    <div class="tabs news-modes" role="radiogroup" aria-label="News style" id="news-modes">
+      <button type="button" class="tab" data-mode="formal" role="radio">📰 Formal</button>
+      <button type="button" class="tab" data-mode="tiktok" role="radio">📱 TikTok</button>
+    </div>
+    <div class="tiktok-feed" id="news-feed" hidden></div>
     <form class="admin-form news-compose" id="news-form" hidden novalidate>
-      <h3 class="section-title flush">New post (admins only)</h3>
+      <h3 class="section-title flush" id="news-form-title">New post (admins only)</h3>
       <label>Title <input name="title" maxlength="80" required placeholder="e.g. Free Unlimited this weekend!"></label>
       <label>Post <textarea name="body" maxlength="2000" rows="4" placeholder="Codes, events, updates…"></textarea></label>
       <label>Code to share <span class="fineprint">Optional. Create it in Admin tools first; readers get a Redeem button</span>
@@ -280,7 +285,8 @@
       </div>
       <label class="check"><input type="checkbox" name="notify"> Send everyone a notification</label>
       <div class="upload-progress" id="news-upload-progress" hidden><span id="news-upload-bar"></span></div>
-      <button type="submit" class="btn primary wide">Post</button>
+      <button type="submit" class="btn primary wide" id="btn-news-submit">Post</button>
+      <button type="button" class="btn wide" id="btn-news-cancel-edit" hidden>Cancel editing</button>
     </form>
     <ol class="news-list" id="news-list"></ol>
     <div class="empty" id="news-empty" hidden>
@@ -298,6 +304,15 @@
       <h2><img src="icons/logo.png" alt="" class="logo">Favorites</h2>
       <span></span>
     </header>
+    <div class="tabs favorites-tabs" role="tablist" id="favorites-tabs">
+      <button type="button" class="tab active" data-tab="klicks" role="tab" aria-selected="true">⭐ Favorite Klicks</button>
+      <button type="button" class="tab" data-tab="articles" role="tab" aria-selected="false">📰 Favorite Articles</button>
+    </div>
+    <ol class="news-list news-formal" id="saved-articles" hidden></ol>
+    <div class="empty" id="saved-articles-empty" hidden>
+      <img src="icons/logo.png" alt="" class="empty-logo">
+      No saved articles yet. Tap ☆ on a News post to keep it here.
+    </div>
     <ul class="list" id="favorites-list"></ul>
     <div class="empty" id="favorites-empty" hidden>
       <img src="icons/logo.png" alt="" class="empty-logo">
@@ -493,16 +508,17 @@
       </div>
     </form>
 
-    <h3 class="section-title">Reset badge, icon or activity</h3>
+    <h3 class="section-title">Reset badge, icon, activity or picture</h3>
     <form id="reset-form" class="admin-form" novalidate>
       <label>Username
         <input name="username" required autocapitalize="none" spellcheck="false">
       </label>
-      <p class="fineprint">Puts their custom badge and/or custom app icon back to the default (their uploaded picture is deleted), or clears their Activity Bubble.</p>
+      <p class="fineprint">Puts their custom badge and/or custom app icon back to the default (their uploaded picture is deleted), or clears their Activity Bubble or profile picture.</p>
       <div class="row wrap">
         <button type="button" class="btn" data-reset="badge">Reset badge</button>
         <button type="button" class="btn" data-reset="icon">Reset icon</button>
         <button type="button" class="btn" data-reset="activity">Reset activity</button>
+        <button type="button" class="btn" data-reset="avatar">Reset picture</button>
         <button type="button" class="btn danger" data-reset="all">Reset all</button>
       </div>
     </form>
@@ -532,7 +548,12 @@
   <!-- Profile dialog -->
   <dialog id="dialog-profile">
     <form method="dialog">
-      <span class="avatar large" id="profile-avatar"></span>
+      <button type="button" class="avatar-edit" id="btn-avatar" aria-label="Change profile picture">
+        <span class="avatar large" id="profile-avatar"></span>
+        <span class="avatar-edit-badge" aria-hidden="true">📷</span>
+      </button>
+      <input type="file" accept="image/*" id="avatar-file" hidden>
+      <button type="button" class="link-btn" id="btn-avatar-remove" hidden>Remove picture</button>
       <h2 id="profile-name"></h2>
       <p class="muted" id="profile-username"></p>
       <p class="flair-line" id="profile-flair" hidden></p>
@@ -748,6 +769,21 @@
         <button type="button" class="btn" id="btn-qr-share">Share link</button>
         <button type="button" class="btn primary" id="btn-qr-scan">Scan a code</button>
       </div>
+    </form>
+  </dialog>
+
+  <!-- Someone's KoolKat profile (tapping a name, e.g. in News) -->
+  <dialog id="dialog-user">
+    <form method="dialog">
+      <span class="avatar large" id="user-avatar"></span>
+      <h2 id="user-name"></h2>
+      <p class="muted" id="user-username"></p>
+      <p class="admin-tag" id="user-admin" hidden>🛠 KoolKat admin</p>
+      <p class="flair-line" id="user-flair" hidden></p>
+      <p class="activity-bubble" id="user-activity" hidden></p>
+      <p class="fineprint" id="user-joined"></p>
+      <div class="row" id="user-actions"></div>
+      <p class="dialog-brand"><img src="icons/logo.png" alt="">KoolKat</p>
     </form>
   </dialog>
 

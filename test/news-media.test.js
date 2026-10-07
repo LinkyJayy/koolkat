@@ -110,4 +110,101 @@ describe('News photos and videos', () => {
     const post = await call('POST', '/news', { token: boss.token, body: { title: 'Plain' } });
     assert.equal(post.body.post.media, null);
   });
+
+  test('admins edit posts: text, and keep, swap or remove the photo/video', async () => {
+    const up = await call('POST', '/news/media', { token: boss.token, raw: jpeg, type: 'image/jpeg' });
+    const post = (await call('POST', '/news', { token: boss.token, body: { title: 'Typo', body: 'helo', mediaId: up.body.mediaId } })).body.post;
+    assert.equal(post.editedAt, null);
+    assert.equal((await call('POST', `/news/${post.id}`, { token: ann.token, body: { title: 'Hacked' } })).status, 403);
+    assert.equal((await call('POST', `/news/${post.id}`, { token: boss.token, body: { title: '' } })).status, 400);
+    assert.equal((await call('POST', '/news/999999', { token: boss.token, body: { title: 'x' } })).status, 404);
+
+    let edited = (await call('POST', `/news/${post.id}`, { token: boss.token, body: { title: 'Fixed', body: 'hello' } })).body.post;
+    assert.equal(edited.title, 'Fixed');
+    assert.equal(edited.body, 'hello');
+    assert.ok(edited.editedAt);
+    assert.equal(edited.media.url, post.media.url, 'photo kept');
+
+    const video = await call('POST', '/news/media', { token: boss.token, raw: mp4, type: 'video/mp4' });
+    edited = (await call('POST', `/news/${post.id}`, { token: boss.token, body: { title: 'Fixed', mediaId: video.body.mediaId } })).body.post;
+    assert.equal(edited.media.kind, 'video');
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(fs.existsSync(path.join(mediaDir, up.body.mediaId)), false, 'old photo deleted');
+
+    edited = (await call('POST', `/news/${post.id}`, { token: boss.token, body: { title: 'Fixed', removeMedia: true } })).body.post;
+    assert.equal(edited.media, null);
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(fs.existsSync(path.join(mediaDir, video.body.mediaId)), false);
+  });
+
+  test('hearts and saves (Favorite Articles)', async () => {
+    const post = (await call('POST', '/news', { token: boss.token, body: { title: 'Like me' } })).body.post;
+    assert.equal(post.likes, 0);
+    let r = await call('POST', `/news/${post.id}/like`, { token: ann.token });
+    assert.deepEqual(r.body, { liked: true, likes: 1 });
+    await call('POST', `/news/${post.id}/like`, { token: ann.token });
+    r = await call('POST', `/news/${post.id}/like`, { token: boss.token });
+    assert.equal(r.body.likes, 2, 'one heart per person');
+    await call('POST', `/news/${post.id}/save`, { token: ann.token });
+
+    const forAnn = (await call('GET', '/news', { token: ann.token })).body.posts.find((p) => p.id === post.id);
+    assert.equal(forAnn.likes, 2);
+    assert.equal(forAnn.liked, true);
+    assert.equal(forAnn.saved, true);
+    const forBoss = (await call('GET', '/news', { token: boss.token })).body.posts.find((p) => p.id === post.id);
+    assert.equal(forBoss.saved, false, 'saves are personal');
+
+    const saved = (await call('GET', '/news/saved', { token: ann.token })).body.posts;
+    assert.deepEqual(saved.map((p) => p.id), [post.id]);
+    assert.deepEqual((await call('GET', '/news/saved', { token: boss.token })).body.posts, []);
+
+    assert.deepEqual((await call('DELETE', `/news/${post.id}/like`, { token: ann.token })).body, { liked: false, likes: 1 });
+    await call('DELETE', `/news/${post.id}/save`, { token: ann.token });
+    assert.deepEqual((await call('GET', '/news/saved', { token: ann.token })).body.posts, []);
+    assert.equal((await call('POST', '/news/999999/like', { token: ann.token })).status, 404);
+
+    // Deleting the post removes it from everyone's Favorite Articles.
+    await call('POST', `/news/${post.id}/save`, { token: ann.token });
+    await call('DELETE', `/news/${post.id}`, { token: boss.token });
+    assert.deepEqual((await call('GET', '/news/saved', { token: ann.token })).body.posts, []);
+  });
+});
+
+describe('profiles and profile pictures', () => {
+  const pic = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(500, 9)]).toString('base64');
+
+  test('anyone can set a profile picture; it shows with their name', async () => {
+    assert.equal((await call('POST', '/me/avatar', { token: ann.token, body: { image: Buffer.from('x'.repeat(200)).toString('base64') } })).status, 400);
+    const set = await call('POST', '/me/avatar', { token: ann.token, body: { image: pic } });
+    assert.match(set.body.avatarUrl, /^avatars\/[A-Za-z0-9_-]{16}\.jpg$/);
+    const img = await fetch(`${base}/api/${set.body.avatarUrl}`);
+    assert.equal(img.headers.get('content-type'), 'image/jpeg');
+    assert.equal((await call('GET', '/me', { token: ann.token })).body.user.avatarUrl, set.body.avatarUrl);
+    // e.g. as a News author
+    await call('POST', '/me/avatar', { token: boss.token, body: { image: pic } });
+    const post = (await call('POST', '/news', { token: boss.token, body: { title: 'By me' } })).body.post;
+    assert.ok(post.author.avatarUrl);
+
+    await call('DELETE', '/me/avatar', { token: ann.token });
+    assert.equal((await call('GET', '/me', { token: ann.token })).body.user.avatarUrl, null);
+    assert.equal((await fetch(`${base}/api/${set.body.avatarUrl}`)).status, 404);
+  });
+
+  test('admins can reset a profile picture', async () => {
+    await call('POST', '/me/avatar', { token: ann.token, body: { image: pic } });
+    const res = await call('POST', '/admin/reset-customization', { token: boss.token, body: { username: 'ann', avatar: true } });
+    assert.deepEqual(res.body.reset, ['avatar']);
+    assert.equal((await call('GET', '/me', { token: ann.token })).body.user.avatarUrl, null);
+  });
+
+  test("tapping a name opens that person's profile", async () => {
+    const p = (await call('GET', `/users/${boss.id}`, { token: ann.token })).body.user;
+    assert.equal(p.username, 'boss');
+    assert.equal(p.relationship, 'none');
+    assert.equal(p.isAdmin, true);
+    assert.ok(p.joinedAt);
+    assert.equal(p.activity, null, 'activity is for friends only');
+    assert.equal((await call('GET', `/users/${ann.id}`, { token: ann.token })).body.user.relationship, 'you');
+    assert.equal((await call('GET', '/users/99999', { token: ann.token })).status, 404);
+  });
 });

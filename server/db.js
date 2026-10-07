@@ -165,6 +165,21 @@ CREATE TABLE IF NOT EXISTS news (
   created_at  INTEGER NOT NULL
 );
 
+-- Hearts and saves (Favorite Articles) on News posts.
+CREATE TABLE IF NOT EXISTS news_likes (
+  post_id     INTEGER NOT NULL REFERENCES news(id) ON DELETE CASCADE,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at  INTEGER NOT NULL,
+  PRIMARY KEY (post_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS news_saves (
+  post_id     INTEGER NOT NULL REFERENCES news(id) ON DELETE CASCADE,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at  INTEGER NOT NULL,
+  PRIMARY KEY (post_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_news_saves_user ON news_saves(user_id, created_at);
+
 -- Photos and videos uploaded for a News post that hasn't been posted yet.
 -- (Files live in the media folder next to the database; see news.js.)
 CREATE TABLE IF NOT EXISTS news_uploads (
@@ -216,6 +231,8 @@ const MIGRATIONS = [
   ['news', 'media_id', 'TEXT'],
   ['news', 'media_kind', 'TEXT'],
   ['news', 'media_type', 'TEXT'],
+  // When an admin last edited the post.
+  ['news', 'edited_at', 'INTEGER'],
   // KoolKat Unlimited customisation: app icon choice ('crown' | 'glow' | 'custom'),
   // an uploaded icon (served by a random public id), and a custom badge image.
   ['users', 'app_icon', 'TEXT'],
@@ -224,6 +241,9 @@ const MIGRATIONS = [
   ['users', 'app_icon_192', 'BLOB'],
   ['users', 'badge_id', 'TEXT'],
   ['users', 'badge_png', 'BLOB'],
+  // Profile picture (everyone): a square JPEG, served by a random public id.
+  ['users', 'avatar_id', 'TEXT'],
+  ['users', 'avatar_jpeg', 'BLOB'],
   // Lets the sender open their own snaps (the snap key wrapped for the sender).
   ['snaps', 'sender_wrapped_key', 'TEXT'],
   ['snaps', 'sender_wrap_iv', 'TEXT'],

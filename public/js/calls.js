@@ -4,7 +4,7 @@
 // WebRTC. The setup messages (offer, answer, network candidates) go through
 // the KoolKat server, encrypted with a key only the two friends share
 // (callKey in crypto.js), so the server can't read them or join the call.
-import { api } from './api.js';
+import { API_BASE, api } from './api.js';
 import { callKey, openSignal, sealSignal } from './crypto.js';
 import { startRinging, stopRinging } from './sounds.js';
 
@@ -389,7 +389,15 @@ async function flipCamera() {
 function showScreen() {
   hooks.beforeShow();
   const peer = current.peer;
-  $('call-avatar').textContent = (peer.displayName || peer.username || '?')[0];
+  const avatar = $('call-avatar');
+  if (peer.avatarUrl) {
+    const img = document.createElement('img');
+    img.src = `${API_BASE}/api/${peer.avatarUrl}`;
+    img.alt = '';
+    avatar.replaceChildren(img);
+  } else {
+    avatar.textContent = (peer.displayName || peer.username || '?')[0];
+  }
   $('call-name').textContent = peer.displayName || peer.username;
   $('call-kind').textContent = current.kind === 'video' ? '📹 FaceTime' : '📞 Call';
   $('call-screen').hidden = false;
