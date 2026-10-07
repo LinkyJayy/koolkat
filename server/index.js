@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import http from 'node:http';
 import https from 'node:https';
 import { defaultDatabasePath, openDatabase, storageStatus } from './db.js';
@@ -24,7 +25,9 @@ if (!storage.persistent) {
 console.log(`Database: ${dbPath} (${storage.reason})`);
 const db = openDatabase(dbPath);
 const pusher = createPusher({ db });
-const app = createApp({ db, pusher, storage });
+// News photos and videos are kept next to the database, so they're on the volume too.
+const mediaDir = dbPath === ':memory:' ? undefined : path.join(path.dirname(dbPath), 'media');
+const app = createApp({ db, pusher, storage, mediaDir });
 
 // Browsers only allow camera access on https:// or http://localhost.
 // To use KoolKat from a phone on your network, provide a certificate.
@@ -35,7 +38,10 @@ const server =
     : http.createServer(app);
 
 cleanup(db);
-setInterval(() => cleanup(db), 60 * 60 * 1000).unref();
+setInterval(() => {
+  cleanup(db);
+  app.locals.cleanupNewsUploads();
+}, 60 * 60 * 1000).unref();
 // Streak reminders go out in the last hours of each (UTC) day.
 setInterval(() => pusher.runStreakReminders().catch((err) => console.error(err)), 10 * 60 * 1000).unref();
 // Calls: end ones where a phone disappeared without hanging up.

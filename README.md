@@ -25,7 +25,7 @@ Photos taken in KoolKat are called **Klicks**.
 - **Streaks.** 🔥 A streak grows by one for each day both friends send each other a Klick. ⌛ means you'll lose it if you don't both send one today. A missed day resets it.
 - **Sent view.** Shows "Delivered" or "Opened" for Klicks you've sent.
 - **Push notifications.** 🔔 Get notified about new Klicks, messages, friend requests, accepted requests, and streaks that are about to end. Turn them on from the banner on the Klicks screen or in your profile. Notifications only say *who* sent something, never what.
-- **News.** 📣 The megaphone button on the home screen opens News: codes, events and updates posted by admins. Posts can include a code with a one-tap **Redeem** button. A badge shows when there's something new.
+- **News.** 📣 The megaphone button on the home screen opens News: codes, events and updates posted by admins. Posts can include a code with a one-tap **Redeem** button. A badge shows when there's something new. Admins can add **one photo or video** to a post (*Add photo or video* when writing it): photos up to 15 MB (JPEG, PNG, GIF, WebP), videos up to 100 MB (MP4 plays everywhere; MOV and WebM too, where the phone supports them). Files are kept in a `media` folder next to the database, so on Railway they're on the volume and survive updates; deleting a post deletes its file.
 - **Installable app (PWA).** KoolKat installs like a normal app, with its own icon, full screen and no browser bars. On Android and desktop, use *Profile → Install KoolKat*. On iPhone, use Safari's *Share → Add to Home Screen*. Long-press the icon for shortcuts to the camera, Klicks and Chats. It opens even offline, and when a new version is deployed it shows *"A new version of KoolKat is ready → Reload"*.
 - **Emojis.** 😺 iPhones, iPads and Macs show Apple's own emojis. Everyone else (Android, Windows, Linux) sees the newest Android emojis: Google's **Android 17 "Noto 3D"** designs, including the Unicode 17 ones, even on older phones. The emoji font is split into pieces and each device only downloads the ones it shows (most pieces are 20–900 KB; people, hands and skin tones together are about 5 MB, downloaded the first time one appears, then kept). Browsers that can't draw the 3D format (e.g. Firefox) get the previous flat Android designs. (Apple's emoji font can't be included: Apple only licenses it for its own devices.)
 - **Inter Display font and text style.** All text uses Inter Display. In *Profile → Text style* choose **Regular text, SemiBold headings** (the default) or **Semibold text, Bold headings**; the choice is remembered on that device.
@@ -289,7 +289,9 @@ All endpoints are under `/api` and take and return JSON. Authenticated endpoints
 | GET | `/map` | Unlimited: your sharing mode and location, and friends sharing with you |
 | GET | `/news` / `/news/unread` | News posts / unread count |
 | POST | `/news/seen` | Mark News as read |
-| POST / DELETE | `/news` / `/news/:id` | Admin: post (`title, body?, code?, notify?`) / delete |
+| POST / DELETE | `/news` / `/news/:id` | Admin: post (`title, body?, code?, notify?, mediaId?`) / delete |
+| POST | `/news/media` | Admin: upload a photo or video (the raw file as the body); returns `mediaId` |
+| GET | `/news/media/:id` | A post's photo or video |
 | GET | `/push/key` | The server's VAPID public key |
 | POST | `/push/subscribe` | Save this device's `PushSubscription` (as JSON) |
 | POST | `/push/unsubscribe` | `endpoint`: stop notifications for a device |

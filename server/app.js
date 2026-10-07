@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
@@ -70,6 +71,8 @@ export function createApp({
   admins = adminUsernames(),
   // How long a call rings before it's missed (shortened in tests).
   callRingTimeout,
+  // Where News photos and videos are kept (next to the database, on the volume).
+  mediaDir = fs.mkdtempSync(path.join(os.tmpdir(), 'koolkat-media-')),
 } = {}) {
   const app = express();
   app.disable('x-powered-by');
@@ -1055,7 +1058,8 @@ export function createApp({
 
   // ---------- news ----------
   const isAdminUser = (user) => isAdmin(user?.username, admins);
-  registerNewsRoutes({ api, db, clock, auth, wrap, publicUser, isAdminUser, pusher });
+  const news = registerNewsRoutes({ api, db, clock, auth, wrap, publicUser, isAdminUser, pusher, mediaDir });
+  app.locals.cleanupNewsUploads = news.cleanupUploads;
 
   // ---------- push notifications ----------
   api.get('/push/key', (req, res) => res.json({ publicKey: pusher.publicKey }));
@@ -1085,7 +1089,10 @@ export function createApp({
   // eslint-disable-next-line no-unused-vars
   api.use((err, req, res, next) => {
     if (err instanceof HttpError) return res.status(err.status).json({ error: err.message });
-    if (err.type === 'entity.too.large') return res.status(413).json({ error: 'That Klick is too large' });
+    if (err.type === 'entity.too.large') {
+      const what = req.path === '/news/media' ? 'Videos can be up to 100 MB' : 'That Klick is too large';
+      return res.status(413).json({ error: what });
+    }
     if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'Invalid JSON' });
     console.error(err);
     res.status(500).json({ error: 'Something went wrong' });

@@ -269,7 +269,17 @@
       <label>Code to share <span class="fineprint">Optional. Create it in Admin tools first; readers get a Redeem button</span>
         <input name="code" maxlength="32" autocapitalize="characters" spellcheck="false">
       </label>
+      <div class="news-attach">
+        <button type="button" class="btn small" id="btn-news-media">🖼 Add photo or video</button>
+        <span class="fineprint">Optional. Photos up to 15 MB, videos up to 100 MB (MP4 plays everywhere)</span>
+        <input type="file" id="news-media-file" accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/webm" hidden>
+        <div class="news-media-preview" id="news-media-preview" hidden>
+          <div id="news-media-preview-item"></div>
+          <button type="button" class="btn small" id="btn-news-media-remove">Remove</button>
+        </div>
+      </div>
       <label class="check"><input type="checkbox" name="notify"> Send everyone a notification</label>
+      <div class="upload-progress" id="news-upload-progress" hidden><span id="news-upload-bar"></span></div>
       <button type="submit" class="btn primary wide">Post</button>
     </form>
     <ol class="news-list" id="news-list"></ol>

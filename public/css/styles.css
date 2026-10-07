@@ -1014,3 +1014,21 @@ body.in-call { overflow: hidden; }
 .text-style-regular .text-style-headings { font-weight: 600; }
 .text-style-semibold .text-style-text { font-weight: 600; }
 .text-style-semibold .text-style-headings { font-weight: 700; }
+
+/* ---------- News photos and videos ---------- */
+.news-media {
+  display: block;
+  width: 100%;
+  max-height: 70vh;
+  margin: 10px 0 4px;
+  border-radius: 12px;
+  object-fit: contain;
+  background: #000;
+}
+img.news-media { background: var(--surface); }
+.news-attach { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; margin: 4px 0 8px; }
+.news-attach .fineprint { margin: 0; }
+.news-media-preview { width: 100%; }
+.news-media-preview .news-media { max-height: 240px; margin-top: 4px; }
+.upload-progress { height: 6px; margin: 8px 0; border-radius: 999px; background: var(--surface); overflow: hidden; }
+.upload-progress span { display: block; height: 100%; width: 0; background: var(--brand); transition: width 0.2s; }

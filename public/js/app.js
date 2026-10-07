@@ -1009,6 +1009,7 @@ function renderNews(posts, canPost) {
         el('h3', { text: p.title }),
         el('div', { class: 'news-meta' }, p.author ? p.author.displayName : 'KoolKat', badgeImg(p.author), ` · ${timeAgo(p.createdAt)}`),
         p.body ? el('p', { class: 'news-body', text: p.body }) : null,
+        newsMedia(p.media),
         p.code
           ? el(
               'div',
@@ -1034,19 +1035,95 @@ function renderNews(posts, canPost) {
   );
 }
 
+// ---------- News photos and videos ----------
+function newsMedia(media) {
+  if (!media) return null;
+  const src = `${API_BASE}/api/${media.url}`;
+  if (media.kind === 'video') {
+    return el('video', { class: 'news-media', src, controls: true, playsinline: true, preload: 'metadata' });
+  }
+  return el('img', { class: 'news-media', src, alt: '', loading: 'lazy' });
+}
+
+const newsUpload = { file: null, previewUrl: null };
+const MAX_NEWS_PHOTO = 15 * 1024 * 1024;
+const MAX_NEWS_VIDEO = 100 * 1024 * 1024;
+
+function setNewsFile(file) {
+  if (newsUpload.previewUrl) URL.revokeObjectURL(newsUpload.previewUrl);
+  newsUpload.file = file;
+  newsUpload.previewUrl = file ? URL.createObjectURL(file) : null;
+  $('news-media-preview').hidden = !file;
+  $('btn-news-media').hidden = Boolean(file);
+  $('news-media-preview-item').replaceChildren(
+    ...nodes(
+      file &&
+        (file.type.startsWith('video/')
+          ? el('video', { src: newsUpload.previewUrl, controls: true, playsinline: true, muted: true, class: 'news-media' })
+          : el('img', { src: newsUpload.previewUrl, alt: '', class: 'news-media' }))
+    )
+  );
+}
+
+$('btn-news-media').addEventListener('click', () => $('news-media-file').click());
+$('btn-news-media-remove').addEventListener('click', () => setNewsFile(null));
+$('news-media-file').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  const video = file.type.startsWith('video/');
+  if (!video && !file.type.startsWith('image/')) return toast('Pick a photo or a video', { error: true });
+  if (video && file.size > MAX_NEWS_VIDEO) return toast('Videos can be up to 100 MB', { error: true });
+  if (!video && file.size > MAX_NEWS_PHOTO) return toast('Photos can be up to 15 MB', { error: true });
+  setNewsFile(file);
+});
+
+/** Upload the photo or video, showing progress (videos can take a while). */
+function uploadNewsMedia(file) {
+  const bar = $('news-upload-bar');
+  $('news-upload-progress').hidden = false;
+  bar.style.width = '0%';
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${API_BASE}/api/news/media`);
+    xhr.setRequestHeader('authorization', `Bearer ${getToken()}`);
+    xhr.setRequestHeader('content-type', file.type || 'application/octet-stream');
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) bar.style.width = `${Math.round((e.loaded / e.total) * 100)}%`;
+    };
+    xhr.onload = () => {
+      let data = {};
+      try {
+        data = JSON.parse(xhr.responseText);
+      } catch {
+        // Not JSON: use the status below.
+      }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data);
+      else reject(new Error(data.error || `Upload failed (${xhr.status})`));
+    };
+    xhr.onerror = () => reject(new Error("Couldn't upload. Check your connection."));
+    xhr.send(file);
+  }).finally(() => {
+    $('news-upload-progress').hidden = true;
+  });
+}
+
 $('news-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const form = e.currentTarget;
   await withBusy(form.querySelector('button[type=submit]'), async () => {
     const title = form.title.value.trim();
     if (!title) throw new Error('Give the post a title');
+    const mediaId = newsUpload.file ? (await uploadNewsMedia(newsUpload.file)).mediaId : null;
     await api('POST', '/news', {
       title,
       body: form.body.value,
       code: form.code.value.trim() || null,
       notify: form.notify.checked,
+      mediaId,
     });
     form.reset();
+    setNewsFile(null);
     toast('📣 Posted to News');
     await loadNews();
   });

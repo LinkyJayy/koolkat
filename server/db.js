@@ -165,6 +165,17 @@ CREATE TABLE IF NOT EXISTS news (
   created_at  INTEGER NOT NULL
 );
 
+-- Photos and videos uploaded for a News post that hasn't been posted yet.
+-- (Files live in the media folder next to the database; see news.js.)
+CREATE TABLE IF NOT EXISTS news_uploads (
+  id          TEXT PRIMARY KEY,
+  kind        TEXT NOT NULL,              -- 'image' | 'video'
+  mime        TEXT NOT NULL,
+  size        INTEGER NOT NULL,
+  created_by  INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  created_at  INTEGER NOT NULL
+);
+
 -- BFFs (a KoolKat Unlimited feature): friends someone has hearted. Private to user_id.
 CREATE TABLE IF NOT EXISTS bffs (
   user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -201,6 +212,10 @@ const MIGRATIONS = [
   ['users', 'stripe_subscription_id', 'TEXT'],
   // When the user last opened News (for the unread badge).
   ['users', 'news_seen_at', 'INTEGER'],
+  // A photo or video on a News post (file in the media folder, see news.js).
+  ['news', 'media_id', 'TEXT'],
+  ['news', 'media_kind', 'TEXT'],
+  ['news', 'media_type', 'TEXT'],
   // KoolKat Unlimited customisation: app icon choice ('crown' | 'glow' | 'custom'),
   // an uploaded icon (served by a random public id), and a custom badge image.
   ['users', 'app_icon', 'TEXT'],
