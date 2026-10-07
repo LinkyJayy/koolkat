@@ -34,16 +34,24 @@ export async function registerServiceWorker(onMessage, onUpdate) {
 
 function watchForUpdates(reg, onUpdate) {
   let reloading = false;
+  let applying = false;
+  const reload = () => {
+    if (!reloading) {
+      reloading = true;
+      location.reload();
+    }
+  };
+  // New versions take over by themselves; the page then offers to reload into it.
+  const hadController = Boolean(navigator.serviceWorker.controller);
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (applying) reload();
+    else if (hadController) onUpdate?.(reload);
+  });
+  // A version left waiting by an older KoolKat: switch to it when asked.
   const offer = (worker) => {
-    // Only an *update* (there's already a version running this page) needs a reload.
     if (!worker || !navigator.serviceWorker.controller) return;
     onUpdate?.(() => {
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (!reloading) {
-          reloading = true;
-          location.reload();
-        }
-      });
+      applying = true;
       worker.postMessage({ type: 'skip-waiting' });
     });
   };
@@ -51,7 +59,8 @@ function watchForUpdates(reg, onUpdate) {
   reg.addEventListener('updatefound', () => {
     const worker = reg.installing;
     worker?.addEventListener('statechange', () => {
-      if (worker.state === 'installed') offer(worker);
+      // Newer versions take over by themselves; only offer one that stays waiting.
+      if (worker.state === 'installed') setTimeout(() => reg.waiting === worker && offer(worker), 1000);
     });
   });
   // Check for a new version whenever the app comes back to the foreground (at most hourly).

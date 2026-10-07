@@ -51,9 +51,10 @@ self.addEventListener('install', (event) => {
     (async () => {
       const cache = await caches.open(CACHE);
       await cache.addAll(PRECACHE.map((path) => new Request(scoped(path), { cache: 'reload' })));
-      // The very first install takes over right away; later versions wait
-      // until the page says it's a good moment to reload.
-      if (!self.registration.active) await self.skipWaiting();
+      // Take over straight away. (Waiting for the page's go-ahead let a broken
+      // old version keep itself running: if its code crashed, it never asked.)
+      // Open pages are offered a reload by the update bar.
+      await self.skipWaiting();
     })()
   );
 });
@@ -89,13 +90,18 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (request.mode === 'navigate') {
-    // Pages: try the network first (fresh), fall back to the saved app shell offline.
+    // The app page comes from the same saved version as its code, so the two
+    // always match. (A fresh page with older code crashed when an update
+    // removed something from the page.) New versions arrive via this worker.
     event.respondWith(
       (async () => {
+        const cache = await caches.open(CACHE);
+        const shell = path === '' || path === 'index.html';
+        const saved = shell && ((await cache.match(scoped('./'))) || (await cache.match(scoped('index.html'))));
+        if (saved) return saved;
         try {
           return await fetch(request);
         } catch {
-          const cache = await caches.open(CACHE);
           return (await cache.match(scoped('./'))) || (await cache.match(scoped('index.html'))) || Response.error();
         }
       })()
