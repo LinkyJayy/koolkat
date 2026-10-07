@@ -27,7 +27,7 @@ Photos taken in KoolKat are called **Klicks**.
 - **Push notifications.** 🔔 Get notified about new Klicks, messages, friend requests, accepted requests, and streaks that are about to end. Turn them on from the banner on the Klicks screen or in your profile. Notifications only say *who* sent something, never what.
 - **News.** 📣 The megaphone button on the home screen opens News: codes, events and updates posted by admins. Posts can include a code with a one-tap **Redeem** button. A badge shows when there's something new.
 - **Installable app (PWA).** KoolKat installs like a normal app, with its own icon, full screen and no browser bars. On Android and desktop, use *Profile → Install KoolKat*. On iPhone, use Safari's *Share → Add to Home Screen*. Long-press the icon for shortcuts to the camera, Klicks and Chats. It opens even offline, and when a new version is deployed it shows *"A new version of KoolKat is ready → Reload"*.
-- **Emojis.** 😺 iPhones, iPads and Macs show Apple's own emojis. Everyone else (Android, Windows, Linux) sees the newest Android emojis (Google's Noto Color Emoji, including the latest Unicode 17 ones), even on older phones, so KoolKat looks the same for all of them. The emoji font is split into small pieces and each device only downloads the ones it needs. Browsers too old for this colour format keep their built-in emojis. (Apple's emoji font can't be included: Apple only licenses it for its own devices.)
+- **Emojis.** 😺 iPhones, iPads and Macs show Apple's own emojis. Everyone else (Android, Windows, Linux) sees the newest Android emojis: Google's **Android 17 "Noto 3D"** designs, including the Unicode 17 ones, even on older phones. The emoji font is split into pieces and each device only downloads the ones it shows (most pieces are 20–900 KB; people, hands and skin tones together are about 5 MB, downloaded the first time one appears, then kept). Browsers that can't draw the 3D format (e.g. Firefox) get the previous flat Android designs. (Apple's emoji font can't be included: Apple only licenses it for its own devices.)
 - **Light and dark mode.** Choose System, Light or Dark under *Appearance* on the sign-in screen or in your profile. The choice is remembered on that device.
 
 ## KoolKat Free vs KoolKat Unlimited
@@ -215,7 +215,7 @@ public/
   js/sounds.js    notification and calling sounds
   sounds/         koolkat_notification.wav, koolkat_calling.wav
   vendor/         qrcode-generator (MIT), jsQR (Apache-2.0) and Leaflet (BSD-2), served locally
-  fonts/emoji/    Noto Color Emoji (SIL Open Font License, see OFL.txt), split into pieces
+  fonts/emoji/    Noto Color Emoji, 3D (Android 17) and flat (SIL Open Font License: OFL.txt, OFL-3D.txt), in pieces
   css/emoji.css   loads those pieces; js/theme.js turns them on for non-Apple devices
   js/api.js       API client
   js/keystore.js  IndexedDB storage for the unlocked private key
