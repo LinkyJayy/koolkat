@@ -1,0 +1,52 @@
+/* Inter Display (rsms.me/inter), SIL Open Font License: fonts/inter/OFL.txt.
+ * Two parts per weight: everyday Latin text, and everything else (accents,
+ * Greek, Cyrillic, symbols), which only downloads when it's used. Emoji
+ * characters are left to the emoji fonts. */
+@font-face {
+  font-family: 'Inter Display';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(../fonts/inter/inter-display-400-latin.woff2) format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2190-2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: 'Inter Display';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(../fonts/inter/inter-display-400-extra.woff2) format('woff2');
+  unicode-range: U+100-130,U+132-148,U+14a-151,U+154-1c3,U+1c5-254,U+256-27b,U+27e-284,U+286-290,U+292-2a4,U+2a6-2ba,U+2bd-2c5,U+2c7-2d9,U+2db,U+2dd-303,U+306-307,U+309-30a,U+30c,U+30f,U+313,U+315,U+31b,U+323,U+326-328,U+32c,U+337-338,U+342-343,U+346-36f,U+374-376,U+37a-37f,U+384-38a,U+38c,U+38e-3a1,U+3a3-3d7,U+3dc-3dd,U+3f0-3f6,U+3f9-3fa,U+3fc-479,U+480-49d,U+4a0-4ff,U+52f,U+e3f,U+1d00,U+1d0d,U+1d1b,U+1d43,U+1d47-1d49,U+1d4d,U+1d4f-1d50,U+1d52,U+1d56-1d58,U+1d5b,U+1d62-1d65,U+1d9c,U+1da0,U+1dbb,U+1dbf-1df5,U+1dfc-1e9b,U+1e9d-1f15,U+1f18-1f1d,U+1f20-1f45,U+1f48-1f4d,U+1f50-1f57,U+1f59,U+1f5b,U+1f5d,U+1f5f-1f7d,U+1f80-1fb4,U+1fb6-1fc4,U+1fc6-1fd3,U+1fd6-1fdb,U+1fdd-1fef,U+1ff2-1ff4,U+1ff6-1ffe,U+2070-2071,U+2074-208e,U+2090-209c,U+20a0-20ab,U+20ad-20af,U+20b1-20b5,U+20b8-20ba,U+20bc-20c0,U+20db-20de,U+20e8,U+20f0,U+2100-2101,U+2103,U+2105-2106,U+2109,U+2113,U+2116-2117,U+211e-2121,U+2126,U+212a-212b,U+212e,U+2132,U+213b,U+214d,U+2150-217f,U+2183-2186,U+2189,U+2194-2199,U+21a9-21aa,U+21b0-21b1,U+21b3-21b5,U+21ba-21bb,U+21d0,U+21d2,U+21d4,U+21de-21df,U+21e4-21e5,U+21e7,U+21ea,U+2202,U+2205-2206,U+220f,U+2211,U+221a,U+221e,U+222b,U+2236,U+2248,U+2260,U+2264-2265,U+2295-2298,U+2303-2305,U+2318,U+2325-2327,U+232b,U+2380,U+2387,U+238b,U+23ce,U+2423,U+2460-2468,U+24b6-24c1,U+24c3-24cf,U+24ea,U+25a0-25a2,U+25aa,U+25b2-25b3,U+25b7,U+25ba-25bd,U+25c1,U+25c4-25c7,U+25ca-25cb,U+25cf,U+25e6,U+25ef,U+2605-2606,U+263c,U+2661,U+266a-266b,U+2713,U+2717,U+2756,U+2780-2788,U+27ef,U+27f5-27fa,U+2913,U+2a38,U+2b12-2b13,U+2b24,U+2c7c,U+2c7f,U+2dff,U+2e18,U+a69f,U+a7ff,U+a92e,U+e000,U+e002-e05e,U+e06a-e0bd,U+e0c8-e0cc,U+e0dc-e0e6,U+e0f3-e0f5,U+e106,U+e109-e10a,U+e10c-e10f,U+e111-e113,U+e117-e118,U+e121-e122,U+e124,U+e12a-e15e,U+e163,U+e1c3,U+e1d2-e1df,U+e1e1-e2dc,U+ee01-ee07,U+ee09-ee0a,U+ee0c-ee12,U+ee14,U+ee17,U+ee1d-ee45,U+ee47-ee84,U+ee87-eed6,U+eed8-eee1,U+f6c3,U+1f12f-1f149,U+1f16a-1f16b,U+1f850,U+1f852;
+}
+@font-face {
+  font-family: 'Inter Display';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(../fonts/inter/inter-display-600-latin.woff2) format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2190-2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: 'Inter Display';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(../fonts/inter/inter-display-600-extra.woff2) format('woff2');
+  unicode-range: U+100-130,U+132-148,U+14a-151,U+154-1c3,U+1c5-254,U+256-27b,U+27e-284,U+286-290,U+292-2a4,U+2a6-2ba,U+2bd-2c5,U+2c7-2d9,U+2db,U+2dd-303,U+306-307,U+309-30a,U+30c,U+30f,U+313,U+315,U+31b,U+323,U+326-328,U+32c,U+337-338,U+342-343,U+346-36f,U+374-376,U+37a-37f,U+384-38a,U+38c,U+38e-3a1,U+3a3-3d7,U+3dc-3dd,U+3f0-3f6,U+3f9-3fa,U+3fc-479,U+480-49d,U+4a0-4ff,U+52f,U+e3f,U+1d00,U+1d0d,U+1d1b,U+1d43,U+1d47-1d49,U+1d4d,U+1d4f-1d50,U+1d52,U+1d56-1d58,U+1d5b,U+1d62-1d65,U+1d9c,U+1da0,U+1dbb,U+1dbf-1df5,U+1dfc-1e9b,U+1e9d-1f15,U+1f18-1f1d,U+1f20-1f45,U+1f48-1f4d,U+1f50-1f57,U+1f59,U+1f5b,U+1f5d,U+1f5f-1f7d,U+1f80-1fb4,U+1fb6-1fc4,U+1fc6-1fd3,U+1fd6-1fdb,U+1fdd-1fef,U+1ff2-1ff4,U+1ff6-1ffe,U+2070-2071,U+2074-208e,U+2090-209c,U+20a0-20ab,U+20ad-20af,U+20b1-20b5,U+20b8-20ba,U+20bc-20c0,U+20db-20de,U+20e8,U+20f0,U+2100-2101,U+2103,U+2105-2106,U+2109,U+2113,U+2116-2117,U+211e-2121,U+2126,U+212a-212b,U+212e,U+2132,U+213b,U+214d,U+2150-217f,U+2183-2186,U+2189,U+2194-2199,U+21a9-21aa,U+21b0-21b1,U+21b3-21b5,U+21ba-21bb,U+21d0,U+21d2,U+21d4,U+21de-21df,U+21e4-21e5,U+21e7,U+21ea,U+2202,U+2205-2206,U+220f,U+2211,U+221a,U+221e,U+222b,U+2236,U+2248,U+2260,U+2264-2265,U+2295-2298,U+2303-2305,U+2318,U+2325-2327,U+232b,U+2380,U+2387,U+238b,U+23ce,U+2423,U+2460-2468,U+24b6-24c1,U+24c3-24cf,U+24ea,U+25a0-25a2,U+25aa,U+25b2-25b3,U+25b7,U+25ba-25bd,U+25c1,U+25c4-25c7,U+25ca-25cb,U+25cf,U+25e6,U+25ef,U+2605-2606,U+263c,U+2661,U+266a-266b,U+2713,U+2717,U+2756,U+2780-2788,U+27ef,U+27f5-27fa,U+2913,U+2a38,U+2b12-2b13,U+2b24,U+2c7c,U+2c7f,U+2dff,U+2e18,U+a69f,U+a7ff,U+a92e,U+e000,U+e002-e05e,U+e06a-e0bd,U+e0c8-e0cc,U+e0dc-e0e6,U+e0f3-e0f5,U+e106,U+e109-e10a,U+e10c-e10f,U+e111-e113,U+e117-e118,U+e121-e122,U+e124,U+e12a-e15e,U+e163,U+e1c3,U+e1d2-e1df,U+e1e1-e2dc,U+ee01-ee07,U+ee09-ee0a,U+ee0c-ee12,U+ee14,U+ee17,U+ee1d-ee45,U+ee47-ee84,U+ee87-eed6,U+eed8-eee1,U+f6c3,U+1f12f-1f149,U+1f16a-1f16b,U+1f850,U+1f852;
+}
+@font-face {
+  font-family: 'Inter Display';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(../fonts/inter/inter-display-700-latin.woff2) format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2190-2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: 'Inter Display';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(../fonts/inter/inter-display-700-extra.woff2) format('woff2');
+  unicode-range: U+100-130,U+132-148,U+14a-151,U+154-1c3,U+1c5-254,U+256-27b,U+27e-284,U+286-290,U+292-2a4,U+2a6-2ba,U+2bd-2c5,U+2c7-2d9,U+2db,U+2dd-303,U+306-307,U+309-30a,U+30c,U+30f,U+313,U+315,U+31b,U+323,U+326-328,U+32c,U+337-338,U+342-343,U+346-36f,U+374-376,U+37a-37f,U+384-38a,U+38c,U+38e-3a1,U+3a3-3d7,U+3dc-3dd,U+3f0-3f6,U+3f9-3fa,U+3fc-479,U+480-49d,U+4a0-4ff,U+52f,U+e3f,U+1d00,U+1d0d,U+1d1b,U+1d43,U+1d47-1d49,U+1d4d,U+1d4f-1d50,U+1d52,U+1d56-1d58,U+1d5b,U+1d62-1d65,U+1d9c,U+1da0,U+1dbb,U+1dbf-1df5,U+1dfc-1e9b,U+1e9d-1f15,U+1f18-1f1d,U+1f20-1f45,U+1f48-1f4d,U+1f50-1f57,U+1f59,U+1f5b,U+1f5d,U+1f5f-1f7d,U+1f80-1fb4,U+1fb6-1fc4,U+1fc6-1fd3,U+1fd6-1fdb,U+1fdd-1fef,U+1ff2-1ff4,U+1ff6-1ffe,U+2070-2071,U+2074-208e,U+2090-209c,U+20a0-20ab,U+20ad-20af,U+20b1-20b5,U+20b8-20ba,U+20bc-20c0,U+20db-20de,U+20e8,U+20f0,U+2100-2101,U+2103,U+2105-2106,U+2109,U+2113,U+2116-2117,U+211e-2121,U+2126,U+212a-212b,U+212e,U+2132,U+213b,U+214d,U+2150-217f,U+2183-2186,U+2189,U+2194-2199,U+21a9-21aa,U+21b0-21b1,U+21b3-21b5,U+21ba-21bb,U+21d0,U+21d2,U+21d4,U+21de-21df,U+21e4-21e5,U+21e7,U+21ea,U+2202,U+2205-2206,U+220f,U+2211,U+221a,U+221e,U+222b,U+2236,U+2248,U+2260,U+2264-2265,U+2295-2298,U+2303-2305,U+2318,U+2325-2327,U+232b,U+2380,U+2387,U+238b,U+23ce,U+2423,U+2460-2468,U+24b6-24c1,U+24c3-24cf,U+24ea,U+25a0-25a2,U+25aa,U+25b2-25b3,U+25b7,U+25ba-25bd,U+25c1,U+25c4-25c7,U+25ca-25cb,U+25cf,U+25e6,U+25ef,U+2605-2606,U+263c,U+2661,U+266a-266b,U+2713,U+2717,U+2756,U+2780-2788,U+27ef,U+27f5-27fa,U+2913,U+2a38,U+2b12-2b13,U+2b24,U+2c7c,U+2c7f,U+2dff,U+2e18,U+a69f,U+a7ff,U+a92e,U+e000,U+e002-e05e,U+e06a-e0bd,U+e0c8-e0cc,U+e0dc-e0e6,U+e0f3-e0f5,U+e106,U+e109-e10a,U+e10c-e10f,U+e111-e113,U+e117-e118,U+e121-e122,U+e124,U+e12a-e15e,U+e163,U+e1c3,U+e1d2-e1df,U+e1e1-e2dc,U+ee01-ee07,U+ee09-ee0a,U+ee0c-ee12,U+ee14,U+ee17,U+ee1d-ee45,U+ee47-ee84,U+ee87-eed6,U+eed8-eee1,U+f6c3,U+1f12f-1f149,U+1f16a-1f16b,U+1f850,U+1f852;
+}

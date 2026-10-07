@@ -2291,6 +2291,35 @@ function renderThemePickers() {
 }
 renderThemePickers();
 
+const TEXT_STYLES = [
+  ['regular', 'Regular text', 'SemiBold headings'],
+  ['semibold', 'Semibold text', 'Bold headings'],
+];
+
+function renderTextStylePicker() {
+  const current = window.koolkatTheme.getText();
+  $('text-style-picker').replaceChildren(
+    ...TEXT_STYLES.map(([value, text, headings]) =>
+      el(
+        'button',
+        {
+          type: 'button',
+          role: 'radio',
+          class: `tab text-style-${value}${value === current ? ' active' : ''}`,
+          'aria-checked': String(value === current),
+          onclick: () => {
+            window.koolkatTheme.setText(value);
+            renderTextStylePicker();
+          },
+        },
+        el('span', { class: 'text-style-text', text }),
+        el('span', { class: 'text-style-headings', text: headings })
+      )
+    )
+  );
+}
+renderTextStylePicker();
+
 // ---------- boot ----------
 
 // ---------- adding friends in person: QR codes ----------

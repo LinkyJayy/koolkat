@@ -42,10 +42,35 @@
   var apple = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent);
   if (!apple) document.documentElement.classList.add('android-emoji');
 
+  // Text style: 'regular' (regular text, semibold headings) or 'semibold'
+  // (semibold text, bold headings). Remembered on this device.
+  var TEXT_KEY = 'koolkat.text';
+  function getText() {
+    try {
+      return localStorage.getItem(TEXT_KEY) === 'semibold' ? 'semibold' : 'regular';
+    } catch (e) {
+      return 'regular';
+    }
+  }
+  function applyText(style) {
+    if (style === 'semibold') document.documentElement.setAttribute('data-text', 'semibold');
+    else document.documentElement.removeAttribute('data-text');
+  }
+  function setText(style) {
+    try {
+      if (style === 'semibold') localStorage.setItem(TEXT_KEY, 'semibold');
+      else localStorage.removeItem(TEXT_KEY);
+    } catch (e) {
+      /* storage blocked: the choice lasts for this visit only */
+    }
+    applyText(style);
+  }
+  applyText(getText());
+
   if (window.matchMedia) {
     matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
       apply(get());
     });
   }
-  window.koolkatTheme = { get: get, set: set };
+  window.koolkatTheme = { get: get, set: set, getText: getText, setText: setText };
 })();
