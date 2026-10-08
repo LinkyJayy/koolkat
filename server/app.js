@@ -39,7 +39,7 @@ import { HttpError, base64Field, fail, pair, parseUserId, validatePublicKey } fr
 import { registerChatRoutes } from './chats.js';
 import { registerNewsRoutes } from './news.js';
 import { registerReelRoutes } from './reels.js';
-import { manifestHandler, registerCustomizeRoutes } from './customize.js';
+import { accentIconHandler, manifestHandler, registerCustomizeRoutes } from './customize.js';
 import { activityOf, chatThemeOf, cleanupFriendCodes, registerSocialRoutes } from './social.js';
 import { registerKatMapRoutes } from './katmap.js';
 import { registerCallRoutes } from './calls.js';
@@ -1299,6 +1299,9 @@ export function createApp({
     news.cleanupUploads(now);
     reels.cleanupUploads(now);
   };
+
+  // The KoolKat icon in an accent colour (public, like the other icons).
+  api.get('/accent-icons/:hex/:name.png', accentIconHandler({ publicDir: PUBLIC_DIR }));
 
   // ---------- push notifications ----------
   api.get('/push/key', (req, res) => res.json({ publicKey: pusher.publicKey }));

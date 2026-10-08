@@ -280,6 +280,7 @@ async function logout() {
 
 function signedOut() {
   window.koolkatTheme.setAccent(null);
+  applyAppIcon({ icon: 'default' });
   stopMapSharing();
   stopCallEvents();
   alertCounts = null;
@@ -2339,8 +2340,8 @@ async function refreshMe() {
     verified: me.user.verified,
   });
   renderMyAvatar();
-  applyAppIcon(me.plan.appIcon);
   window.koolkatTheme.setAccent(me.plan.accentColor);
+  applyAppIcon(me.plan.appIcon);
   return me;
 }
 
@@ -2738,7 +2739,15 @@ function applyAppIcon(appIcon) {
   let large = 'icons/icon-192.png';
   let touch = 'icons/icon-180.png';
   let manifest = 'manifest.webmanifest';
-  if (choice === 'crown' || choice === 'glow') {
+  // KoolKat Unlimited accent colour: the normal icon is drawn in that colour.
+  const accent = window.koolkatTheme.getAccent()?.slice(1);
+  if (choice === 'default' && accent) {
+    const url = (name) => `${API_BASE}/api/accent-icons/${accent}/${name}.png`;
+    small = url('icon-32');
+    large = url('icon-192');
+    touch = url('icon-180');
+    manifest = `manifest.webmanifest?accent=${accent}`;
+  } else if (choice === 'crown' || choice === 'glow') {
     small = `icons/alt-${choice}-32.png`;
     large = `icons/alt-${choice}-192.png`;
     touch = `icons/alt-${choice}-180.png`;
@@ -2756,6 +2765,7 @@ function applyAppIcon(appIcon) {
   if (apple) apple.href = touch;
   const link = document.querySelector('link[rel="manifest"]');
   if (link && !API_BASE) link.href = manifest; // a separately hosted frontend has a static manifest
+  for (const img of document.querySelectorAll('img[data-logo]')) img.src = logoSrc();
   try {
     if (choice === 'default') localStorage.removeItem(APP_ICON_KEY);
     else localStorage.setItem(APP_ICON_KEY, JSON.stringify(appIcon));
@@ -2764,13 +2774,21 @@ function applyAppIcon(appIcon) {
   }
 }
 
-// Use the last chosen icon straight away, before the server answers.
+/** The KoolKat logo, in your accent colour if you have one. */
+function logoSrc() {
+  const accent = window.koolkatTheme.getAccent()?.slice(1);
+  return accent ? `${API_BASE}/api/accent-icons/${accent}/logo.png` : 'icons/logo.png';
+}
+for (const img of document.querySelectorAll('img[src="icons/logo.png"]')) img.dataset.logo = '';
+
+// Use the last chosen icon (and accent colour) straight away, before the server answers.
+let savedAppIcon = null;
 try {
-  const saved = JSON.parse(localStorage.getItem(APP_ICON_KEY) || 'null');
-  if (saved) applyAppIcon(saved);
+  savedAppIcon = JSON.parse(localStorage.getItem(APP_ICON_KEY) || 'null');
 } catch {
   /* nothing saved */
 }
+applyAppIcon(savedAppIcon ?? { icon: 'default' });
 
 function renderPersonalisation(plan) {
   renderAccentEditor(plan);
@@ -3532,6 +3550,7 @@ async function saveAccent(value) {
   const { accentColor } = await api('POST', '/me/accent', { color });
   state.plan.accentColor = accentColor;
   window.koolkatTheme.setAccent(accentColor);
+  applyAppIcon(state.plan.appIcon);
   $('accent-hex').value = (accentColor || '').toUpperCase();
   renderAccentEditor(state.plan);
   renderChatThemeEditor(state.plan);
@@ -4092,7 +4111,7 @@ function homeNewsCard(p) {
   if (p.media?.kind === 'image') thumb = el('img', { src: `${API_BASE}/api/${p.media.url}`, alt: '', loading: 'lazy' });
   else if (p.media?.kind === 'video') {
     thumb = el('video', { src: `${API_BASE}/api/${p.media.url}#t=0.5`, muted: true, playsinline: true, preload: 'metadata' });
-  } else thumb = el('span', { class: 'home-card-title-art' }, el('img', { src: 'icons/logo.png', alt: '' }), el('span', { text: p.title }));
+  } else thumb = el('span', { class: 'home-card-title-art' }, el('img', { src: logoSrc(), alt: '', 'data-logo': true }), el('span', { text: p.title }));
   const details = [p.author ? `@${p.author.username}` : 'KoolKat', `${compactNumber(p.likes)} ♥`, timeAgo(p.createdAt)];
   return el(
     'article',
@@ -4109,7 +4128,7 @@ function homeNewsCard(p) {
       { class: 'home-card-info' },
       p.author
         ? el('button', { type: 'button', class: 'home-card-avatar', 'aria-label': `@${p.author.username}`, onclick: () => openUserProfile(p.author.id) }, avatar(p.author))
-        : el('span', { class: 'home-card-avatar' }, el('img', { src: 'icons/logo.png', alt: '', class: 'avatar' })),
+        : el('span', { class: 'home-card-avatar' }, el('img', { src: logoSrc(), alt: '', class: 'avatar', 'data-logo': true })),
       el(
         'button',
         { type: 'button', class: 'home-card-text', onclick: open },

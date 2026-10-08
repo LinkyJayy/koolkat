@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { base64Field, fail, parseUserId } from './http.js';
+import { decodePng, encodePng, recolourKoolKatBlue } from './png.js';
 
 // KoolKat Unlimited personalisation: app icons, custom badges and BFFs.
 
@@ -197,6 +198,33 @@ export function registerCustomizeRoutes({ api, db, clock, auth, wrap, hasUnlimit
  * (?icon=crown, ?icon=glow, or ?icon=custom-<id>). The page points its
  * manifest link here, so installing KoolKat uses that icon.
  */
+// The KoolKat icon in someone's accent colour (KoolKat Unlimited): the
+// home-screen icon, the tab icon and the logo inside the app.
+export const ACCENT_ICON_NAMES = ['icon-32', 'icon-64', 'icon-180', 'icon-192', 'icon-512', 'icon-maskable-192', 'icon-maskable-512', 'logo'];
+const ACCENT_HEX_RE = /^[0-9a-f]{6}$/;
+
+export function accentIconHandler({ publicDir }) {
+  const cache = new Map(); // "ff0000/icon-192" -> PNG bytes (most recent last)
+  const sources = new Map();
+  const source = (name) => {
+    if (!sources.has(name)) sources.set(name, decodePng(fs.readFileSync(path.join(publicDir, 'icons', `${name}.png`))));
+    return sources.get(name);
+  };
+  return (req, res) => {
+    const hex = String(req.params.hex).toLowerCase();
+    const name = String(req.params.name);
+    if (!ACCENT_HEX_RE.test(hex) || !ACCENT_ICON_NAMES.includes(name)) return res.status(404).json({ error: 'Not found' });
+    const key = `${hex}/${name}`;
+    let png = cache.get(key);
+    if (png) cache.delete(key);
+    else png = encodePng(recolourKoolKatBlue(source(name), `#${hex}`));
+    cache.set(key, png);
+    if (cache.size > 400) cache.delete(cache.keys().next().value);
+    res.set({ 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=31536000, immutable', 'Cross-Origin-Resource-Policy': 'cross-origin' });
+    res.send(png);
+  };
+}
+
 export function manifestHandler({ publicDir, db, hasUnlimitedUser }) {
   const base = JSON.parse(fs.readFileSync(path.join(publicDir, 'manifest.webmanifest'), 'utf8'));
   const customOwner = db.prepare('SELECT * FROM users WHERE app_icon_id = ?');
@@ -222,8 +250,16 @@ export function manifestHandler({ publicDir, db, hasUnlimitedUser }) {
     return null;
   };
 
+  const accentIcons = (hex) => [
+    { src: `api/accent-icons/${hex}/icon-192.png`, sizes: '192x192', type: 'image/png', purpose: 'any' },
+    { src: `api/accent-icons/${hex}/icon-512.png`, sizes: '512x512', type: 'image/png', purpose: 'any' },
+    { src: `api/accent-icons/${hex}/icon-maskable-192.png`, sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+    { src: `api/accent-icons/${hex}/icon-maskable-512.png`, sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+  ];
+
   return (req, res) => {
-    const icons = iconsFor(String(req.query.icon ?? ''));
+    const accent = String(req.query.accent ?? '').toLowerCase();
+    const icons = ACCENT_HEX_RE.test(accent) && !req.query.icon ? accentIcons(accent) : iconsFor(String(req.query.icon ?? ''));
     const manifest = icons
       ? {
           ...base,

@@ -94,3 +94,16 @@ describe('accent colour (KoolKat Unlimited)', () => {
     assert.equal((await call('GET', '/me', { token: boss.token })).body.plan.accentColor, null);
   });
 });
+
+describe('accent-coloured icons', () => {
+  test('the KoolKat icon is drawn in any accent colour', async () => {
+    const res = await fetch(`${base}/api/accent-icons/ff0000/icon-192.png`);
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('content-type'), 'image/png');
+    const { decodePng } = await import('../server/png.js');
+    const { data } = decodePng(Buffer.from(await res.arrayBuffer()));
+    assert.deepEqual([...data.subarray(0, 3)], [255, 0, 0], 'the blue corner is now red');
+    assert.equal((await fetch(`${base}/api/accent-icons/red/icon-192.png`)).status, 404);
+    assert.equal((await fetch(`${base}/api/accent-icons/ff0000/secret.png`)).status, 404);
+  });
+});
