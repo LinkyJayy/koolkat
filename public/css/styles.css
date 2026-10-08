@@ -2383,3 +2383,26 @@ dialog.player-dialog {
 .podium-level { margin: 0 0 4px; padding: 6px 12px; border-radius: 999px; background: rgba(0, 0, 0, 0.45); color: #fff; font-weight: 700; text-align: center; }
 .podium-level[hidden] { display: none; }
 .kart-board li.gone { opacity: 0.5; text-decoration: line-through; }
+
+.kart-now-playing {
+  position: absolute;
+  left: 50%;
+  bottom: calc(80px + var(--safe-bottom));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 32px);
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  font-size: 14px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, 12px);
+  transition: opacity 0.4s, transform 0.4s;
+}
+.kart-now-playing.show { opacity: 1; transform: translate(-50%, 0); }
+.kart-now-playing[hidden] { display: none; }
+.kart-np-icon { font-size: 18px; color: #ffd21a; }

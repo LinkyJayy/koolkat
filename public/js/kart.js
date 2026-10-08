@@ -208,6 +208,70 @@ async function loadAssets() {
   return assets;
 }
 
+// The race music: "Natho Town" by Zalith9 (the Kat Kart OST). Played with
+// Web Audio so the loop has no gap; falls back to a plain <audio> loop.
+export const RACE_SONG = { title: 'Natho Town', artist: 'Zalith9', src: 'sounds/kat-kart-music.mp3' };
+
+function createRaceMusic() {
+  let ctx = null;
+  let buffer = null;
+  let loading = null;
+  let source = null;
+  let gain = null;
+  let fallback = null;
+  const load = () => {
+    loading ??= fetch(RACE_SONG.src)
+      .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error('no music'))))
+      .then((data) => ctx.decodeAudioData(data))
+      .then((b) => (buffer = b))
+      .catch(() => null);
+    return loading;
+  };
+  const stopSource = () => {
+    try {
+      source?.stop();
+    } catch {
+      // Already stopped.
+    }
+    source = null;
+  };
+  return {
+    unlock() {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      ctx ??= new AC();
+      ctx.resume?.().catch(() => {});
+      if (!gain) {
+        gain = ctx.createGain();
+        gain.gain.value = 0.7;
+        gain.connect(ctx.destination);
+      }
+      load();
+    },
+    async play() {
+      this.unlock();
+      if (!ctx) {
+        fallback ??= Object.assign(new Audio(RACE_SONG.src), { loop: true, volume: 0.7 });
+        fallback.currentTime = 0;
+        fallback.play().catch(() => {});
+        return;
+      }
+      await load();
+      if (!buffer) return;
+      stopSource();
+      source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.loop = true;
+      source.connect(gain);
+      source.start();
+    },
+    pause() {
+      stopSource();
+      fallback?.pause();
+    },
+  };
+}
+
 /** Distant hills, scrolled as you turn. */
 function buildSky(width, height) {
   const canvas = document.createElement('canvas');
@@ -255,10 +319,7 @@ export function createKatKart(els) {
   let race = null;
   let frame = 0;
   let input = { left: false, right: false };
-  const music = new Audio('sounds/kat-kart-music.mp3');
-  music.loop = true;
-  music.preload = 'none';
-  music.volume = 0.7;
+  const music = createRaceMusic();
 
   function size() {
     const rect = canvas.parentElement.getBoundingClientRect();
@@ -646,8 +707,8 @@ export function createKatKart(els) {
         race.state = 'racing';
         race.startTime = t;
         race.last = t;
-        music.currentTime = 0;
-        music.play().catch(() => {});
+        music.play();
+        showNowPlaying();
         setTimeout(() => race && (els.countdown.hidden = true), 700);
       }
     } else {
@@ -755,9 +816,25 @@ export function createKatKart(els) {
   }
   window.addEventListener('resize', () => race && size());
 
+  function showNowPlaying() {
+    const note = els.nowPlaying;
+    if (!note) return;
+    note.hidden = false;
+    note.classList.remove('show');
+    void note.offsetWidth;
+    note.classList.add('show');
+    clearTimeout(note.timer);
+    note.timer = setTimeout(() => {
+      note.classList.remove('show');
+      note.timer = setTimeout(() => (note.hidden = true), 500);
+    }, 4500);
+  }
+
   return {
     start,
     stop,
+    // Call from a tap (phones only allow sound after one), before the race starts.
+    unlockAudio: () => music.unlock(),
     keyDown: (e) => onKey(e, true),
     keyUp: (e) => onKey(e, false),
     get running() {

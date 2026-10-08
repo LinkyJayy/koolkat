@@ -32,6 +32,7 @@ const PRECACHE = [
   'js/sounds.js',
   'sounds/koolkat_notification.wav',
   'sounds/koolkat_calling.wav',
+  'sounds/kat-kart-music.mp3',
   'js/qr.js',
   'js/katcam.js',
   'js/theme.js',

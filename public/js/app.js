@@ -5274,6 +5274,7 @@ const katKart = createKatKart({
   countdown: $('kart-countdown'),
   finish: $('kart-finish'),
   podium: $('kart-podium'),
+  nowPlaying: $('kart-now-playing'),
   onFinish: showPodium,
 });
 const KART_LEVEL = 'koolkat.katKart.level';
@@ -5300,6 +5301,7 @@ $('btn-kart-exit').addEventListener('click', () => {
   openPlayables();
 });
 $('btn-kart-again').addEventListener('click', () => {
+  katKart.unlockAudio();
   if (kartOnline.mode === 'online') {
     leaveKartRoom();
     openPlayables();
@@ -5309,6 +5311,7 @@ $('btn-kart-again').addEventListener('click', () => {
 
 // ---------- the Kat Kart menu: solo, or race friends with a code ----------
 function openKartMenu() {
+  katKart.unlockAudio(); // this tap lets the race music play later
   $('kart-level').textContent = `Level ${kartLevel()}`;
   $('kart-menu-main').hidden = false;
   $('kart-lobby').hidden = true;
