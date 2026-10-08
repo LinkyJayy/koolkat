@@ -9,6 +9,26 @@ const STATS_KEY = 'koolkat.katWordle';
 const KEYS = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
 const RANK = { absent: 1, present: 2, correct: 3 };
 
+// Words the rules below get wrong.
+const SYLLABLE_EXCEPTIONS = { maybe: 2, naive: 2, quiet: 2, reuse: 2, cruel: 2, fluid: 2, vague: 1, deity: 3, onion: 2, union: 2, every: 3, react: 2, ideal: 3, being: 2, doing: 2, going: 2, suing: 2, queue: 1 };
+/** How many syllables a word has (for the first hint). */
+export function syllables(word) {
+  const known = SYLLABLE_EXCEPTIONS[word];
+  if (known) return known;
+  let w = word.toLowerCase();
+  // Silent e at the end ("smile", "whale"), but "table", "apple" keep their -le.
+  if (/e$/.test(w) && !/[^aeiouy]le$/.test(w) && !/[aeiouy]{2}e$/.test(w)) w = w.slice(0, -1);
+  w = w.replace(/^y/, '').replace(/qu/g, 'q');
+  let count = 0;
+  for (const g of w.match(/[aeiouy]+/g) ?? []) {
+    count += 1;
+    // Vowels said separately: "piano", "video", "audio", "dying", "layer".
+    count += (g.match(/ia|io|eo|ua|uo|ao|iu|yi|y[aeiou]/g) ?? []).length;
+  }
+  return Math.max(1, count);
+}
+
+
 /** How each letter of a guess scores against the answer (handles repeated letters). */
 export function score(guess, answer) {
   const result = Array(LENGTH).fill('absent');
@@ -50,8 +70,30 @@ function make(tag, cls, text) {
 }
 
 /** Sets up Kat Wordle in its screen. Returns { start } for a new game. */
-export function createKatWordle({ board, keyboard, message, result }) {
-  const game = { answer: '', rows: [], current: '', done: false, busy: false };
+export function createKatWordle({ board, keyboard, message, result, hints }) {
+  const game = { answer: '', rows: [], current: '', done: false, busy: false, hints: 0 };
+
+  // Three hints, one at a time: syllables, then the first letter, then the last.
+  const hintButton = make('button', 'btn small kw-hint-btn');
+  hintButton.type = 'button';
+  const hintList = make('div', 'kw-hint-list');
+  hints.replaceChildren(hintButton, hintList);
+  const HINTS = [
+    (w) => { const n = syllables(w); return `🗣 ${n} syllable${n === 1 ? '' : 's'}`; },
+    (w) => `🔤 Starts with ${w[0].toUpperCase()}`,
+    (w) => `🏁 Ends with ${w[LENGTH - 1].toUpperCase()}`,
+  ];
+  function drawHints() {
+    const left = HINTS.length - game.hints;
+    hintButton.textContent = left ? `💡 Hint (${left} left)` : '💡 No hints left';
+    hintButton.disabled = !left || game.done;
+    hintList.replaceChildren(...HINTS.slice(0, game.hints).map((h) => make('span', 'kw-hint', h(game.answer))));
+  }
+  hintButton.addEventListener('click', () => {
+    if (game.hints >= HINTS.length || game.done) return;
+    game.hints += 1;
+    drawHints();
+  });
   const keyButtons = new Map();
 
   // Keyboard
@@ -101,6 +143,8 @@ export function createKatWordle({ board, keyboard, message, result }) {
     game.current = '';
     game.done = false;
     game.busy = false;
+    game.hints = 0;
+    drawHints();
     for (const row of tiles) for (const tile of row) {
       tile.textContent = '';
       tile.className = 'kw-tile';
@@ -173,6 +217,7 @@ export function createKatWordle({ board, keyboard, message, result }) {
 
   function finish(won) {
     game.done = true;
+    drawHints();
     const stats = loadStats();
     stats.played += 1;
     if (won) {

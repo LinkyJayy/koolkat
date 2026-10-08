@@ -124,7 +124,7 @@
       <section class="shelf" id="home-playables-shelf" data-section="playables">
         <h3 class="shelf-title"><svg viewBox="0 0 24 24" aria-hidden="true" class="pad-icon"><path d="M7 7h10a5 5 0 0 1 4.9 6l-1 4.6a2.5 2.5 0 0 1-4.3 1.2L14.2 16H9.8l-2.4 2.8a2.5 2.5 0 0 1-4.3-1.2l-1-4.6A5 5 0 0 1 7 7Zm-.5 3v1.5H5V13h1.5v1.5H8V13h1.5v-1.5H8V10H6.5Zm9 1a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm2.5-1.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/></svg>KoolKat Playables</h3>
         <div class="shelf-row playables-row">
-          <button type="button" class="playable-card kart-card" data-play="kart"><img src="icons/kat-kart.png" alt=""><span class="playable-name">Kat Kart</span><span class="playable-sub">Race 7 Kats over 3 laps</span></button>
+          <button type="button" class="playable-card kart-card" data-play="kart"><img src="icons/kat-kart.png" alt=""><span class="playable-name">Kat Kart</span><span class="playable-sub">Race friends or bots</span></button>
           <button type="button" class="playable-card wordle-card" data-play="wordle"><span class="wordle-art" aria-hidden="true"><b class="c">K</b><b class="p">A</b><b class="a">T</b><b class="c">S</b><b class="a">!</b></span><span class="playable-name">Kat Wordle</span><span class="playable-sub">Guess the word in 6 tries</span></button>
         </div>
       </section>
@@ -200,7 +200,7 @@
       <button type="button" class="playable-card big kart-card" data-play="kart">
         <img src="icons/kat-kart.png" alt="">
         <span class="playable-name">Kat Kart</span>
-        <span class="playable-sub">Race seven Kats round the Kool Kircuit. Hold the left or right side of the screen to steer.</span>
+        <span class="playable-sub">Race your friends online, or bots that get better as you do. Hold the left or right side of the screen to steer.</span>
         <span class="playable-best" id="kart-best"></span>
       </button>
       <button type="button" class="playable-card big wordle-card" data-play="wordle">
@@ -234,6 +234,7 @@
     </div>
     <div class="kart-podium" id="kart-podium" hidden>
       <h2 class="podium-title" id="podium-title">Results</h2>
+      <p class="podium-level" id="podium-level" hidden></p>
       <div class="podium" id="podium"></div>
       <ol class="podium-list" id="podium-list"></ol>
       <div class="row">
@@ -253,6 +254,7 @@
       </button>
     </header>
     <p class="kw-legend"><span class="kw-chip correct">Blue</span> right spot <span class="kw-chip present">Dark blue</span> wrong spot <span class="kw-chip absent">Grey</span> not in it</p>
+    <div class="kw-hints" id="kw-hints"></div>
     <div class="kw-board" id="kw-board"></div>
     <p class="kw-message" id="kw-message" hidden></p>
     <div class="kw-keyboard" id="kw-keyboard"></div>
@@ -786,6 +788,33 @@
       <input type="file" accept="video/*" id="song-video-file" hidden>
       <input type="file" accept="image/*" id="song-cover-file" hidden>
     </form>
+  </dialog>
+
+  <dialog id="dialog-kart" class="kart-menu">
+    <div id="kart-menu-main">
+      <img src="icons/kat-kart.png" alt="" class="kart-menu-art">
+      <h2>Kat Kart</h2>
+      <button type="button" class="btn primary wide" id="btn-kart-solo">🤖 Solo vs bots · <span id="kart-level">Level 1</span></button>
+      <p class="fineprint">Win a race and the bots get faster. Lose and they get easier.</p>
+      <p class="kart-menu-or">Race your friends</p>
+      <button type="button" class="btn wide" id="btn-kart-create">👥 Make a race</button>
+      <div class="inline-form kart-join">
+        <input id="kart-code" maxlength="4" placeholder="Race code" autocapitalize="characters" autocomplete="off" spellcheck="false" aria-label="Race code" enterkeyhint="go">
+        <button type="button" class="btn small primary" id="btn-kart-join">Join</button>
+      </div>
+      <button type="button" class="btn wide" id="btn-kart-close">Close</button>
+    </div>
+    <div id="kart-lobby" hidden>
+      <p class="fineprint">Race code</p>
+      <p class="kart-code-big" id="kart-lobby-code"></p>
+      <button type="button" class="btn small" id="btn-kart-share">Share the code</button>
+      <ul class="kart-lobby-players" id="kart-lobby-players"></ul>
+      <p class="fineprint" id="kart-lobby-status"></p>
+      <div class="row">
+        <button type="button" class="btn" id="btn-kart-leave">Leave</button>
+        <button type="button" class="btn primary" id="btn-kart-start">Start race</button>
+      </div>
+    </div>
   </dialog>
 
   <dialog id="dialog-group">

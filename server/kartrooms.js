@@ -1,0 +1,218 @@
+import crypto from 'node:crypto';
+import { fail } from './http.js';
+
+// Kat Kart online: race your friends. One person makes a race and shares its
+// 4-letter code; up to 8 people join, and the host starts it. While racing,
+// each phone sends where its kart is about 10 times a second and gets
+// everyone else's back. Races live in memory (a restart ends them).
+
+export const MAX_RACERS = 8;
+const CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+const COUNTDOWN = 4000; // ms from "start" to GO (3, 2, 1 and a moment)
+const GONE_AFTER = 12 * 1000; // no update for this long: left the race
+const FINISH_WAIT = 25 * 1000; // after the first finisher, others get this long
+const ROOM_MAX_AGE = 2 * 60 * 60 * 1000;
+
+const num = (v, min, max) => {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : null;
+};
+
+export function registerKartRoutes({ api, auth, wrap, clock, publicUser, db }) {
+  const rooms = new Map(); // code -> room
+  const roomOf = new Map(); // userId -> code
+  const userById = db.prepare('SELECT * FROM users WHERE id = ?');
+
+  const newCode = () => {
+    for (;;) {
+      const code = Array.from(crypto.randomBytes(4), (b) => CODE_LETTERS[b % CODE_LETTERS.length]).join('');
+      if (!rooms.has(code)) return code;
+    }
+  };
+
+  function leave(userId) {
+    const code = roomOf.get(userId);
+    roomOf.delete(userId);
+    const room = code && rooms.get(code);
+    if (!room) return;
+    const p = room.players.get(userId);
+    if (room.state === 'lobby') room.players.delete(userId);
+    else if (p) p.gone = true;
+    if (room.hostId === userId) {
+      const next = [...room.players.values()].find((x) => !x.gone);
+      if (next) room.hostId = next.id;
+    }
+    if (![...room.players.values()].some((x) => !x.gone)) rooms.delete(code);
+  }
+
+  function tidy(room, now) {
+    for (const p of room.players.values()) {
+      if (!p.gone && now - p.seen > GONE_AFTER) {
+        p.gone = true;
+        if (roomOf.get(p.id) === room.code) roomOf.delete(p.id);
+        if (room.state === 'lobby') room.players.delete(p.id);
+      }
+    }
+    if (room.hostId && room.players.get(room.hostId)?.gone !== false) {
+      const next = [...room.players.values()].find((x) => !x.gone);
+      if (next) room.hostId = next.id;
+    }
+    if (room.state === 'racing') {
+      const racing = [...room.players.values()].filter((p) => !p.gone);
+      const firstFinish = Math.min(...[...room.players.values()].map((p) => p.finishedAt ?? Infinity));
+      if (!racing.length || racing.every((p) => p.finished != null) || now - firstFinish > FINISH_WAIT) {
+        room.state = 'done';
+        room.results = results(room);
+      }
+    }
+  }
+
+  function results(room) {
+    return [...room.players.values()]
+      .sort((a, b) => {
+        if (a.finished != null || b.finished != null) {
+          if (a.finished == null) return 1;
+          if (b.finished == null) return -1;
+          return a.finished - b.finished;
+        }
+        return (b.st?.progress ?? -1e9) - (a.st?.progress ?? -1e9);
+      })
+      .map((p, i) => ({ place: i + 1, id: p.id, slot: p.slot, name: p.name, time: p.finished ?? null, gone: p.gone }));
+  }
+
+  const describe = (room, now, withStates = false) => ({
+    code: room.code,
+    state: room.state,
+    hostId: room.hostId,
+    startAt: room.startAt ?? null,
+    serverNow: now,
+    players: [...room.players.values()].map((p) => ({
+      id: p.id,
+      slot: p.slot,
+      name: p.name,
+      user: p.user,
+      gone: p.gone,
+      finished: p.finished ?? null,
+      ...(withStates ? { st: p.st ?? null } : {}),
+    })),
+    results: room.results ?? null,
+  });
+
+  const roomOr404 = (req) => {
+    const code = String(req.params.code ?? '').toUpperCase();
+    const room = rooms.get(code);
+    if (!room) fail(404, "That race doesn't exist any more");
+    // You're here now: check the others, not you.
+    const me = room.players.get(req.user.id);
+    if (me && !me.gone) me.seen = clock();
+    tidy(room, clock());
+    return room;
+  };
+
+  function join(room, user, now) {
+    const used = new Set([...room.players.values()].map((p) => p.slot));
+    let slot = 0;
+    while (used.has(slot)) slot += 1;
+    room.players.set(user.id, { id: user.id, slot, name: user.display_name, user: publicUser(user), seen: now, gone: false });
+    roomOf.set(user.id, room.code);
+  }
+
+  api.post(
+    '/kart/rooms',
+    auth,
+    wrap((req, res) => {
+      const now = clock();
+      for (const [code, r] of rooms) if (now - r.createdAt > ROOM_MAX_AGE) rooms.delete(code);
+      leave(req.user.id);
+      const room = { code: newCode(), hostId: req.user.id, state: 'lobby', players: new Map(), createdAt: now };
+      rooms.set(room.code, room);
+      join(room, userById.get(req.user.id), now);
+      res.status(201);
+      return { room: describe(room, now) };
+    })
+  );
+
+  api.post(
+    '/kart/rooms/:code/join',
+    auth,
+    wrap((req) => {
+      const room = roomOr404(req);
+      const now = clock();
+      if (!room.players.has(req.user.id)) {
+        if (room.state !== 'lobby') fail(409, 'That race has already started');
+        if (room.players.size >= MAX_RACERS) fail(409, 'That race is full (8 racers)');
+        leave(req.user.id);
+        join(room, userById.get(req.user.id), now);
+      }
+      room.players.get(req.user.id).seen = now;
+      return { room: describe(room, now) };
+    })
+  );
+
+  // The lobby checks in every second or so.
+  api.get(
+    '/kart/rooms/:code',
+    auth,
+    wrap((req) => {
+      const room = roomOr404(req);
+      const now = clock();
+      const me = room.players.get(req.user.id);
+      if (!me) fail(403, "You're not in this race");
+      me.seen = now;
+      return { room: describe(room, now) };
+    })
+  );
+
+  api.post(
+    '/kart/rooms/:code/start',
+    auth,
+    wrap((req) => {
+      const room = roomOr404(req);
+      const now = clock();
+      if (room.hostId !== req.user.id) fail(403, 'Only the person who made the race can start it');
+      if (room.state !== 'lobby') fail(409, 'The race has already started');
+      const ready = [...room.players.values()].filter((p) => !p.gone);
+      if (ready.length < 2) fail(409, 'Wait for at least one friend to join');
+      room.state = 'racing';
+      room.startAt = now + COUNTDOWN;
+      return { room: describe(room, now) };
+    })
+  );
+
+  // Where your kart is; answers with everyone's.
+  api.post(
+    '/kart/rooms/:code/state',
+    auth,
+    wrap((req) => {
+      const room = roomOr404(req);
+      const now = clock();
+      const me = room.players.get(req.user.id);
+      if (!me || me.gone) fail(403, "You're not in this race");
+      me.seen = now;
+      const b = req.body ?? {};
+      if (room.state === 'racing' && now >= room.startAt) {
+        const st = { x: num(b.x, 0, 1024), y: num(b.y, 0, 1024), h: num(b.h, -100, 100), v: num(b.v, 0, 10), progress: num(b.progress, -1e5, 1e5), lap: num(b.lap, -1, 10) };
+        if (Object.values(st).every((v) => v != null)) me.st = st;
+        const finished = num(b.finished, 10 * 1000, 60 * 60 * 1000);
+        if (finished != null && me.finished == null) {
+          me.finished = finished;
+          me.finishedAt = now;
+        }
+        tidy(room, now);
+      }
+      return { room: describe(room, now, true) };
+    })
+  );
+
+  api.post(
+    '/kart/rooms/:code/leave',
+    auth,
+    wrap((req) => {
+      leave(req.user.id);
+      return { ok: true };
+    })
+  );
+
+  return { rooms };
+}

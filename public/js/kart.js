@@ -1,6 +1,7 @@
-// Kat Kart: a kart race, like Mario Kart, with KoolKat cats. You (always
-// blue) race seven computer Kats, each in its own colour, over three laps of
-// the Kool Kircuit. The road is drawn in pseudo-3D ("Mode 7", like the old
+// Kat Kart: a kart race, like Mario Kart, with KoolKat cats, over three laps
+// of the Kool Kircuit. Solo: you (always blue) race seven computer Kats, each
+// in its own colour, and they get better when you win and easier when you
+// don't. Online: up to 8 friends race each other, each in their slot's colour. The road is drawn in pseudo-3D ("Mode 7", like the old
 // SNES games): every row of the screen below the horizon is a slice of the
 // track map seen from just behind your kart.
 
@@ -274,11 +275,26 @@ export function createKatKart(els) {
     return { w, h, horizon, focal: w * 0.95, image: ctx.createImageData(w, h), sky: buildSky(w, horizon + 1) };
   }
 
-  async function start() {
+  /**
+   * Start a race.
+   *   { mode: 'solo', level }: against seven computer Kats; level 1 is easy.
+   *   { mode: 'online', mySlot, players: [{ slot, name }], startAt, sync }:
+   *     `startAt` is GO in this phone's time; `sync(state)` sends your kart and
+   *     resolves with the race from the server.
+   */
+  async function start(opts = { mode: 'solo', level: 1 }) {
     const a = await loadAssets();
     size();
     const n = a.line.length;
-    const racers = RACERS.map((r, i) => {
+    const online = opts.mode === 'online';
+    const level = Math.max(1, Math.min(15, opts.level ?? 1));
+    // Bots' top speed compared with yours: 78% at level 1, about 3% more each level.
+    const botBase = 0.78 + (level - 1) * 0.03;
+    const entrants = online
+      ? opts.players.map((p) => ({ ...RACERS[p.slot], slot: p.slot, name: p.slot === opts.mySlot ? 'You' : p.name, player: p.slot === opts.mySlot, remote: p.slot !== opts.mySlot }))
+      : RACERS.map((r, i) => ({ ...r, slot: i }));
+    const racers = entrants.map((r) => {
+      const i = r.slot;
       // Two by two on the grid, behind the line; you start at the back.
       const order = RACERS.length - 1 - i;
       const idx = (n - 6 - Math.floor(order / 2) * 7) % n;
@@ -289,6 +305,7 @@ export function createKatKart(els) {
       return {
         ...r,
         sprite: a.sprites[i],
+        target: null,
         x: x - Math.sin(heading) * side * 12,
         y: y + Math.cos(heading) * side * 12,
         heading,
@@ -298,21 +315,26 @@ export function createKatKart(els) {
         boost: 0,
         finished: null,
         // Computer Kats: a little slower or faster, and each likes its own line.
-        skill: r.player ? 1 : 0.9 + ((i * 37) % 9) / 100,
+        skill: r.player || r.remote ? 1 : botBase + (((i * 37) % 7) - 3) / 100,
         lane: r.player ? 0 : ((i * 53) % 21) - 10,
         wobble: Math.random() * Math.PI * 2,
       };
     });
+    const player = racers.find((r) => r.player);
     race = {
       a,
       racers,
-      player: racers[0],
+      player,
+      online,
+      level,
+      sync: opts.sync,
       view: makeView(canvas.width, canvas.height),
       state: 'countdown',
-      countdownStart: performance.now(),
+      // GO is 3 seconds from now (solo) or when the server says (online).
+      goAt: online ? opts.startAt : performance.now() + 3000,
       startTime: 0,
       now: 0,
-      camHeading: racers[0].heading,
+      camHeading: player.heading,
       last: performance.now(),
       acc: 0,
       finishedAt: 0,
@@ -320,13 +342,49 @@ export function createKatKart(els) {
     els.countdown.hidden = false;
     els.podium.hidden = true;
     cancelAnimationFrame(frame);
+    clearInterval(syncTimer);
+    if (online) syncTimer = setInterval(sendSync, 100);
     frame = requestAnimationFrame(loop);
   }
 
   function stop() {
     cancelAnimationFrame(frame);
+    clearInterval(syncTimer);
     music.pause();
     race = null;
+  }
+
+  // ---------- online: share where you are, see where everyone else is ----------
+  let syncTimer = null;
+  let syncing = false;
+  async function sendSync() {
+    if (!race?.online || syncing) return;
+    const me = race.player;
+    syncing = true;
+    try {
+      const room = await race.sync({
+        x: me.x,
+        y: me.y,
+        h: me.heading,
+        v: me.speed,
+        progress: me.progress ?? me.seg - race.a.line.length,
+        lap: me.lap,
+        finished: me.finished,
+      });
+      if (!race || !room) return;
+      for (const p of room.players) {
+        const r = race.racers.find((x) => x.slot === p.slot);
+        if (!r || !r.remote) continue;
+        r.gone = p.gone;
+        if (p.finished != null && r.finished == null) r.finished = p.finished;
+        if (p.st) r.target = p.st;
+      }
+      if (room.state === 'done' && race.state !== 'done') endOnline(room.results);
+    } catch {
+      // A missed update: the next one catches up.
+    } finally {
+      syncing = false;
+    }
   }
 
   const onRoad = (x, y) => {
@@ -360,6 +418,27 @@ export function createKatKart(els) {
     const n = a.line.length;
     const player = race.player;
     for (const r of racers) {
+      if (r.remote) {
+        // Someone else's kart: keep it moving between updates, and ease it
+        // towards where they said they were.
+        const t = r.target;
+        if (t) {
+          r.speed = t.v;
+          let dh = t.h - r.heading;
+          dh = Math.atan2(Math.sin(dh), Math.cos(dh));
+          r.heading += dh * 0.3;
+          r.x += Math.cos(r.heading) * r.speed;
+          r.y += Math.sin(r.heading) * r.speed;
+          r.x += (t.x - r.x) * 0.15;
+          r.y += (t.y - r.y) * 0.15;
+          t.x += Math.cos(t.h) * t.v;
+          t.y += Math.sin(t.h) * t.v;
+          r.lap = t.lap;
+          updateSeg(r);
+          r.progress = Math.max(r.progress ?? -Infinity, t.progress);
+        }
+        continue;
+      }
       let steer;
       const autopilot = !r.player || r.finished != null || AUTOPILOT;
       if (autopilot) {
@@ -401,7 +480,7 @@ export function createKatKart(els) {
           if (Math.hypot(r.x - bx, r.y - by) < 20) r.boost = 50;
         }
       }
-      if (r.finished == null && r.lap >= LAPS) {
+      if (r.finished == null && r.lap >= LAPS && !r.remote) {
         r.finished = race.now - race.startTime;
         if (r.player) race.finishedAt = race.now;
       }
@@ -414,11 +493,16 @@ export function createKatKart(els) {
       const dy = q.y - p.y;
       const d = Math.hypot(dx, dy);
       if (d > 0 && d < 9) {
-        const push = (9 - d) / 2;
-        p.x -= (dx / d) * push;
-        p.y -= (dy / d) * push;
-        q.x += (dx / d) * push;
-        q.y += (dy / d) * push;
+        // Only karts this phone drives get pushed (others move on their own phones).
+        const push = (9 - d) / (p.remote || q.remote ? 1 : 2);
+        if (!p.remote) {
+          p.x -= (dx / d) * push;
+          p.y -= (dy / d) * push;
+        }
+        if (!q.remote) {
+          q.x += (dx / d) * push;
+          q.y += (dy / d) * push;
+        }
         p.speed *= 0.97;
         q.speed *= 0.97;
       }
@@ -540,23 +624,23 @@ export function createKatKart(els) {
     els.board.replaceChildren(
       ...order.slice(0, 8).map((r, i) => {
         const row = document.createElement('li');
-        row.className = r.player ? 'me' : '';
         const dot = document.createElement('span');
         dot.className = 'kk-dot';
         dot.style.background = r.color;
-        row.append(`${i + 1}`, dot, r.player ? 'You' : r.name.replace(' Kat', ''));
+        row.className = `${r.player ? 'me' : ''}${r.gone ? ' gone' : ''}`;
+        row.append(`${i + 1}`, dot, r.player ? 'You' : r.name.replace(/ Kat$/, ''));
         return row;
       })
     );
   }
 
   function loop(t) {
-    if (!race) return;
+    if (!race || race.state === 'done') return;
     race.now = t;
     if (race.state === 'countdown') {
       // 3, 2, 1, GO! (silent)
-      const left = 3 - Math.floor((t - race.countdownStart) / 1000);
-      els.countdown.textContent = left > 0 ? String(left) : 'GO!';
+      const left = Math.ceil((race.goAt - t) / 1000);
+      els.countdown.textContent = left > 3 ? 'Get ready…' : left > 0 ? String(left) : 'GO!';
       els.countdown.classList.toggle('go', left <= 0);
       if (left <= 0) {
         race.state = 'racing';
@@ -578,9 +662,13 @@ export function createKatKart(els) {
         race.state = 'finishing';
         els.finish.hidden = false;
       }
-      if (race.state === 'finishing') {
-        const allDone = race.racers.every((r) => r.finished != null);
-        if (allDone || t - race.finishedAt > 6000) return end();
+      // Solo: the bots get a few seconds to finish. Online: the server decides when it's over.
+      if (race.state === 'finishing' && race.online && t - race.finishedAt > 45000) return end(); // lost touch with the server
+      if (race.state === 'finishing' && !race.online) {
+        // Wait for the podium (top 3) to fill, but not forever.
+        const done = race.racers.filter((r) => r.finished != null).length;
+        const waited = t - race.finishedAt;
+        if (done === race.racers.length || (waited > 6000 && done >= 3) || waited > 20000) return end();
       }
     }
     render();
@@ -597,11 +685,32 @@ export function createKatKart(els) {
       time: r.finished,
       sprite: r.sprite.toDataURL('image/png'),
     }));
+    finishRace(results);
+  }
+
+  function endOnline(serverResults) {
+    const results = serverResults.map((p) => {
+      const r = race.racers.find((x) => x.slot === p.slot);
+      return {
+        place: p.place,
+        name: r?.player ? 'You' : p.name,
+        color: RACERS[p.slot].color,
+        player: Boolean(r?.player),
+        time: p.time,
+        gone: p.gone,
+        sprite: (r ?? race.racers[0]).sprite.toDataURL('image/png'),
+      };
+    });
+    finishRace(results);
+  }
+
+  function finishRace(results) {
     music.pause();
+    clearInterval(syncTimer);
     els.finish.hidden = true;
     race.state = 'done';
     render();
-    els.onFinish(results);
+    els.onFinish(results, { mode: race.online ? 'online' : 'solo', level: race.level });
   }
 
   // Controls: hold the left or right half of the screen (or the arrow keys / A, D).

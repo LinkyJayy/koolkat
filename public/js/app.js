@@ -26,7 +26,7 @@ import { compose, grabFrame, openCamera, stopStream, waitForPicture } from './ka
 import { checkActive, initCalls, startCall, startCallEvents, stopCallEvents, usingCamera } from './calls.js';
 import { playNotification, setSoundsOn, soundsOn } from './sounds.js';
 import { createKatWordle } from './wordle.js';
-import { createKatKart, formatRaceTime } from './kart.js';
+import { RACERS as KART_RACERS, createKatKart, formatRaceTime } from './kart.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -162,7 +162,10 @@ function show(name) {
     for (const video of document.querySelectorAll('#screen-news video')) video.pause();
   }
   if (state.screen === 'reels' && name !== 'reels') pauseReels();
-  if (state.screen === 'kart' && name !== 'kart') katKart.stop();
+  if (state.screen === 'kart' && name !== 'kart') {
+    katKart.stop();
+    leaveKartRoom();
+  }
   for (const s of document.querySelectorAll('.screen')) s.hidden = s.id !== `screen-${name}`;
   state.screen = name;
   // The tab bar (Home, Reels, Camera, Klicks, Chats) shows on the main screens.
@@ -5233,7 +5236,7 @@ const readJson = (key) => {
 function openPlayables() {
   show('playables');
   const best = readJson(KART_BEST);
-  $('kart-best').textContent = best ? `🏆 Your best: ${ordinalPlace(best.place)} in ${formatRaceTime(best.time)}` : '';
+  $('kart-best').textContent = [best && `🏆 Best: ${ordinalPlace(best.place)} in ${formatRaceTime(best.time)}`, `🤖 Bots: level ${kartLevel()}`].filter(Boolean).join(' · ');
   const stats = readJson(WORDLE_STATS);
   $('wordle-best').textContent = stats?.played ? `🔥 Streak ${stats.streak} · ${stats.wins}/${stats.played} won` : '';
 }
@@ -5241,14 +5244,14 @@ $('chip-playables').addEventListener('click', openPlayables);
 document.addEventListener('click', (e) => {
   const card = e.target.closest('[data-play]');
   if (!card) return;
-  if (card.dataset.play === 'kart') openKart();
+  if (card.dataset.play === 'kart') openKartMenu();
   else openWordle();
 });
 
 const ordinalPlace = (n) => `${n}${n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'}`;
 
 // Kat Wordle
-const katWordle = createKatWordle({ board: $('kw-board'), keyboard: $('kw-keyboard'), message: $('kw-message'), result: $('kw-result') });
+const katWordle = createKatWordle({ board: $('kw-board'), keyboard: $('kw-keyboard'), message: $('kw-message'), result: $('kw-result'), hints: $('kw-hints') });
 function openWordle() {
   show('wordle');
   katWordle.start();
@@ -5273,22 +5276,186 @@ const katKart = createKatKart({
   podium: $('kart-podium'),
   onFinish: showPodium,
 });
-function openKart() {
+const KART_LEVEL = 'koolkat.katKart.level';
+const KART_COLORS = KART_RACERS.map((r) => r.color);
+const kartLevel = () => Math.max(1, Number(readJson(KART_LEVEL)) || 1);
+const kartOnline = { code: null, room: null, timer: null, mode: 'solo' };
+
+function openKart(opts) {
   // One thing at a time: the race has its own music.
   if (!audioEl.paused) audioEl.pause();
+  kartOnline.mode = opts.mode;
   show('kart');
   $('kart-podium').hidden = true;
-  katKart.start().catch((err) => toast(err.message, { error: true }));
+  $('btn-kart-again').textContent = opts.mode === 'online' ? 'Race again' : 'Race again';
+  katKart.start(opts).catch((err) => toast(err.message, { error: true }));
 }
 $('btn-kart-quit').addEventListener('click', () => {
-  if (confirm('Quit the race?')) openPlayables();
+  if (!confirm('Quit the race?')) return;
+  leaveKartRoom();
+  openPlayables();
 });
-$('btn-kart-exit').addEventListener('click', openPlayables);
-$('btn-kart-again').addEventListener('click', openKart);
+$('btn-kart-exit').addEventListener('click', () => {
+  leaveKartRoom();
+  openPlayables();
+});
+$('btn-kart-again').addEventListener('click', () => {
+  if (kartOnline.mode === 'online') {
+    leaveKartRoom();
+    openPlayables();
+    openKartMenu();
+  } else openKart({ mode: 'solo', level: kartLevel() });
+});
+
+// ---------- the Kat Kart menu: solo, or race friends with a code ----------
+function openKartMenu() {
+  $('kart-level').textContent = `Level ${kartLevel()}`;
+  $('kart-menu-main').hidden = false;
+  $('kart-lobby').hidden = true;
+  $('kart-code').value = '';
+  $('dialog-kart').showModal();
+}
+$('btn-kart-close').addEventListener('click', () => $('dialog-kart').close());
+$('btn-kart-solo').addEventListener('click', () => {
+  $('dialog-kart').close();
+  openKart({ mode: 'solo', level: kartLevel() });
+});
+$('btn-kart-create').addEventListener('click', (e) =>
+  withBusy(e.currentTarget, async () => {
+    const { room } = await api('POST', '/kart/rooms');
+    enterLobby(room);
+  })
+);
+const joinKart = () =>
+  withBusy($('btn-kart-join'), async () => {
+    const code = $('kart-code').value.trim().toUpperCase();
+    if (!/^[A-Z]{4}$/.test(code)) throw new Error('Race codes are 4 letters');
+    const { room } = await api('POST', `/kart/rooms/${code}/join`);
+    enterLobby(room);
+  });
+$('btn-kart-join').addEventListener('click', joinKart);
+$('kart-code').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    joinKart();
+  }
+});
+
+function enterLobby(room) {
+  kartOnline.code = room.code;
+  $('kart-menu-main').hidden = true;
+  $('kart-lobby').hidden = false;
+  renderLobby(room);
+  clearInterval(kartOnline.timer);
+  kartOnline.timer = setInterval(async () => {
+    try {
+      const { room: r } = await api('GET', `/kart/rooms/${kartOnline.code}`);
+      renderLobby(r);
+    } catch (err) {
+      clearInterval(kartOnline.timer);
+      toast(err.message, { error: true });
+      $('dialog-kart').close();
+    }
+  }, 1000);
+}
+
+function renderLobby(room) {
+  kartOnline.room = room;
+  $('kart-lobby-code').textContent = room.code;
+  const players = room.players.filter((p) => !p.gone);
+  $('kart-lobby-players').replaceChildren(
+    ...players.map((p) => {
+      const dot = el('span', { class: 'kk-dot' });
+      dot.style.background = KART_COLORS[p.slot];
+      return el(
+        'li',
+        {},
+        dot,
+        avatar(p.user, 'small'),
+        el('span', { text: p.id === state.me.userId ? `${p.name} (you)` : p.name }),
+        p.id === room.hostId ? el('span', { class: 'fineprint', text: ' · host' }) : null
+      );
+    })
+  );
+  const host = room.hostId === state.me.userId;
+  $('btn-kart-start').hidden = !host;
+  $('btn-kart-start').disabled = players.length < 2;
+  $('kart-lobby-status').textContent =
+    players.length < 2 ? 'Waiting for friends to join with the code… (up to 8 racers)' : host ? `${players.length} racers ready. Start when everyone's in!` : 'Waiting for the host to start…';
+  if (room.state === 'racing') startOnlineRace(room);
+}
+
+function startOnlineRace(room) {
+  clearInterval(kartOnline.timer);
+  kartOnline.racing = true;
+  $('dialog-kart').close();
+  const me = room.players.find((p) => p.id === state.me.userId);
+  const code = room.code;
+  openKart({
+    mode: 'online',
+    mySlot: me.slot,
+    players: room.players.filter((p) => !p.gone).map((p) => ({ slot: p.slot, name: p.name })),
+    startAt: performance.now() + (room.startAt - room.serverNow),
+    sync: (st) => api('POST', `/kart/rooms/${code}/state`, st, { timeout: 4000 }).then((r) => r.room),
+  });
+}
+
+$('btn-kart-start').addEventListener('click', (e) =>
+  withBusy(e.currentTarget, async () => {
+    const { room } = await api('POST', `/kart/rooms/${kartOnline.code}/start`);
+    renderLobby(room);
+  })
+);
+$('btn-kart-leave').addEventListener('click', () => {
+  leaveKartRoom();
+  $('dialog-kart').close();
+});
+$('btn-kart-share').addEventListener('click', async () => {
+  const text = `Race me in Kat Kart on KoolKat! Open Playables → Kat Kart and join with code ${kartOnline.code}`;
+  try {
+    if (navigator.share) await navigator.share({ title: 'Kat Kart', text, url: `${location.origin}/#playables` });
+    else {
+      await navigator.clipboard.writeText(text);
+      toast('Copied');
+    }
+  } catch {
+    // Share sheet closed.
+  }
+});
+$('dialog-kart').addEventListener('close', () => {
+  // Closed the lobby without starting: leave the race.
+  if (!kartOnline.racing) leaveKartRoom();
+});
+
+function leaveKartRoom() {
+  clearInterval(kartOnline.timer);
+  kartOnline.racing = false;
+  if (!kartOnline.code) return;
+  api('POST', `/kart/rooms/${kartOnline.code}/leave`).catch(() => {});
+  kartOnline.code = null;
+}
 
 /** The podium: 2nd, 1st and 3rd on their steps, then everyone's times. */
-function showPodium(results) {
+function showPodium(results, info = {}) {
   const me = results.find((r) => r.player);
+  // Solo: the bots adapt. Win and they get faster; lose and they get easier.
+  const levelLine = $('podium-level');
+  levelLine.hidden = info.mode !== 'solo';
+  if (info.mode === 'solo') {
+    const before = info.level;
+    const after = me.place === 1 ? before + 1 : Math.max(1, before - 1);
+    try {
+      localStorage.setItem(KART_LEVEL, JSON.stringify(after));
+    } catch {
+      // Just for fun.
+    }
+    levelLine.textContent =
+      after > before
+        ? `🤖 You beat the bots! They're now level ${after} (faster).`
+        : after < before
+          ? `🤖 The bots won. They're now level ${after} (easier).`
+          : `🤖 The bots won, but they're already on level 1 (easiest).`;
+  }
   $('podium-title').textContent = me.place === 1 ? '🏆 You won!' : me.place <= 3 ? `🎉 You came ${ordinalPlace(me.place)}!` : `You came ${ordinalPlace(me.place)}`;
   const step = (r) =>
     el(
@@ -5315,7 +5482,7 @@ function showPodium(results) {
   );
   $('kart-podium').hidden = false;
   const best = readJson(KART_BEST);
-  if (me.time != null && (!best || me.place < best.place || (me.place === best.place && me.time < best.time))) {
+  if (info.mode === 'solo' && me.time != null && (!best || me.place < best.place || (me.place === best.place && me.time < best.time))) {
     try {
       localStorage.setItem(KART_BEST, JSON.stringify({ place: me.place, time: me.time }));
     } catch {

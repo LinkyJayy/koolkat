@@ -40,6 +40,7 @@ import { registerChatRoutes } from './chats.js';
 import { registerNewsRoutes } from './news.js';
 import { registerReelRoutes } from './reels.js';
 import { registerMusicRoutes } from './music.js';
+import { registerKartRoutes } from './kartrooms.js';
 import { accentIconHandler, manifestHandler, registerCustomizeRoutes } from './customize.js';
 import { activityOf, chatThemeOf, cleanupFriendCodes, registerSocialRoutes } from './social.js';
 import { registerKatMapRoutes } from './katmap.js';
@@ -1296,6 +1297,9 @@ export function createApp({
   const news = registerNewsRoutes({ api, db, clock, auth, wrap, publicUser, isAdminUser, pusher, mediaDir, rateLimiter });
   // ---------- KoolKat Reels ----------
   const reels = registerReelRoutes({ api, db, clock, auth, wrap, publicUser, hasUnlimitedUser, isAdminUser, pusher, mediaDir, rateLimiter });
+  // ---------- KoolKat Playables: Kat Kart online races ----------
+  registerKartRoutes({ api, auth, wrap, clock, publicUser, db });
+
   // ---------- KoolKat Music ----------
   const music = registerMusicRoutes({ api, db, clock, auth, wrap, publicUser, hasUnlimitedUser, isAdminUser, pusher, mediaDir, rateLimiter });
   app.locals.cleanupNewsUploads = (now) => {
