@@ -26,6 +26,7 @@ import { compose, grabFrame, openCamera, stopStream, waitForPicture } from './ka
 import { checkActive, initCalls, startCall, startCallEvents, stopCallEvents, usingCamera } from './calls.js';
 import { playNotification, setSoundsOn, soundsOn } from './sounds.js';
 import { createKatWordle } from './wordle.js';
+import { focusFirst, initInput } from './input.js';
 import { RACERS as KART_RACERS, createKatKart, formatRaceTime } from './kart.js';
 
 const $ = (id) => document.getElementById(id);
@@ -185,6 +186,7 @@ function show(name) {
     // Starting up: the music player isn't ready yet.
   }
   if (name === 'camera') startCamera();
+  focusFirst();
 }
 const TAB_SCREENS = new Set(['home', 'reels', 'music', 'inbox', 'chats']);
 
@@ -499,7 +501,9 @@ async function startCamera() {
 
   const facing = state.facing;
   // Try the best quality first, then simpler requests for cameras that refuse it.
+  // On a PC, a webcam you picked (built-in or plugged in) is asked for by name.
   const attempts = [
+    ...(state.cameraId ? [{ deviceId: { exact: state.cameraId }, width: { ideal: 1920 }, height: { ideal: 1080 } }, { deviceId: { exact: state.cameraId } }] : []),
     { facingMode: { ideal: facing }, width: { ideal: 1920 }, height: { ideal: 1080 } },
     { facingMode: { ideal: facing } },
     true,
@@ -529,6 +533,7 @@ async function startCamera() {
 
   state.stream = stream;
   hideCameraMessage();
+  updateCameraSwitch();
   const [track] = stream.getVideoTracks();
   const actualFacing = track?.getSettings?.().facingMode;
   video.classList.toggle('mirrored', (actualFacing || facing) === 'user');
@@ -688,9 +693,51 @@ function stopCamera() {
 }
 
 $('camera-retry').addEventListener('click', () => (cameraRetryAction || startCamera)());
-$('btn-flip').addEventListener('click', () => {
-  state.facing = state.facing === 'user' ? 'environment' : 'user';
+// Switching cameras. Phones flip between front and back. PCs (where webcams
+// don't say which way they face) go through every camera plugged in.
+const CAMERA_KEY = 'koolkat.cameraId';
+try {
+  state.cameraId = localStorage.getItem(CAMERA_KEY) || null;
+} catch {
+  state.cameraId = null;
+}
+const videoInputs = async () => (await navigator.mediaDevices?.enumerateDevices?.() ?? []).filter((d) => d.kind === 'videoinput');
+
+async function updateCameraSwitch() {
+  const cams = await videoInputs().catch(() => []);
+  // One camera: nothing to switch to.
+  $('btn-flip').hidden = cams.length < 2;
+}
+
+$('btn-flip').addEventListener('click', async () => {
+  const track = state.stream?.getVideoTracks()[0];
+  const settings = track?.getSettings?.() ?? {};
+  const cams = await videoInputs().catch(() => []);
+  if (cams.length > 1 && !settings.facingMode) {
+    const i = cams.findIndex((c) => c.deviceId === settings.deviceId);
+    const next = cams[(i + 1) % cams.length];
+    state.cameraId = next.deviceId;
+    try {
+      localStorage.setItem(CAMERA_KEY, next.deviceId);
+    } catch {
+      // Remembering it is only a convenience.
+    }
+    toast(`📷 ${next.label || `Camera ${((i + 1) % cams.length) + 1}`}`);
+  } else {
+    state.cameraId = null;
+    state.facing = state.facing === 'user' ? 'environment' : 'user';
+  }
   startCamera();
+});
+
+// A webcam plugged in or unplugged.
+navigator.mediaDevices?.addEventListener?.('devicechange', async () => {
+  const cams = await videoInputs().catch(() => []);
+  if (state.cameraId && !cams.some((c) => c.deviceId === state.cameraId)) {
+    state.cameraId = null;
+    if (state.screen === 'camera') startCamera();
+  }
+  if (state.screen === 'camera') updateCameraSwitch();
 });
 
 // Phones turn the camera off when you switch apps; turn it back on when you return.
@@ -5296,6 +5343,11 @@ $('btn-kart-quit').addEventListener('click', () => {
   leaveKartRoom();
   openPlayables();
 });
+// B on a controller quits straight away (controllers can't press the browser's OK button).
+$('btn-kart-quit').addEventListener('gamepad-quit', () => {
+  leaveKartRoom();
+  openPlayables();
+});
 $('btn-kart-exit').addEventListener('click', () => {
   leaveKartRoom();
   openPlayables();
@@ -5484,6 +5536,7 @@ function showPodium(results, info = {}) {
     })
   );
   $('kart-podium').hidden = false;
+  focusFirst();
   const best = readJson(KART_BEST);
   if (info.mode === 'solo' && me.time != null && (!best || me.place < best.place || (me.place === best.place && me.time < best.time))) {
     try {
@@ -5494,9 +5547,18 @@ function showPodium(results, info = {}) {
   }
 }
 
-// Keyboards: typing in Kat Wordle, arrow keys in Kat Kart.
+// Keyboard and controller navigation in every menu (see input.js). While a
+// Kat Kart race is on, the arrows / D-pad steer instead.
+initInput({ busy: () => state.screen === 'kart' && katKart.running && $('kart-podium').hidden });
+
+// Keyboards: typing in Kat Wordle, arrow keys in Kat Kart, Space for a photo.
 document.addEventListener('keydown', (e) => {
   if (document.querySelector('dialog[open]') || e.target.closest?.('input, textarea')) return;
+  if (state.screen === 'camera' && (e.key === ' ' || e.key === 'Enter') && !e.target.closest?.('button')) {
+    e.preventDefault();
+    $('btn-shutter').click();
+    return;
+  }
   if (state.screen === 'wordle') katWordle.onKey(e);
   else if (state.screen === 'kart') katKart.keyDown(e);
 });

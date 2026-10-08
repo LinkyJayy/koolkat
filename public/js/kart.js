@@ -1,3 +1,5 @@
+import { gamepadSteer } from './input.js';
+
 // Kat Kart: a kart race, like Mario Kart, with KoolKat cats, over three laps
 // of the Kool Kircuit. Solo: you (always blue) race seven computer Kats, each
 // in its own colour, and they get better when you win and easier when you
@@ -323,7 +325,8 @@ export function createKatKart(els) {
 
   function size() {
     const rect = canvas.parentElement.getBoundingClientRect();
-    const w = 256;
+    // Wide windows (PC) get a wider picture.
+    const w = rect.width > rect.height ? 384 : 256;
     const h = Math.max(160, Math.min(560, Math.round((w * rect.height) / Math.max(rect.width, 1))));
     if (canvas.width !== w || canvas.height !== h) {
       canvas.width = w;
@@ -333,7 +336,7 @@ export function createKatKart(els) {
   }
   function makeView(w, h) {
     const horizon = Math.round(h * (h > w ? 0.42 : 0.36));
-    return { w, h, horizon, focal: w * 0.95, image: ctx.createImageData(w, h), sky: buildSky(w, horizon + 1) };
+    return { w, h, horizon, focal: Math.min(w, h * 1.15) * 0.95, image: ctx.createImageData(w, h), sky: buildSky(w, horizon + 1) };
   }
 
   /**
@@ -515,7 +518,8 @@ export function createKatKart(els) {
         diff = Math.atan2(Math.sin(diff), Math.cos(diff));
         steer = Math.max(-1, Math.min(1, diff * 3));
       } else {
-        steer = (input.right ? 1 : 0) - (input.left ? 1 : 0);
+        // Touch or keyboard (A/D, arrows); otherwise a controller's D-pad or sticks.
+        steer = (input.right ? 1 : 0) - (input.left ? 1 : 0) || gamepadSteer();
       }
       const road = onRoad(r.x, r.y);
       let max = road ? 2.6 : 1.1;

@@ -39,6 +39,7 @@ const PRECACHE = [
   'js/wordle.js',
   'js/wordle-words.js',
   'js/kart.js',
+  'js/input.js',
   'icons/kat-kart.png',
   'vendor/qrcode.mjs',
   'vendor/jsQR.js',

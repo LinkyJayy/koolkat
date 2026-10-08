@@ -262,6 +262,7 @@ export function createKatWordle({ board, keyboard, message, result, hints }) {
       })
     );
     result.hidden = false;
+    if (document.documentElement.classList.contains('kb-nav')) result.querySelector('.btn.primary')?.focus();
   }
 
   // Typing on a real keyboard.

@@ -2406,3 +2406,40 @@ dialog.player-dialog {
 .kart-now-playing.show { opacity: 1; transform: translate(-50%, 0); }
 .kart-now-playing[hidden] { display: none; }
 .kart-np-icon { font-size: 18px; color: #ffd21a; }
+
+/* ---------- keyboard and controller ---------- */
+/* A clear ring around whatever's selected when you use a keyboard or controller. */
+.kb-nav :focus,
+:focus-visible {
+  outline: 3px solid var(--brand-2);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--brand) 35%, transparent);
+}
+.kb-nav .kw-key:focus, .kb-nav .chip:focus, .kb-nav .tab-btn:focus { outline-offset: 0; }
+
+/* ---------- KoolKat on a PC ---------- */
+/* Wide screens show KoolKat in a phone-sized column in the middle (Kat Kart
+   uses the whole window). */
+@media (min-width: 760px) {
+  body { background: var(--surface); }
+  .screen:not(.kart-screen):not(#screen-loading):not(#screen-auth),
+  .tabbar {
+    left: calc(50% - 280px);
+    right: calc(50% - 280px);
+  }
+  .screen:not(.kart-screen):not(#screen-loading):not(#screen-auth) { background-color: var(--bg); box-shadow: 0 0 0 1px var(--border), 0 10px 50px rgba(0, 0, 0, 0.12); }
+  .screen.camera, .screen.dark, .reels-screen { background-color: #000; }
+  .music-screen { background-color: #121212; }
+  .mini-player { left: calc(50% - 272px); right: calc(50% - 272px); }
+  .tabbar { border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
+}
+/* Kat Kart on a PC: a bigger minimap and leaderboard; no touch arrows. */
+@media (min-width: 760px) {
+  .kart-minimap { width: 170px; height: 170px; }
+  .kart-board { font-size: 15px; top: calc(130px + var(--safe-top)); }
+  .kart-place { font-size: 52px; }
+  .kart-lap, .kart-time { font-size: 19px; }
+}
+@media (hover: hover) and (pointer: fine) {
+  .kart-steer { display: none; }
+}
