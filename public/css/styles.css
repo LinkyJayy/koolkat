@@ -2538,3 +2538,6 @@ img.pixel { image-rendering: pixelated; }
 .kart-song-pick { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 4px 0 10px; font-weight: var(--w-heading); flex-wrap: wrap; }
 .kart-song-pick select { padding: 6px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; }
 .kart-song-pick select:disabled { opacity: 0.75; }
+
+.escape-song-pick { pointer-events: auto; margin-top: 6px; color: #fff; }
+.escape-song-pick select { background: #fff; color: #0f172a; }

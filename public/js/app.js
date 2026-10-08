@@ -5320,6 +5320,26 @@ document.addEventListener('click', (e) => {
 
 const ordinalPlace = (n) => `${n}${n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'}`;
 
+// KatEscape: you pick the music on the start screen (remembered).
+const ESCAPE_SONG_KEY = 'koolkat.katEscape.song';
+$('escape-song').replaceChildren(
+  el('option', { value: 'random', text: '🔀 Random' }),
+  ...RACE_SONGS.map((song) => el('option', { value: song.id, text: `${song.title} · ${song.artist}` }))
+);
+try {
+  $('escape-song').value = localStorage.getItem(ESCAPE_SONG_KEY) || 'random';
+} catch {
+  // Random it is.
+}
+if (!$('escape-song').value) $('escape-song').value = 'random';
+$('escape-song').addEventListener('change', (e) => {
+  try {
+    localStorage.setItem(ESCAPE_SONG_KEY, e.target.value);
+  } catch {
+    // Remembering it is only a convenience.
+  }
+});
+
 // KatEscape
 const katEscape = createKatEscape({
   canvas: $('escape-canvas'),
@@ -5329,6 +5349,7 @@ const katEscape = createKatEscape({
   alert: $('escape-alert'),
   hint: $('escape-hint'),
   nowPlaying: $('escape-now-playing'),
+  song: $('escape-song'),
   over: $('escape-over'),
   onOver: ({ score, bolts, distance, best, newBest, reason }) => {
     $('escape-over-title').textContent = reason === 'caught' ? '🚓 The cop caught you!' : '💥 Crashed into a train!';

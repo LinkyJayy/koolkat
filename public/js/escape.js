@@ -162,7 +162,8 @@ export function createKatEscape(els) {
     game.state = 'running';
     game.last = performance.now();
     els.hint.hidden = true;
-    const song = music.pick();
+    // You pick the song on the start screen (or Random).
+    const song = music.pick(els.song?.value);
     music.play(song);
     showNowPlaying(els.nowPlaying, song);
   }
@@ -171,7 +172,7 @@ export function createKatEscape(els) {
   // Swipes
   let touch = null;
   canvas.parentElement.addEventListener('pointerdown', (e) => {
-    if (e.target.closest('button')) return;
+    if (e.target.closest('button, select, label')) return;
     touch = { x: e.clientX, y: e.clientY, done: false };
   });
   canvas.parentElement.addEventListener('pointermove', (e) => {
