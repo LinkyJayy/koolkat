@@ -245,24 +245,32 @@ async function loadAssets() {
   return assets;
 }
 
-// The race music: "Natho Town" by Zalith9 (the Kat Kart OST). Played with
-// Web Audio so the loop has no gap; falls back to a plain <audio> loop.
-export const RACE_SONG = { title: 'Natho Town', artist: 'Zalith9', src: 'sounds/kat-kart-music.mp3' };
+// The race music: the Kat Kart OST by Zalith9. Each race (and each KatEscape
+// run) picks one, never the same one twice in a row. Played with Web Audio so
+// the loop has no gap; falls back to a plain <audio> loop.
+export const RACE_SONGS = [
+  { title: 'Natho Town', artist: 'Zalith9', src: 'sounds/kat-kart-music.mp3' },
+  { title: 'Crystal Cavern', artist: 'Zalith9', src: 'sounds/crystal-cavern.mp3' },
+];
 
 export function createRaceMusic() {
   let ctx = null;
-  let buffer = null;
-  let loading = null;
-  let source = null;
   let gain = null;
+  let source = null;
   let fallback = null;
-  const load = () => {
-    loading ??= fetch(RACE_SONG.src)
-      .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error('no music'))))
-      .then((data) => ctx.decodeAudioData(data))
-      .then((b) => (buffer = b))
-      .catch(() => null);
-    return loading;
+  let last = null;
+  const buffers = new Map(); // src -> Promise<AudioBuffer | null>
+  const load = (song) => {
+    if (!buffers.has(song.src)) {
+      buffers.set(
+        song.src,
+        fetch(song.src)
+          .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error('no music'))))
+          .then((data) => ctx.decodeAudioData(data))
+          .catch(() => null)
+      );
+    }
+    return buffers.get(song.src);
   };
   const stopSource = () => {
     try {
@@ -272,6 +280,7 @@ export function createRaceMusic() {
     }
     source = null;
   };
+  let playing = 0; // so a song that finishes loading late doesn't start after pause()
   return {
     unlock() {
       const AC = window.AudioContext || window.webkitAudioContext;
@@ -283,30 +292,62 @@ export function createRaceMusic() {
         gain.gain.value = 0.7;
         gain.connect(ctx.destination);
       }
-      load();
+      for (const song of RACE_SONGS) load(song);
     },
-    async play() {
+    /** The next song: a random one, not the one just played. */
+    pick() {
+      const choices = RACE_SONGS.filter((song) => song !== last);
+      last = choices[Math.floor(Math.random() * choices.length)] ?? RACE_SONGS[0];
+      return last;
+    },
+    async play(song = this.pick()) {
       this.unlock();
-      if (!ctx) {
-        fallback ??= Object.assign(new Audio(RACE_SONG.src), { loop: true, volume: 0.7 });
-        fallback.currentTime = 0;
-        fallback.play().catch(() => {});
-        return;
-      }
-      await load();
-      if (!buffer) return;
+      const run = ++playing;
       stopSource();
+      fallback?.pause();
+      if (!ctx) {
+        fallback = Object.assign(new Audio(song.src), { loop: true, volume: 0.7 });
+        fallback.play().catch(() => {});
+        return song;
+      }
+      const buffer = await load(song);
+      if (!buffer || run !== playing) return song;
       source = ctx.createBufferSource();
       source.buffer = buffer;
       source.loop = true;
       source.connect(gain);
       source.start();
+      return song;
     },
     pause() {
+      playing++;
       stopSource();
       fallback?.pause();
     },
   };
+}
+
+/** Show "Now Playing - Song: Artist" for a few seconds. */
+export function showNowPlaying(note, song) {
+  if (!note || !song) return;
+  const title = document.createElement('strong');
+  title.textContent = song.title;
+  const icon = document.createElement('span');
+  icon.className = 'kart-np-icon';
+  icon.setAttribute('aria-hidden', 'true');
+  icon.textContent = '♪';
+  const text = document.createElement('span');
+  text.append('Now Playing - ', title, `: ${song.artist}`);
+  note.replaceChildren(icon, text);
+  note.hidden = false;
+  note.classList.remove('show');
+  void note.offsetWidth;
+  note.classList.add('show');
+  clearTimeout(note.timer);
+  note.timer = setTimeout(() => {
+    note.classList.remove('show');
+    note.timer = setTimeout(() => (note.hidden = true), 500);
+  }, 4500);
 }
 
 /** A spinning rainbow "?" box, in chunky pixels like the rest of the game. */
@@ -923,8 +964,9 @@ export function createKatKart(els) {
         race.state = 'racing';
         race.startTime = t;
         race.last = t;
-        music.play();
-        showNowPlaying();
+        const song = music.pick();
+        music.play(song);
+        showNowPlaying(els.nowPlaying, song);
         setTimeout(() => race && (els.countdown.hidden = true), 700);
       }
     } else {
@@ -1036,19 +1078,6 @@ export function createKatKart(els) {
   window.addEventListener('resize', () => race && size());
   els.item?.addEventListener('click', usePlayerItem);
 
-  function showNowPlaying() {
-    const note = els.nowPlaying;
-    if (!note) return;
-    note.hidden = false;
-    note.classList.remove('show');
-    void note.offsetWidth;
-    note.classList.add('show');
-    clearTimeout(note.timer);
-    note.timer = setTimeout(() => {
-      note.classList.remove('show');
-      note.timer = setTimeout(() => (note.hidden = true), 500);
-    }, 4500);
-  }
 
   return {
     start,

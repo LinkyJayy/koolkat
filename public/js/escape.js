@@ -8,7 +8,7 @@
 // track) clears the obstacles ahead. Drawn in chunky pixels like Kat Kart.
 
 import { gamepadSteer } from './input.js';
-import { createRaceMusic } from './kart.js';
+import { createRaceMusic, showNowPlaying } from './kart.js';
 
 const LANE = 1.25; // world units between lanes
 const CAM_Z = -3.6;
@@ -40,7 +40,7 @@ export function createKatEscape(els) {
   let game = null;
   let frame = 0;
   let assets = null;
-  // The same music as Kat Kart: "Natho Town" by Zalith9.
+  // The same music as Kat Kart (a random song from the Kat Kart OST).
   const music = createRaceMusic();
 
   async function loadAssets() {
@@ -162,23 +162,11 @@ export function createKatEscape(els) {
     game.state = 'running';
     game.last = performance.now();
     els.hint.hidden = true;
-    music.play();
-    showNowPlaying();
+    const song = music.pick();
+    music.play(song);
+    showNowPlaying(els.nowPlaying, song);
   }
 
-  function showNowPlaying() {
-    const note = els.nowPlaying;
-    if (!note) return;
-    note.hidden = false;
-    note.classList.remove('show');
-    void note.offsetWidth;
-    note.classList.add('show');
-    clearTimeout(note.timer);
-    note.timer = setTimeout(() => {
-      note.classList.remove('show');
-      note.timer = setTimeout(() => (note.hidden = true), 500);
-    }, 4500);
-  }
 
   // Swipes
   let touch = null;
