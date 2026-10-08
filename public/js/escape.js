@@ -8,6 +8,7 @@
 // track) clears the obstacles ahead. Drawn in chunky pixels like Kat Kart.
 
 import { gamepadSteer } from './input.js';
+import { createRaceMusic } from './kart.js';
 
 const LANE = 1.25; // world units between lanes
 const CAM_Z = -3.6;
@@ -39,6 +40,8 @@ export function createKatEscape(els) {
   let game = null;
   let frame = 0;
   let assets = null;
+  // The same music as Kat Kart: "Natho Town" by Zalith9.
+  const music = createRaceMusic();
 
   async function loadAssets() {
     if (assets) return assets;
@@ -95,6 +98,7 @@ export function createKatEscape(els) {
 
   function stop() {
     cancelAnimationFrame(frame);
+    music.pause();
     game = null;
   }
 
@@ -158,6 +162,22 @@ export function createKatEscape(els) {
     game.state = 'running';
     game.last = performance.now();
     els.hint.hidden = true;
+    music.play();
+    showNowPlaying();
+  }
+
+  function showNowPlaying() {
+    const note = els.nowPlaying;
+    if (!note) return;
+    note.hidden = false;
+    note.classList.remove('show');
+    void note.offsetWidth;
+    note.classList.add('show');
+    clearTimeout(note.timer);
+    note.timer = setTimeout(() => {
+      note.classList.remove('show');
+      note.timer = setTimeout(() => (note.hidden = true), 500);
+    }, 4500);
   }
 
   // Swipes
@@ -320,6 +340,7 @@ export function createKatEscape(els) {
     const g = game;
     g.state = 'over';
     g.flash = 0;
+    music.pause();
     if (reason === 'caught') g.copZ = -0.4; // he's got you
     render();
     const final = score();
@@ -545,6 +566,8 @@ export function createKatEscape(els) {
     start,
     stop,
     keyDown,
+    // Call from a tap (phones only allow sound after one).
+    unlockAudio: () => music.unlock(),
     get running() {
       return Boolean(game) && game.state !== 'over';
     },

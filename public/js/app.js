@@ -5328,6 +5328,7 @@ const katEscape = createKatEscape({
   boost: $('escape-boost'),
   alert: $('escape-alert'),
   hint: $('escape-hint'),
+  nowPlaying: $('escape-now-playing'),
   over: $('escape-over'),
   onOver: ({ score, bolts, distance, best, newBest, reason }) => {
     $('escape-over-title').textContent = reason === 'caught' ? '🚓 The cop caught you!' : '💥 Crashed into a train!';
@@ -5339,6 +5340,7 @@ const katEscape = createKatEscape({
 });
 function openEscape() {
   if (!audioEl.paused) audioEl.pause();
+  katEscape.unlockAudio(); // this tap lets the music play
   show('escape');
   katEscape.start().catch((err) => toast(err.message, { error: true }));
 }
@@ -5346,7 +5348,10 @@ $('btn-escape-quit').addEventListener('click', async () => {
   if (!katEscape.running || (await askConfirm('Stop running?', { ok: 'Stop' }))) openPlayables();
 });
 $('btn-escape-exit').addEventListener('click', openPlayables);
-$('btn-escape-again').addEventListener('click', () => katEscape.start());
+$('btn-escape-again').addEventListener('click', () => {
+  katEscape.unlockAudio();
+  katEscape.start();
+});
 
 // Kat Wordle
 const katWordle = createKatWordle({ board: $('kw-board'), keyboard: $('kw-keyboard'), message: $('kw-message'), result: $('kw-result'), hints: $('kw-hints') });

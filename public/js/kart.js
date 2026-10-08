@@ -249,7 +249,7 @@ async function loadAssets() {
 // Web Audio so the loop has no gap; falls back to a plain <audio> loop.
 export const RACE_SONG = { title: 'Natho Town', artist: 'Zalith9', src: 'sounds/kat-kart-music.mp3' };
 
-function createRaceMusic() {
+export function createRaceMusic() {
   let ctx = null;
   let buffer = null;
   let loading = null;
