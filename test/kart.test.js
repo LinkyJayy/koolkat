@@ -84,6 +84,10 @@ describe('Kat Kart online races', () => {
     const seen = (await c2('POST', `/kart/rooms/${code}/state`, b, { x: 120, y: 210, h: 1, v: 2, progress: 40, lap: 0 })).body.room;
     assert.deepEqual(seen.players.find((p) => p.name === 'ann').st, { x: 100, y: 200, h: 1, v: 2, progress: 50, lap: 0 });
     assert.equal(seen.players.find((p) => p.name === 'ann').finished, null, 'not finished just by racing');
+    // Power-ups: attacks are passed on to everyone; speed boosts and junk aren't.
+    await c2('POST', `/kart/rooms/${code}/state`, a, { x: 100, y: 200, h: 1, v: 2, progress: 60, lap: 0, uses: [{ id: 'a-1', kind: 'thunder' }, { id: 'a-2', kind: 'double' }] });
+    const ev = (await c2('POST', `/kart/rooms/${code}/state`, b, { x: 120, y: 210, h: 1, v: 2, progress: 41, lap: 0 })).body.room.events;
+    assert.deepEqual(ev.map((e) => [e.id, e.kind, e.slot]), [['a-1', 'thunder', 0]]);
     // Both keep sending (much more often in real life).
     for (let i = 0; i < 6; i++) {
       now += 10000;

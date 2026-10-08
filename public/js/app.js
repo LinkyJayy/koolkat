@@ -151,6 +151,24 @@ function streakBadge(streak) {
   });
 }
 
+// ---------- "Are you sure?" ----------
+// KoolKat's own confirm box (instead of the browser's), so it matches the app
+// and works with a keyboard or game controller: A / Enter = yes, B / Esc = no.
+function askConfirm(message, { ok = 'OK', cancel = 'Cancel', danger = /delete|remove|leave|quit|take|reset/i.test(message) } = {}) {
+  const dialog = $('dialog-confirm');
+  $('confirm-text').textContent = message;
+  const yes = $('btn-confirm-ok');
+  yes.textContent = ok;
+  yes.className = `btn ${danger ? 'danger-solid' : 'primary'}`;
+  $('btn-confirm-cancel').textContent = cancel;
+  return new Promise((resolve) => {
+    dialog.returnValue = '';
+    dialog.onclose = () => resolve(dialog.returnValue === 'ok');
+    dialog.showModal();
+    yes.focus();
+  });
+}
+
 // ---------- screens ----------
 function show(name) {
   if (state.screen === 'camera' && name !== 'camera') stopCamera();
@@ -1281,7 +1299,7 @@ function adminButtons(p) {
     actionButton(
       'Delete',
       async () => {
-        if (!confirm(`Delete “${p.title}”?`)) return;
+        if (!await askConfirm(`Delete “${p.title}”?`)) return;
         await api('DELETE', `/news/${p.id}`);
         if (news.edit?.id === p.id) stopEditingNews();
         await loadNews();
@@ -1523,7 +1541,7 @@ async function loadComments() {
                   class: 'link-btn comment-delete',
                   text: c.mine || comments.kind !== 'news' ? 'Delete' : 'Delete (admin)',
                   onclick: async () => {
-                    if (!confirm('Delete this comment?')) return;
+                    if (!await askConfirm('Delete this comment?')) return;
                     try {
                       await api('DELETE', `/${comments.kind}/comments/${c.id}`);
                       await loadComments();
@@ -2118,7 +2136,7 @@ $('btn-group-add').addEventListener('click', () => {
 });
 $('btn-group-leave').addEventListener('click', (e) =>
   withBusy(e.currentTarget, async () => {
-    if (!confirm('Leave this group? You will stop getting its messages.')) return;
+    if (!await askConfirm('Leave this group? You will stop getting its messages.')) return;
     await api('POST', `/chats/${chat.current.id}/leave`);
     $('dialog-group').close();
     chat.current = null;
@@ -2139,7 +2157,7 @@ $('btn-snap-delete').addEventListener('click', async (e) => {
   const question = own
     ? 'Delete this Klick for everyone? Nobody will be able to see it again, and it stops counting toward your storage.'
     : `Delete this Klick from ${summary.from.displayName}? You won't be able to see it again.`;
-  if (!confirm(question)) return;
+  if (!await askConfirm(question)) return;
   await withBusy(e.currentTarget, async () => {
     await api('DELETE', `/snaps/${encodeURIComponent(summary.id)}`);
     state.inbox = state.inbox.filter((s) => s.id !== summary.id);
@@ -2311,7 +2329,7 @@ async function openFriend(friend) {
     .then(({ user }) => renderSocials($('friend-socials'), user.socials))
     .catch(() => {});
   dialog.returnValue = '';
-  dialog.onclose = () => {
+  dialog.onclose = async () => {
     if (dialog.returnValue === 'profile') {
       openUserProfile(friend.id);
       return;
@@ -2324,7 +2342,7 @@ async function openFriend(friend) {
       startCall(friend, dialog.returnValue === 'facetime' ? 'video' : 'audio');
       return;
     }
-    if (dialog.returnValue === 'remove' && confirm(`Remove ${friend.displayName} as a friend? Your streak will be lost.`)) {
+    if (dialog.returnValue === 'remove' && await askConfirm(`Remove ${friend.displayName} as a friend? Your streak will be lost.`)) {
       removeFriend(friend, `Removed ${friend.displayName}`).catch((err) => toast(err.message, { error: true }));
     }
   };
@@ -2549,7 +2567,7 @@ async function loadVerified() {
           actionButton(
             'Remove',
             async () => {
-              if (!confirm(`Take the verified badge away from ${u.displayName}?`)) return;
+              if (!await askConfirm(`Take the verified badge away from ${u.displayName}?`)) return;
               await api('DELETE', `/admin/verified/${encodeURIComponent(u.username)}`);
               toast(`${u.displayName} is no longer verified`);
               await loadVerified();
@@ -2592,7 +2610,7 @@ async function loadAdmins() {
             : actionButton(
                 'Remove',
                 async () => {
-                  if (!confirm(`Remove ${a.displayName} as an admin?`)) return;
+                  if (!await askConfirm(`Remove ${a.displayName} as an admin?`)) return;
                   await api('DELETE', `/admin/admins/${encodeURIComponent(a.username)}`);
                   toast(`${a.displayName} is no longer an admin`);
                   await loadAdmins();
@@ -2613,7 +2631,7 @@ $('admins-form').addEventListener('submit', async (e) => {
   await withBusy(form.querySelector('button[type=submit]'), async () => {
     const username = form.username.value.trim();
     if (!username) throw new Error('Type a username');
-    if (!confirm(`Make ${username} an admin? They'll be able to use Admin tools and post News.`)) return;
+    if (!await askConfirm(`Make ${username} an admin? They'll be able to use Admin tools and post News.`)) return;
     const { admin } = await api('POST', '/admin/admins', { username });
     form.reset();
     toast(`🛠 ${admin.displayName} is now an admin`);
@@ -2715,7 +2733,7 @@ function renderCodes(codes) {
             { class: 'item-actions' },
             actionButton('Copy', () => copyText(c.code), ''),
             actionButton('Delete', async () => {
-              if (!confirm(`Delete the code ${c.code}? Nobody will be able to redeem it.`)) return;
+              if (!await askConfirm(`Delete the code ${c.code}? Nobody will be able to redeem it.`)) return;
               await api('DELETE', `/admin/codes/${encodeURIComponent(c.code)}`);
               await loadCodes();
             }, 'danger')
@@ -2776,7 +2794,7 @@ for (const button of document.querySelectorAll('#reset-form [data-reset]')) {
         avatar: 'profile picture',
         all: 'custom badge, app icon, Activity Bubble and profile picture',
       }[which];
-      if (!confirm(`Reset ${username}'s ${label}?`)) return;
+      if (!await askConfirm(`Reset ${username}'s ${label}?`)) return;
       const res = await api('POST', '/admin/reset-customization', {
         username,
         badge: which === 'badge' || which === 'all',
@@ -2800,7 +2818,7 @@ $('btn-revoke').addEventListener('click', (e) =>
   withBusy(e.currentTarget, async () => {
     const username = $('grant-form').username.value.trim();
     if (!username) throw new Error('Type a username');
-    if (!confirm(`Take away gifted KoolKat Unlimited from ${username}? (A paid subscription isn't affected.)`)) return;
+    if (!await askConfirm(`Take away gifted KoolKat Unlimited from ${username}? (A paid subscription isn't affected.)`)) return;
     const res = await api('POST', '/admin/revoke', { username });
     toast(`Removed gifted Unlimited from ${res.user.displayName}`);
   })
@@ -4545,7 +4563,7 @@ async function shareReel(r) {
 }
 
 async function deleteReel(r) {
-  if (!confirm(r.mine ? 'Delete your Reel?' : `Delete this Reel by @${r.author.username}? (admin)`)) return;
+  if (!await askConfirm(r.mine ? 'Delete your Reel?' : `Delete this Reel by @${r.author.username}? (admin)`)) return;
   try {
     await api('DELETE', `/reels/${r.id}`);
     reels.list = reels.list.filter((x) => x.id !== r.id);
@@ -5068,7 +5086,7 @@ $('player-share').addEventListener('click', async () => {
 });
 $('btn-player-delete').addEventListener('click', async () => {
   const song = player.song;
-  if (!song || !confirm(song.mine ? `Delete “${song.title}”?` : `Delete “${song.title}” by ${song.artist.displayName}? (admin)`)) return;
+  if (!song || !await askConfirm(song.mine ? `Delete “${song.title}”?` : `Delete “${song.title}” by ${song.artist.displayName}? (admin)`)) return;
   try {
     await api('DELETE', `/music/${song.id}`);
     toast('Song deleted');
@@ -5306,8 +5324,8 @@ function openWordle() {
 $('btn-wordle-back').addEventListener('click', openPlayables);
 $('btn-kw-exit').addEventListener('click', openPlayables);
 $('btn-kw-again').addEventListener('click', () => katWordle.start());
-$('btn-wordle-new').addEventListener('click', () => {
-  if (confirm('Start again with a new word?')) katWordle.start();
+$('btn-wordle-new').addEventListener('click', async () => {
+  if (await askConfirm('Start again with a new word?')) katWordle.start();
 });
 
 // Kat Kart
@@ -5322,6 +5340,8 @@ const katKart = createKatKart({
   finish: $('kart-finish'),
   podium: $('kart-podium'),
   nowPlaying: $('kart-now-playing'),
+  item: $('kart-item'),
+  alert: $('kart-alert'),
   onFinish: showPodium,
 });
 const KART_LEVEL = 'koolkat.katKart.level';
@@ -5338,16 +5358,13 @@ function openKart(opts) {
   $('btn-kart-again').textContent = opts.mode === 'online' ? 'Race again' : 'Race again';
   katKart.start(opts).catch((err) => toast(err.message, { error: true }));
 }
-$('btn-kart-quit').addEventListener('click', () => {
-  if (!confirm('Quit the race?')) return;
+$('btn-kart-quit').addEventListener('click', async () => {
+  if (!await askConfirm('Quit the race?')) return;
   leaveKartRoom();
   openPlayables();
 });
-// B on a controller quits straight away (controllers can't press the browser's OK button).
-$('btn-kart-quit').addEventListener('gamepad-quit', () => {
-  leaveKartRoom();
-  openPlayables();
-});
+// B on a controller asks too (A = yes, B = no).
+$('btn-kart-quit').addEventListener('gamepad-quit', () => $('btn-kart-quit').click());
 $('btn-kart-exit').addEventListener('click', () => {
   leaveKartRoom();
   openPlayables();
@@ -5549,7 +5566,7 @@ function showPodium(results, info = {}) {
 
 // Keyboard and controller navigation in every menu (see input.js). While a
 // Kat Kart race is on, the arrows / D-pad steer instead.
-initInput({ busy: () => state.screen === 'kart' && katKart.running && $('kart-podium').hidden });
+initInput({ busy: () => !document.querySelector('dialog[open]') && ((state.screen === 'kart' && katKart.running && $('kart-podium').hidden) || (state.screen === 'escape' && katEscape.running)) });
 
 // Keyboards: typing in Kat Wordle, arrow keys in Kat Kart, Space for a photo.
 document.addEventListener('keydown', (e) => {

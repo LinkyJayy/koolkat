@@ -7,6 +7,9 @@ import { fail } from './http.js';
 // everyone else's back. Races live in memory (a restart ends them).
 
 export const MAX_RACERS = 8;
+/** Power-ups a racer can use on everyone else (speed boosts only affect yourself). */
+export const ATTACKS = ['mouse', 'food', 'thunder'];
+const EVENT_ID_RE = /^[A-Za-z0-9-]{3,40}$/;
 const CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 const COUNTDOWN = 4000; // ms from "start" to GO (3, 2, 1 and a moment)
 const GONE_AFTER = 12 * 1000; // no update for this long: left the race
@@ -97,6 +100,7 @@ export function registerKartRoutes({ api, auth, wrap, clock, publicUser, db }) {
       ...(withStates ? { st: p.st ?? null } : {}),
     })),
     results: room.results ?? null,
+    ...(withStates ? { events: room.events ?? [] } : {}),
   });
 
   const roomOr404 = (req) => {
@@ -194,6 +198,13 @@ export function registerKartRoutes({ api, auth, wrap, clock, publicUser, db }) {
       if (room.state === 'racing' && now >= room.startAt) {
         const st = { x: num(b.x, 0, 1024), y: num(b.y, 0, 1024), h: num(b.h, -100, 100), v: num(b.v, 0, 10), progress: num(b.progress, -1e5, 1e5), lap: num(b.lap, -1, 10) };
         if (Object.values(st).every((v) => v != null)) me.st = st;
+        // Power-ups used on everyone else (Mouse, Food Bowl, Thunder).
+        for (const use of Array.isArray(b.uses) ? b.uses.slice(0, 3) : []) {
+          if (!ATTACKS.includes(use?.kind) || !EVENT_ID_RE.test(String(use?.id ?? ''))) continue;
+          if (now - (me.lastUse ?? 0) < 1500) continue;
+          me.lastUse = now;
+          room.events = [...(room.events ?? []), { id: String(use.id), slot: me.slot, kind: use.kind, at: now }].slice(-30);
+        }
         const finished = num(b.finished, 10 * 1000, 60 * 60 * 1000);
         if (finished != null && me.finished == null) {
           me.finished = finished;

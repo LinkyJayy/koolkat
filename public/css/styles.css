@@ -2443,3 +2443,49 @@ dialog.player-dialog {
 @media (hover: hover) and (pointer: fine) {
   .kart-steer { display: none; }
 }
+
+/* KoolKat's "Are you sure?" box */
+.confirm-dialog { max-width: 360px; text-align: center; }
+.confirm-dialog p { margin: 4px 0 16px; font-size: 17px; font-weight: var(--w-heading); }
+.btn.danger-solid { background: var(--danger); border-color: var(--danger); color: #fff; }
+
+/* Kat Kart power-ups */
+.kart-item {
+  position: absolute;
+  left: 50%;
+  bottom: calc(24px + var(--safe-bottom));
+  transform: translateX(-50%);
+  width: 76px;
+  height: 76px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 4px solid #000;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.35);
+}
+.kart-item[hidden] { display: none; }
+.kart-item img { width: 56px; height: 56px; image-rendering: pixelated; }
+.kart-item.rolling img { animation: kart-roll 0.18s steps(2) infinite; }
+@keyframes kart-roll { 50% { transform: translateY(-3px); } }
+.kart-item-key { position: absolute; bottom: -20px; font-size: 11px; font-weight: 800; color: #fff; text-shadow: 0 1px 2px #000; }
+@media (hover: none) { .kart-item-key { display: none; } }
+.kart-alert {
+  position: absolute;
+  left: 50%;
+  top: 38%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  font-weight: 800;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.kart-alert[hidden] { display: none; }
+.kart-alert img { width: 32px; height: 32px; image-rendering: pixelated; }

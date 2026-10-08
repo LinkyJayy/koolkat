@@ -35,6 +35,33 @@ const TRACK = [
   [150, 820], [230, 895], [370, 905],
 ];
 const BOOST_AT = [0.18, 0.43, 0.7, 0.9]; // boost pads, as a fraction of the way round
+const ITEM_ROWS_AT = [0.08, 0.3, 0.52, 0.78]; // rows of item boxes
+const ITEM_LANES = [-18, -6, 6, 18];
+const ITEM_RESPAWN = 3000;
+const ROULETTE = 1100; // the item spins this long before you get it
+
+/**
+ * Power-ups, from item boxes on the track. The weights set how often each
+ * comes up: Triple Speed is half as common as Double Speed, and Food Bowl is
+ * rarer than Mouse but more common than Thunder.
+ */
+export const POWERUPS = {
+  double: { name: 'Double Speed', icon: 'icons/powerups/double.png', weight: 40, self: true, mul: 1.5, ms: 3500 },
+  triple: { name: 'Triple Speed', icon: 'icons/powerups/triple.png', weight: 20, self: true, mul: 2, ms: 3000 },
+  mouse: { name: 'Mouse', icon: 'icons/powerups/mouse.png', weight: 24, mul: 0.5, ms: 4000 },
+  food: { name: 'Food Bowl', icon: 'icons/powerups/food.png', weight: 11, mul: 0.25, ms: 3500 },
+  thunder: { name: 'Thunder', icon: 'icons/powerups/thunder.png', weight: 5, mul: 0, ms: 2000 },
+};
+const POWERUP_KINDS = Object.keys(POWERUPS);
+export function randomPowerup(rand = Math.random) {
+  const total = POWERUP_KINDS.reduce((sum, k) => sum + POWERUPS[k].weight, 0);
+  let roll = rand() * total;
+  for (const k of POWERUP_KINDS) {
+    roll -= POWERUPS[k].weight;
+    if (roll < 0) return k;
+  }
+  return 'double';
+}
 
 // For testing: ?katkart-autopilot drives your kart for you.
 const AUTOPILOT = typeof location !== 'undefined' && /[?&]katkart-autopilot\b/.test(location.search);
@@ -206,7 +233,15 @@ async function loadAssets() {
   const track = buildTrack(line, boosts);
   const image = await loadImage('icons/kat-kart.png');
   const sprites = RACERS.map((r) => kartSprite(image, r.color));
-  assets = { line, boosts, ...track, sprites };
+  const icons = Object.fromEntries(await Promise.all(POWERUP_KINDS.map(async (k) => [k, await loadImage(POWERUPS[k].icon)])));
+  const itemSpots = ITEM_ROWS_AT.flatMap((f) => {
+    const i = Math.floor(f * line.length);
+    const [x, y] = line[i];
+    const [x2, y2] = line[(i + 1) % line.length];
+    const h = Math.atan2(y2 - y, x2 - x);
+    return ITEM_LANES.map((off) => ({ index: i, x: x - Math.sin(h) * off, y: y + Math.cos(h) * off }));
+  });
+  assets = { line, boosts, ...track, sprites, icons, itemSpots, itemBox: itemBoxSprite() };
   return assets;
 }
 
@@ -272,6 +307,25 @@ function createRaceMusic() {
       fallback?.pause();
     },
   };
+}
+
+/** A spinning rainbow "?" box, in chunky pixels like the rest of the game. */
+function itemBoxSprite() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 16;
+  const g = c.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, 16, 16);
+  ['#ff4f6d', '#ffcc00', '#3ddc84', '#4aa3ff', '#b05cff'].forEach((col, i, all) => grad.addColorStop(i / (all.length - 1), col));
+  g.fillStyle = '#000';
+  g.fillRect(0, 0, 16, 16);
+  g.fillStyle = grad;
+  g.fillRect(1, 1, 14, 14);
+  g.fillStyle = 'rgba(255,255,255,0.35)';
+  g.fillRect(2, 2, 12, 3);
+  g.fillStyle = '#fff';
+  // A pixel "?"
+  for (const [x, y] of [[6, 4], [7, 4], [8, 4], [9, 4], [5, 5], [10, 5], [10, 6], [9, 7], [8, 8], [7, 8], [7, 9], [7, 11], [8, 11], [7, 12], [8, 12]]) g.fillRect(x, y, 1, 1);
+  return c;
 }
 
 /** Distant hills, scrolled as you turn. */
@@ -378,6 +432,14 @@ export function createKatKart(els) {
         lap: -1,
         boost: 0,
         finished: null,
+        item: null, // power-up waiting to be used
+        rollUntil: 0, // the item box roulette is spinning until then
+        useAt: 0, // computer Kats use theirs at this time
+        boostMul: 1,
+        boostUntil: 0,
+        slowMul: 1,
+        slowUntil: 0,
+        slowKind: null,
         // Computer Kats: a little slower or faster, and each likes its own line.
         skill: r.player || r.remote ? 1 : botBase + (((i * 37) % 7) - 3) / 100,
         lane: r.player ? 0 : ((i * 53) % 21) - 10,
@@ -402,7 +464,12 @@ export function createKatKart(els) {
       last: performance.now(),
       acc: 0,
       finishedAt: 0,
+      boxesTakenUntil: new Map(), // item box -> when it comes back
+      pendingUses: [], // online: power-ups to tell the others about
+      seenEvents: new Set(),
+      flashUntil: 0,
     };
+    renderItem();
     els.countdown.hidden = false;
     els.podium.hidden = true;
     cancelAnimationFrame(frame);
@@ -434,8 +501,17 @@ export function createKatKart(els) {
         progress: me.progress ?? me.seg - race.a.line.length,
         lap: me.lap,
         finished: me.finished,
+        uses: race.pendingUses.splice(0),
       });
       if (!race || !room) return;
+      // Power-ups the others used on everyone (you included).
+      for (const ev of room.events ?? []) {
+        if (race.seenEvents.has(ev.id)) continue;
+        race.seenEvents.add(ev.id);
+        if (ev.slot === race.player.slot || POWERUPS[ev.kind]?.self) continue;
+        const from = race.racers.find((x) => x.slot === ev.slot);
+        hit(race.player, ev.kind, from);
+      }
       for (const p of room.players) {
         const r = race.racers.find((x) => x.slot === p.slot);
         if (!r || !r.remote) continue;
@@ -532,6 +608,12 @@ export function createKatKart(els) {
         max = 3.8;
         r.boost -= 1;
       }
+      // Power-ups: your own speed boost, and slow-downs from the others.
+      if (race.now < r.boostUntil) max *= r.boostMul;
+      if (race.now < r.slowUntil) {
+        max *= r.slowMul;
+        if (r.slowMul === 0) r.speed = 0; // Thunder: frozen
+      } else r.slowKind = null;
       if (r.finished != null && r.player) max *= 0.8;
       r.speed += (max - r.speed) * (r.speed < max ? 0.025 : 0.08);
       r.heading += steer * 0.042 * Math.min(1, r.speed / 1.2);
@@ -545,6 +627,8 @@ export function createKatKart(els) {
           if (Math.hypot(r.x - bx, r.y - by) < 20) r.boost = 50;
         }
       }
+      pickUpItems(r);
+      if (!r.player && r.item && race.now >= r.useAt && r.finished == null) useItem(r);
       if (r.finished == null && r.lap >= LAPS && !r.remote) {
         r.finished = race.now - race.startTime;
         if (r.player) race.finishedAt = race.now;
@@ -572,6 +656,107 @@ export function createKatKart(els) {
         q.speed *= 0.97;
       }
     }
+  }
+
+  // ---------- power-ups ----------
+  function pickUpItems(r) {
+    const { itemSpots } = race.a;
+    const n = race.a.line.length;
+    for (let i = 0; i < itemSpots.length; i++) {
+      const spot = itemSpots[i];
+      if ((race.boxesTakenUntil.get(i) ?? 0) > race.now) continue;
+      if ((r.seg - spot.index + n) % n > 8) continue;
+      if (Math.hypot(r.x - spot.x, r.y - spot.y) > 9) continue;
+      race.boxesTakenUntil.set(i, race.now + ITEM_RESPAWN);
+      if (r.item || race.now < r.rollUntil || r.finished != null) continue;
+      r.rollUntil = race.now + ROULETTE;
+      const kind = randomPowerup();
+      setTimeout(() => {
+        if (!race) return;
+        r.item = kind;
+        r.useAt = race.now + 800 + Math.random() * 3000;
+        if (r.player) renderItem();
+      }, ROULETTE);
+    }
+  }
+
+  function useItem(r) {
+    const kind = r.item;
+    if (!kind) return;
+    r.item = null;
+    const p = POWERUPS[kind];
+    if (p.self) {
+      r.boostMul = p.mul;
+      r.boostUntil = race.now + p.ms;
+    } else {
+      for (const other of race.racers) if (other !== r && !other.remote) hit(other, kind, r);
+    }
+    if (r.player) {
+      if (race.online) race.pendingUses.push({ id: `${r.slot}-${Math.random().toString(36).slice(2, 10)}`, kind });
+      renderItem();
+      alertText(p.self ? `${p.name}! ×${p.mul}` : `${p.name}! Everyone else slows down`, kind);
+    }
+  }
+
+  function hit(r, kind, from) {
+    if (r.finished != null) return;
+    const p = POWERUPS[kind];
+    r.slowMul = p.mul;
+    r.slowUntil = race.now + p.ms;
+    r.slowKind = kind;
+    if (r.player) {
+      if (kind === 'thunder') race.flashUntil = race.now + 250;
+      alertText(`${p.name} from ${from?.player ? 'you' : from?.name ?? 'someone'}!`, kind);
+    }
+  }
+
+  function renderItem() {
+    const b = els.item;
+    if (!b || !race) return;
+    const me = race.player;
+    const rolling = race.now < me.rollUntil;
+    b.hidden = !me.item && !rolling;
+    b.classList.toggle('rolling', rolling);
+    const kind = rolling ? POWERUP_KINDS[Math.floor(race.now / 90) % POWERUP_KINDS.length] : me.item;
+    const img = b.querySelector('img');
+    if (kind && img.dataset.kind !== kind) {
+      img.src = POWERUPS[kind].icon;
+      img.dataset.kind = kind;
+      b.setAttribute('aria-label', rolling ? 'Spinning…' : `Use ${POWERUPS[kind].name}`);
+    }
+  }
+
+  let alertTimer = null;
+  function alertText(text, kind) {
+    const a = els.alert;
+    if (!a) return;
+    a.replaceChildren();
+    if (kind) {
+      const img = document.createElement('img');
+      img.src = POWERUPS[kind].icon;
+      img.alt = '';
+      a.append(img);
+    }
+    a.append(text);
+    a.hidden = false;
+    clearTimeout(alertTimer);
+    alertTimer = setTimeout(() => (a.hidden = true), 1800);
+  }
+
+  function usePlayerItem() {
+    if (!race || race.state !== 'racing' || race.now < race.player.rollUntil) return;
+    useItem(race.player);
+  }
+
+  // A controller's A, X or a shoulder button uses your power-up.
+  let padUseHeld = false;
+  function pollPadUse() {
+    let down = false;
+    for (const pad of navigator.getGamepads?.() ?? []) {
+      if (pad && [0, 2, 5, 7].some((i) => pad.buttons[i]?.pressed)) down = true;
+    }
+    if (down && !padUseHeld) usePlayerItem();
+    padUseHeld = down;
   }
 
   function standings() {
@@ -625,27 +810,53 @@ export function createKatKart(els) {
     ctx.drawImage(sky, sky.width - offset, 0);
     if (offset < sky.width - w) ctx.drawImage(sky, -offset + sky.width, 0);
 
-    // Karts, far ones first.
+    // Karts and item boxes, far ones first.
     const visible = [];
+    const project = (x, y) => {
+      const dx = x - camX;
+      const dy = y - camY;
+      return { dz: dx * fx + dy * fy, lx: dx * rx + dy * ry };
+    };
     for (const r of race.racers) {
-      const dx = r.x - camX;
-      const dy = r.y - camY;
-      const dz = dx * fx + dy * fy;
+      const { dz, lx } = project(r.x, r.y);
       if (dz < 6) continue;
-      const lx = dx * rx + dy * ry;
       visible.push({ r, dz, lx });
     }
+    a.itemSpots.forEach((spot, i) => {
+      if ((race.boxesTakenUntil.get(i) ?? 0) > race.now) return;
+      const { dz, lx } = project(spot.x, spot.y);
+      if (dz < 6 || dz > 500) return;
+      visible.push({ box: true, dz, lx });
+    });
     visible.sort((p, q) => q.dz - p.dz);
-    for (const { r, dz, lx } of visible) {
+    ctx.imageSmoothingEnabled = false;
+    for (const { r, box, dz, lx } of visible) {
+      if (box) {
+        const size = (6 * focal) / dz;
+        const bx = w / 2 + (lx * focal) / dz;
+        const by = horizon + (CAM_HEIGHT * focal) / dz - size * (1.2 + 0.15 * Math.sin(race.now / 200 + dz));
+        ctx.drawImage(a.itemBox, bx - size / 2, by, size, size);
+        continue;
+      }
       const sizePx = (KART_SIZE * focal) / dz;
       const sx = w / 2 + (lx * focal) / dz;
       const sy = horizon + (CAM_HEIGHT * focal) / dz;
       const bob = r.speed > 0.5 ? Math.sin(race.now / 60 + r.wobble) * sizePx * 0.015 : 0;
       ctx.drawImage(r.sprite, sx - sizePx / 2, sy - sizePx * 0.92 + bob, sizePx, sizePx);
-      if (r.boost > 0 && dz < 200) {
+      if ((r.boost > 0 || race.now < r.boostUntil) && dz < 200) {
         ctx.fillStyle = 'rgba(255,170,0,0.8)';
         ctx.fillRect(sx - sizePx * 0.15, sy - sizePx * 0.05, sizePx * 0.3, sizePx * 0.12);
       }
+      // Slowed down: the power-up that hit them floats above them.
+      if (r.slowKind && race.now < r.slowUntil) {
+        const icon = a.icons[r.slowKind];
+        const s2 = Math.max(8, sizePx * 0.45);
+        ctx.drawImage(icon, sx - s2 / 2, sy - sizePx * 1.05 - s2, s2, s2);
+      }
+    }
+    if (race.now < race.flashUntil) {
+      ctx.fillStyle = 'rgba(255, 230, 80, 0.45)';
+      ctx.fillRect(0, 0, w, h);
     }
     drawMinimap();
     drawHud();
@@ -678,6 +889,7 @@ export function createKatKart(els) {
   }
 
   function drawHud() {
+    if (race.now < race.player.rollUntil || els.item?.classList.contains('rolling')) renderItem();
     const order = standings();
     const place = order.indexOf(race.player) + 1;
     els.place.textContent = ordinal(place);
@@ -716,6 +928,7 @@ export function createKatKart(els) {
         setTimeout(() => race && (els.countdown.hidden = true), 700);
       }
     } else {
+      pollPadUse();
       race.acc += Math.min(250, t - race.last);
       race.last = t;
       while (race.acc >= STEP) {
@@ -815,10 +1028,13 @@ export function createKatKart(els) {
     const k = e.key.toLowerCase();
     if (k === 'arrowleft' || k === 'a') input.left = down;
     else if (k === 'arrowright' || k === 'd') input.right = down;
-    else return;
+    else if (k === ' ' || k === 'w' || k === 'arrowup' || k === 'e') {
+      if (down && !e.repeat) usePlayerItem();
+    } else return;
     e.preventDefault();
   }
   window.addEventListener('resize', () => race && size());
+  els.item?.addEventListener('click', usePlayerItem);
 
   function showNowPlaying() {
     const note = els.nowPlaying;

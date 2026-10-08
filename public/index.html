@@ -231,6 +231,8 @@
       <div class="kart-countdown" id="kart-countdown" hidden>3</div>
       <div class="kart-finish" id="kart-finish" hidden>FINISH!</div>
       <div class="kart-now-playing" id="kart-now-playing" hidden><span class="kart-np-icon" aria-hidden="true">♪</span><span>Now Playing - <strong>Natho Town</strong>: Zalith9</span></div>
+      <button type="button" class="kart-item" id="kart-item" hidden aria-label="Use power-up"><img alt=""><span class="kart-item-key">Space</span></button>
+      <div class="kart-alert" id="kart-alert" hidden></div>
       <div class="kart-steer" aria-hidden="true"><span>◀</span><span>▶</span></div>
     </div>
     <div class="kart-podium" id="kart-podium" data-modal hidden>
@@ -816,6 +818,16 @@
         <button type="button" class="btn primary" id="btn-kart-start">Start race</button>
       </div>
     </div>
+  </dialog>
+
+  <dialog id="dialog-confirm" class="confirm-dialog">
+    <form method="dialog">
+      <p id="confirm-text"></p>
+      <div class="row">
+        <button class="btn" value="cancel" id="btn-confirm-cancel">Cancel</button>
+        <button class="btn primary" value="ok" id="btn-confirm-ok">OK</button>
+      </div>
+    </form>
   </dialog>
 
   <dialog id="dialog-group">
