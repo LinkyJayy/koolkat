@@ -182,7 +182,10 @@ function show(name) {
     for (const video of document.querySelectorAll('#screen-news video')) video.pause();
   }
   if (state.screen === 'reels' && name !== 'reels') pauseReels();
-  if (state.screen === 'escape' && name !== 'escape') katEscape.stop();
+  if (state.screen === 'escape' && name !== 'escape') {
+    katEscape.stop();
+    leaveEscapeRoom();
+  }
   if (state.screen === 'kart' && name !== 'kart') {
     katKart.stop();
     leaveKartRoom();
@@ -5320,12 +5323,14 @@ document.addEventListener('click', (e) => {
 
 const ordinalPlace = (n) => `${n}${n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'}`;
 
-// KatEscape: you pick the music on the start screen (remembered).
+// KatEscape: you pick the music on the start screen (remembered); online the host picks.
 const ESCAPE_SONG_KEY = 'koolkat.katEscape.song';
-$('escape-song').replaceChildren(
-  el('option', { value: 'random', text: '🔀 Random' }),
-  ...RACE_SONGS.map((song) => el('option', { value: song.id, text: `${song.title} · ${song.artist}` }))
-);
+for (const select of [$('escape-song'), $('escape-song-online')]) {
+  select.replaceChildren(
+    el('option', { value: 'random', text: '🔀 Random' }),
+    ...RACE_SONGS.map((song) => el('option', { value: song.id, text: `${song.title} · ${song.artist}` }))
+  );
+}
 try {
   $('escape-song').value = localStorage.getItem(ESCAPE_SONG_KEY) || 'random';
 } catch {
@@ -5340,7 +5345,39 @@ $('escape-song').addEventListener('change', (e) => {
   }
 });
 
-// KatEscape
+// KatEscape: solo, Practice (All Chasers vs bots), or online with a code:
+// All Chasers, or Chaser vs Cop.
+const escapeOnline = { code: null, room: null, timer: null, playing: false, downTimer: null, mode: 'solo' };
+
+function showEscapeOver({ title, final = '', detail = '', results = null, down = false, img = 'icons/escape-cop.png' }) {
+  clearInterval(escapeOnline.downTimer);
+  $('escape-spectate').hidden = true;
+  $('escape-over-title').textContent = title;
+  $('escape-final').textContent = final;
+  $('escape-over-detail').textContent = detail;
+  $('escape-over').querySelector('img').src = img;
+  const list = $('escape-results');
+  list.hidden = !results;
+  if (results) {
+    list.replaceChildren(
+      ...results.map((p) =>
+        el(
+          'li',
+          { class: p.me ? 'me' : null },
+          el('span', { class: 'place', text: ordinalPlace(p.place) }),
+          el('span', { class: 'name', text: p.me ? `${p.name} (you)` : p.name }),
+          el('span', { class: 'pts', text: `${p.score.toLocaleString()} pts` })
+        )
+      )
+    );
+  }
+  $('escape-down-actions').hidden = !down;
+  $('escape-over-actions').hidden = down;
+  $('btn-escape-again').textContent = escapeOnline.mode === 'solo' ? 'Run again' : escapeOnline.mode === 'practice' ? 'Practice again' : 'Play again';
+  $('escape-over').hidden = false;
+  focusFirst();
+}
+
 const katEscape = createKatEscape({
   canvas: $('escape-canvas'),
   score: $('escape-score'),
@@ -5351,28 +5388,283 @@ const katEscape = createKatEscape({
   nowPlaying: $('escape-now-playing'),
   song: $('escape-song'),
   over: $('escape-over'),
-  onOver: ({ score, bolts, distance, best, newBest, reason }) => {
-    $('escape-over-title').textContent = reason === 'caught' ? '🚓 The cop caught you!' : '💥 Crashed into a train!';
-    $('escape-final').textContent = `${score.toLocaleString()} points`;
-    $('escape-over-detail').textContent = `${distance.toLocaleString()} m · ⚡ ${bolts.toLocaleString()} bolts · ${newBest ? '🏆 New best!' : `Best: ${best.toLocaleString()}`}`;
-    $('escape-over').hidden = false;
+  item: $('escape-item'),
+  chase: $('escape-chase'),
+  countdown: $('escape-countdown'),
+  spectate: $('escape-spectate'),
+  onOver: ({ score, bolts, distance, best, newBest, reason }) =>
+    showEscapeOver({
+      title: reason === 'caught' ? '🚓 The cop caught you!' : '💥 Crashed into a train!',
+      final: `${score.toLocaleString()} points`,
+      detail: `${distance.toLocaleString()} m · ⚡ ${bolts.toLocaleString()} bolts · ${newBest ? '🏆 New best!' : `Best: ${best.toLocaleString()}`}`,
+    }),
+  // Caught: one revive a game.
+  onDown: ({ reason, score, online, mode }) => {
+    showEscapeOver({
+      title: reason === 'caught' ? '🚓 The cop caught you!' : '💥 Crashed into a train!',
+      final: `${score.toLocaleString()} points`,
+      detail: 'You get one revive a game. Use it now?',
+      down: true,
+    });
+    $('btn-escape-giveup').textContent = mode === 'solo' ? 'Give up' : '👀 Spectate';
+    if (!online) return;
+    // The others are waiting: 10 seconds to decide.
+    let left = 10;
+    const tick = () => {
+      $('escape-over-detail').textContent = `You get one revive a game. Use it now? (${left}s)`;
+      if (left-- <= 0) {
+        clearInterval(escapeOnline.downTimer);
+        katEscape.giveUp();
+      }
+    };
+    tick();
+    escapeOnline.downTimer = setInterval(tick, 1000);
+  },
+  onSpectate: ({ name, count }) => {
+    clearInterval(escapeOnline.downTimer);
+    $('escape-over').hidden = true;
+    $('escape-spec-name').textContent = name;
+    $('escape-spec-count').textContent = count > 1 ? `${count} still running` : 'the last one running';
+    $('escape-spectate').hidden = false;
     focusFirst();
   },
+  onWaiting: () => showEscapeOver({ title: "🚓 You're out!", detail: 'Waiting for the results…' }),
+  onResults: (r) => {
+    if (r.mode === 'chase') {
+      const won = r.winner === r.role;
+      const chaserWon = r.winner === 'chaser';
+      showEscapeOver({
+        title: chaserWon
+          ? r.role === 'cop' ? '🏃 They got away!' : '🏃 You got away!'
+          : r.reason === 'train'
+            ? r.role === 'cop' ? '💥 They crashed into a train!' : '💥 Crashed into a train!'
+            : r.role === 'cop' ? '🚓 You caught them!' : '🚓 The cop caught you!',
+        final: won ? 'You win!' : 'You lose',
+        detail: chaserWon ? `The chaser lasted all ${Math.round(r.time)} seconds` : `${r.reason === 'train' ? 'The cop wins' : 'Caught'} after ${Math.round(r.time)} seconds`,
+        img: chaserWon ? 'icons/escape-cat.png' : 'icons/escape-cop.png',
+      });
+      return;
+    }
+    const me = r.players.find((p) => p.me);
+    showEscapeOver({
+      title: me?.place === 1 ? '🏆 You won!' : `You came ${ordinalPlace(me?.place ?? r.players.length)}`,
+      final: `${(me?.score ?? 0).toLocaleString()} points`,
+      detail: r.mode === 'practice' ? 'Practice: All Chasers vs bots' : 'All Chasers',
+      results: r.players,
+      img: me?.place === 1 ? 'icons/escape-cat.png' : 'icons/escape-cop.png',
+    });
+  },
 });
-function openEscape() {
+
+function startEscape(opts) {
   if (!audioEl.paused) audioEl.pause();
+  escapeOnline.mode = opts.mode;
   katEscape.unlockAudio(); // this tap lets the music play
   show('escape');
-  katEscape.start().catch((err) => toast(err.message, { error: true }));
+  katEscape.start(opts).catch((err) => toast(err.message, { error: true }));
 }
+function openEscape() {
+  openEscapeMenu();
+}
+const leaveEscape = () => {
+  leaveEscapeRoom();
+  openPlayables();
+};
 $('btn-escape-quit').addEventListener('click', async () => {
-  if (!katEscape.running || (await askConfirm('Stop running?', { ok: 'Stop' }))) openPlayables();
+  const inGame = katEscape.running || (escapeOnline.playing && $('escape-over').hidden);
+  if (!inGame || (await askConfirm(escapeOnline.playing ? 'Leave the game?' : 'Stop running?', { ok: escapeOnline.playing ? 'Leave' : 'Stop' }))) leaveEscape();
 });
-$('btn-escape-exit').addEventListener('click', openPlayables);
+$('btn-escape-exit').addEventListener('click', leaveEscape);
+$('btn-escape-spec-leave').addEventListener('click', async () => {
+  if (await askConfirm('Stop watching and leave the game?', { ok: 'Leave' })) leaveEscape();
+});
+$('btn-escape-spec-prev').addEventListener('click', () => katEscape.spectateNext(-1));
+$('btn-escape-spec-next').addEventListener('click', () => katEscape.spectateNext(1));
+$('btn-escape-revive').addEventListener('click', () => {
+  clearInterval(escapeOnline.downTimer);
+  katEscape.unlockAudio();
+  katEscape.revive();
+});
+$('btn-escape-giveup').addEventListener('click', () => {
+  clearInterval(escapeOnline.downTimer);
+  katEscape.giveUp();
+});
 $('btn-escape-again').addEventListener('click', () => {
   katEscape.unlockAudio();
-  katEscape.start();
+  if (escapeOnline.mode === 'solo' || escapeOnline.mode === 'practice') startEscape({ mode: escapeOnline.mode });
+  else {
+    leaveEscape();
+    openEscapeMenu();
+  }
 });
+
+// ---------- the KatEscape menu and lobby ----------
+function openEscapeMenu() {
+  katEscape.unlockAudio();
+  $('escape-menu-main').hidden = false;
+  $('escape-lobby').hidden = true;
+  $('escape-code').value = '';
+  $('dialog-escape').showModal();
+}
+$('btn-escape-close').addEventListener('click', () => $('dialog-escape').close());
+$('btn-escape-solo').addEventListener('click', () => {
+  $('dialog-escape').close();
+  startEscape({ mode: 'solo' });
+});
+$('btn-escape-practice').addEventListener('click', () => {
+  $('dialog-escape').close();
+  startEscape({ mode: 'practice' });
+});
+$('btn-escape-create').addEventListener('click', (e) =>
+  withBusy(e.currentTarget, async () => {
+    const { room } = await api('POST', '/escape/rooms');
+    enterEscapeLobby(room);
+  })
+);
+const joinEscape = () =>
+  withBusy($('btn-escape-join'), async () => {
+    const code = $('escape-code').value.trim().toUpperCase();
+    if (!/^[A-Z]{4}$/.test(code)) throw new Error('Game codes are 4 letters');
+    const { room } = await api('POST', `/escape/rooms/${code}/join`);
+    enterEscapeLobby(room);
+  });
+$('btn-escape-join').addEventListener('click', joinEscape);
+$('escape-code').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    joinEscape();
+  }
+});
+
+function enterEscapeLobby(room) {
+  escapeOnline.code = room.code;
+  $('escape-menu-main').hidden = true;
+  $('escape-lobby').hidden = false;
+  renderEscapeLobby(room);
+  focusFirst();
+  clearInterval(escapeOnline.timer);
+  escapeOnline.timer = setInterval(async () => {
+    try {
+      const { room: r } = await api('GET', `/escape/rooms/${escapeOnline.code}`);
+      renderEscapeLobby(r);
+    } catch (err) {
+      clearInterval(escapeOnline.timer);
+      toast(err.message, { error: true });
+      $('dialog-escape').close();
+    }
+  }, 1000);
+}
+
+function renderEscapeLobby(room) {
+  escapeOnline.room = room;
+  $('escape-lobby-code').textContent = room.code;
+  const players = room.players.filter((p) => !p.gone);
+  const host = room.hostId === state.me.userId;
+  const chase = room.mode === 'chase';
+  $('escape-lobby-players').replaceChildren(
+    ...players.map((p) =>
+      el(
+        'li',
+        {},
+        avatar(p.user, 'small'),
+        el('span', { text: p.id === state.me.userId ? `${p.name} (you)` : p.name }),
+        p.id === room.hostId ? el('span', { class: 'fineprint', text: ' · host' }) : null,
+        el('span', { class: 'escape-role', text: chase && p.id === room.copId ? '🚓 Cop' : '🐱 Chaser' })
+      )
+    )
+  );
+  for (const button of [$('btn-escape-mode-all'), $('btn-escape-mode-chase')]) {
+    button.setAttribute('aria-checked', String(button.dataset.mode === room.mode));
+    button.disabled = !host;
+  }
+  // Chaser vs Cop: the host picks who's who.
+  $('btn-escape-swap').hidden = !(host && chase && players.length === 2);
+  const songSelect = $('escape-song-online');
+  songSelect.disabled = !host;
+  if (document.activeElement !== songSelect) songSelect.value = room.song ?? 'random';
+  $('escape-song-note').textContent = host ? '(you pick)' : '(the host picks)';
+  $('btn-escape-start').hidden = !host;
+  $('btn-escape-start').disabled = chase ? players.length !== 2 : players.length < 2;
+  const ready = chase ? players.length === 2 : players.length >= 2;
+  $('escape-lobby-status').textContent = !ready
+    ? chase
+      ? 'Chaser vs Cop is for 2 people. Waiting for a friend to join with the code…'
+      : 'Waiting for friends to join with the code… (up to 8 runners)'
+    : host
+      ? chase
+        ? 'Ready! Swap who is the cop if you like, then start.'
+        : `${players.length} runners ready. Start when everyone's in!`
+      : 'Waiting for the host to start…';
+  if (room.state === 'running') startOnlineEscape(room);
+}
+
+const escapeLobbyPost = (path, body) =>
+  api('POST', `/escape/rooms/${escapeOnline.code}/${path}`, body)
+    .then(({ room }) => renderEscapeLobby(room))
+    .catch((err) => toast(err.message, { error: true }));
+for (const button of [$('btn-escape-mode-all'), $('btn-escape-mode-chase')]) {
+  button.addEventListener('click', () => escapeLobbyPost('mode', { mode: button.dataset.mode }));
+}
+$('btn-escape-swap').addEventListener('click', () => {
+  const room = escapeOnline.room;
+  const other = room?.players.find((p) => !p.gone && p.id !== room.copId);
+  if (other) escapeLobbyPost('cop', { copId: other.id });
+});
+$('escape-song-online').addEventListener('change', (e) => escapeLobbyPost('song', { song: e.target.value }));
+
+function startOnlineEscape(room) {
+  clearInterval(escapeOnline.timer);
+  escapeOnline.playing = true;
+  $('dialog-escape').close();
+  const me = room.players.find((p) => p.id === state.me.userId);
+  const code = room.code;
+  startEscape({
+    mode: room.mode,
+    role: room.mode === 'chase' && room.copId === me.id ? 'cop' : 'chaser',
+    seed: room.seed,
+    song: room.song,
+    mySlot: me.slot,
+    players: room.players.filter((p) => !p.gone).map((p) => ({ slot: p.slot, name: p.name })),
+    startAt: performance.now() + (room.startAt - room.serverNow),
+    sync: (st) => api('POST', `/escape/rooms/${code}/state`, st, { timeout: 4000 }).then((r) => r.room),
+  });
+}
+
+$('btn-escape-start').addEventListener('click', (e) =>
+  withBusy(e.currentTarget, async () => {
+    const { room } = await api('POST', `/escape/rooms/${escapeOnline.code}/start`);
+    renderEscapeLobby(room);
+  })
+);
+$('btn-escape-leave').addEventListener('click', () => {
+  leaveEscapeRoom();
+  $('dialog-escape').close();
+});
+$('btn-escape-share').addEventListener('click', async () => {
+  const text = `Run from the cop with me in KatEscape on KoolKat! Open Playables → KatEscape and join with code ${escapeOnline.code}`;
+  try {
+    if (navigator.share) await navigator.share({ title: 'KatEscape', text, url: `${location.origin}/#playables` });
+    else {
+      await navigator.clipboard.writeText(text);
+      toast('Copied');
+    }
+  } catch {
+    // Share sheet closed.
+  }
+});
+$('dialog-escape').addEventListener('close', () => {
+  // Closed the lobby without starting: leave the game.
+  if (!escapeOnline.playing) leaveEscapeRoom();
+});
+
+function leaveEscapeRoom() {
+  clearInterval(escapeOnline.timer);
+  clearInterval(escapeOnline.downTimer);
+  escapeOnline.playing = false;
+  if (!escapeOnline.code) return;
+  api('POST', `/escape/rooms/${escapeOnline.code}/leave`).catch(() => {});
+  escapeOnline.code = null;
+}
 
 // Kat Wordle
 const katWordle = createKatWordle({ board: $('kw-board'), keyboard: $('kw-keyboard'), message: $('kw-message'), result: $('kw-result'), hints: $('kw-hints') });

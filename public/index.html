@@ -207,7 +207,7 @@
       <button type="button" class="playable-card big escape-card" data-play="escape">
         <img src="icons/escape-cat.png" alt="" class="pixel">
         <span class="playable-name">KatEscape</span>
-        <span class="playable-sub">Run down the tracks, dodge trains and barriers, grab bolts and get away from the cop. Swipe (or arrows / WASD / D-pad) to move, jump and roll.</span>
+        <span class="playable-sub">Run down the tracks, dodge trains and barriers, grab bolts and get away from the cop. Play solo, or with friends: All Chasers or Chaser vs Cop. Swipe (or arrows / WASD / D-pad) to move, jump and roll.</span>
         <span class="playable-best" id="escape-best"></span>
       </button>
       <button type="button" class="playable-card big wordle-card" data-play="wordle">
@@ -267,6 +267,15 @@
           <span class="escape-bolts"><img src="icons/powerups/thunder.png" alt="Bolts"><span id="escape-bolts">0</span></span>
         </div>
         <div class="escape-boost" id="escape-boost" hidden><img alt=""><span class="escape-boost-bar"><span></span></span></div>
+        <div class="escape-chase" id="escape-chase" hidden><span class="escape-chase-gap"></span><span class="escape-chase-time"></span></div>
+      </div>
+      <button type="button" class="kart-item escape-item" id="escape-item" hidden aria-label="Use the Mouse"><img src="icons/powerups/mouse.png" alt=""><span class="kart-item-key">E</span></button>
+      <div class="kart-countdown" id="escape-countdown" hidden>3</div>
+      <div class="escape-spectate" id="escape-spectate" hidden>
+        <button type="button" class="icon-btn" id="btn-escape-spec-prev" aria-label="Watch the previous runner">◀</button>
+        <span>👀 Spectating <strong id="escape-spec-name"></strong><span class="fineprint" id="escape-spec-count"></span></span>
+        <button type="button" class="icon-btn" id="btn-escape-spec-next" aria-label="Watch the next runner">▶</button>
+        <button type="button" class="btn small" id="btn-escape-spec-leave">Leave</button>
       </div>
       <div class="kart-alert" id="escape-alert" hidden></div>
       <div class="kart-now-playing" id="escape-now-playing" hidden><span class="kart-np-icon" aria-hidden="true">♪</span><span>Now Playing - <strong>Natho Town</strong>: Zalith9</span></div>
@@ -284,7 +293,12 @@
         <h2 id="escape-over-title">Caught!</h2>
         <p class="escape-final" id="escape-final"></p>
         <p class="fineprint" id="escape-over-detail"></p>
-        <div class="row">
+        <ol class="escape-results" id="escape-results" hidden></ol>
+        <div class="row" id="escape-down-actions" hidden>
+          <button type="button" class="btn" id="btn-escape-giveup">Give up</button>
+          <button type="button" class="btn primary" id="btn-escape-revive">💖 Revive</button>
+        </div>
+        <div class="row" id="escape-over-actions">
           <button type="button" class="btn" id="btn-escape-exit">Back to Playables</button>
           <button type="button" class="btn primary" id="btn-escape-again">Run again</button>
         </div>
@@ -867,6 +881,42 @@
       <div class="row">
         <button type="button" class="btn" id="btn-kart-leave">Leave</button>
         <button type="button" class="btn primary" id="btn-kart-start">Start race</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="dialog-escape" class="kart-menu">
+    <div id="escape-menu-main">
+      <img src="icons/escape-cat.png" alt="" class="kart-menu-art pixel">
+      <h2>KatEscape</h2>
+      <button type="button" class="btn primary wide" id="btn-escape-solo">🏃 Solo</button>
+      <p class="fineprint">You, the cop, and one revive.</p>
+      <p class="kart-menu-or">Multiplayer</p>
+      <button type="button" class="btn wide" id="btn-escape-practice">🎯 Practice · All Chasers vs bots</button>
+      <button type="button" class="btn wide" id="btn-escape-create">👥 Make a game</button>
+      <div class="inline-form kart-join">
+        <input id="escape-code" maxlength="4" placeholder="Game code" autocapitalize="characters" autocomplete="off" spellcheck="false" aria-label="Game code" enterkeyhint="go">
+        <button type="button" class="btn small primary" id="btn-escape-join">Join</button>
+      </div>
+      <button type="button" class="btn wide" id="btn-escape-close">Close</button>
+    </div>
+    <div id="escape-lobby" hidden>
+      <p class="fineprint">Game code</p>
+      <p class="kart-code-big" id="escape-lobby-code"></p>
+      <button type="button" class="btn small" id="btn-escape-share">Share the code</button>
+      <div class="escape-modes" role="radiogroup" aria-label="Mode">
+        <button type="button" class="escape-mode" id="btn-escape-mode-all" role="radio" data-mode="all"><strong>🐱 All Chasers</strong><span>Everyone runs from a bot cop. One revive, then spectate.</span></button>
+        <button type="button" class="escape-mode" id="btn-escape-mode-chase" role="radio" data-mode="chase"><strong>🚓 Chaser vs Cop</strong><span>2 players: one runs, one's the cop. Cops throw Mice.</span></button>
+      </div>
+      <ul class="kart-lobby-players" id="escape-lobby-players"></ul>
+      <button type="button" class="btn small" id="btn-escape-swap" hidden>🔄 Swap chaser and cop</button>
+      <label class="kart-song-pick">🎵 Music <span class="fineprint" id="escape-song-note"></span>
+        <select id="escape-song-online" aria-label="Music"></select>
+      </label>
+      <p class="fineprint" id="escape-lobby-status"></p>
+      <div class="row">
+        <button type="button" class="btn" id="btn-escape-leave">Leave</button>
+        <button type="button" class="btn primary" id="btn-escape-start">Start</button>
       </div>
     </div>
   </dialog>
