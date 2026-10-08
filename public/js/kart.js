@@ -251,6 +251,7 @@ async function loadAssets() {
 export const RACE_SONGS = [
   { id: 'natho-town', title: 'Natho Town', artist: 'Zalith9', src: 'sounds/kat-kart-music.mp3' },
   { id: 'crystal-cavern', title: 'Crystal Cavern', artist: 'Zalith9', src: 'sounds/crystal-cavern.mp3' },
+  { id: 'kingdom-dominance', title: 'Kingdom Dominance', artist: 'Zalith9', src: 'sounds/kingdom-dominance.mp3' },
 ];
 
 export function createRaceMusic() {
