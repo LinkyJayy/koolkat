@@ -544,7 +544,7 @@ dialog .row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
 
 /* ---------- KoolKat Unlimited ---------- */
 .kool-badge { height: 0.95em; width: auto; margin-left: 5px; vertical-align: -0.1em; }
-.flair-line { margin: 2px 0 8px; color: var(--brand); font-weight: var(--w-heading); font-style: italic; overflow-wrap: anywhere; }
+.flair-line { margin: 2px 0 8px; color: var(--flair, var(--brand)); font-weight: var(--w-heading); font-style: italic; overflow-wrap: anywhere; }
 dialog { max-height: 90dvh; overflow-y: auto; }
 .storage-warning {
   margin: 12px 0 0;
@@ -1877,3 +1877,9 @@ dialog.sheet[open] { display: flex; }
   text-transform: uppercase;
 }
 .accent-row input.accent-hex:focus { outline: 2px solid var(--brand); border-color: transparent; }
+
+/* Flair in someone's accent colour stays readable on the dark theme. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .flair-line { color: color-mix(in srgb, var(--flair, var(--brand)) 75%, #fff); }
+}
+:root[data-theme="dark"] .flair-line { color: color-mix(in srgb, var(--flair, var(--brand)) 75%, #fff); }

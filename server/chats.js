@@ -27,7 +27,7 @@ export function registerChatRoutes({ api, db, clock, auth, wrap, publicUser, are
     memberCount: db.prepare('SELECT COUNT(*) AS n FROM chat_members WHERE chat_id = ?'),
     deleteChat: db.prepare('DELETE FROM chats WHERE id = ?'),
     members: db.prepare(`
-      SELECT u.id, u.username, u.display_name, u.public_key, u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz, u.verified_at
+      SELECT u.id, u.username, u.display_name, u.public_key, u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz, u.verified_at, u.accent_color
       FROM chat_members m JOIN users u ON u.id = m.user_id
       WHERE m.chat_id = ? ORDER BY m.joined_at, u.id`),
     myChats: db.prepare(`
@@ -46,7 +46,7 @@ export function registerChatRoutes({ api, db, clock, auth, wrap, publicUser, are
     markRead: db.prepare('UPDATE chat_members SET last_read_at = ? WHERE chat_id = ? AND user_id = ?'),
     messages: db.prepare(`
       SELECT msg.*, k.wrapped_key, k.wrap_iv,
-             u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz, u.verified_at
+             u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz, u.verified_at, u.accent_color
       FROM messages msg
       JOIN message_keys k ON k.message_id = msg.id AND k.user_id = ?
       LEFT JOIN users u ON u.id = msg.sender_id

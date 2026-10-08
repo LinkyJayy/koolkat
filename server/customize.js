@@ -200,7 +200,7 @@ export function registerCustomizeRoutes({ api, db, clock, auth, wrap, hasUnlimit
  */
 // The KoolKat icon in someone's accent colour (KoolKat Unlimited): the
 // home-screen icon, the tab icon and the logo inside the app.
-export const ACCENT_ICON_NAMES = ['icon-32', 'icon-64', 'icon-180', 'icon-192', 'icon-512', 'icon-maskable-192', 'icon-maskable-512', 'logo'];
+export const ACCENT_ICON_NAMES = ['icon-32', 'icon-64', 'icon-180', 'icon-192', 'icon-512', 'icon-maskable-192', 'icon-maskable-512', 'logo', 'kool-badge'];
 const ACCENT_HEX_RE = /^[0-9a-f]{6}$/;
 
 export function accentIconHandler({ publicDir }) {

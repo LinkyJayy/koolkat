@@ -86,7 +86,19 @@ const avatar = (user, cls = '') => fillAvatar(el('span', { class: `avatar ${cls}
 
 /** A user's display name, with the Kool badge if they have KoolKat Unlimited. */
 // The default Kool badge, or the custom badge picture someone uploaded.
-const badgeSrc = (user) => (user?.badgeUrl ? `${API_BASE}/api/${user.badgeUrl}` : 'icons/kool-badge.png');
+// The Kool crown is drawn in its owner's accent colour, if they've picked one.
+const badgeSrc = (user) => {
+  if (user?.badgeUrl) return `${API_BASE}/api/${user.badgeUrl}`;
+  if (/^#[0-9a-f]{6}$/.test(user?.accent ?? '')) return `${API_BASE}/api/accent-icons/${user.accent.slice(1)}/kool-badge.png`;
+  return 'icons/kool-badge.png';
+};
+/** Show someone's Kool flair, in their accent colour. */
+function showFlair(node, user) {
+  node.textContent = user?.flair || '';
+  node.hidden = !user?.flair;
+  if (/^#[0-9a-f]{6}$/.test(user?.accent ?? '')) node.style.setProperty('--flair', user.accent);
+  else node.style.removeProperty('--flair');
+}
 /** The verified tick, the Kool badge (Unlimited) and, on their birthday, a 🎉, to go after someone's name. */
 const badgeImg = (user) => {
   const parts = nodes(
@@ -2222,8 +2234,7 @@ async function openFriend(friend) {
   fillAvatar($('friend-avatar'), friend);
   $('friend-name').replaceChildren(...nodes(friend.displayName, badgeImg(friend)));
   $('friend-username').textContent = `@${friend.username}`;
-  $('friend-flair').textContent = friend.flair || '';
-  $('friend-flair').hidden = !friend.flair;
+  showFlair($('friend-flair'), friend);
   showActivity($('friend-activity'), friend.activity);
   $('friend-streak').textContent =
     friend.streak.count > 0 ? `🔥 ${friend.streak.count} day streak${friend.streak.expiring ? ' ⌛' : ''}` : 'No streak yet. Send each other Klicks every day to start one!';
@@ -2335,6 +2346,7 @@ async function refreshMe() {
     badge: me.user.badge,
     badgeUrl: me.user.badgeUrl,
     flair: me.user.flair,
+    accent: me.user.accent,
     avatarUrl: me.user.avatarUrl,
     birthday: me.user.birthday,
     verified: me.user.verified,
@@ -2350,12 +2362,11 @@ const formatDate = (ms) => new Date(ms).toLocaleDateString(undefined, { year: 'n
 function renderPlan() {
   const plan = state.plan;
   $('profile-name').replaceChildren(...nodes(state.me.displayName, badgeImg(state.me)));
-  $('profile-flair').textContent = plan?.flair || '';
-  $('profile-flair').hidden = !plan?.flair;
+  showFlair($('profile-flair'), { flair: plan?.flair, accent: plan?.accentColor });
   showActivity($('profile-activity'), plan?.activity);
   if (!plan) return;
   const unlimited = plan.plan === 'unlimited';
-  $('plan-name').replaceChildren(...nodes(unlimited ? 'KoolKat Unlimited' : 'KoolKat Free', unlimited && badgeImg({ badge: true })));
+  $('plan-name').replaceChildren(...nodes(unlimited ? 'KoolKat Unlimited' : 'KoolKat Free', unlimited && badgeImg({ badge: true, accent: plan.accentColor })));
   $('plan-detail').textContent = unlimited
     ? plan.forever
       ? 'Yours forever'
@@ -2766,6 +2777,9 @@ function applyAppIcon(appIcon) {
   const link = document.querySelector('link[rel="manifest"]');
   if (link && !API_BASE) link.href = manifest; // a separately hosted frontend has a static manifest
   for (const img of document.querySelectorAll('img[data-logo]')) img.src = logoSrc();
+  // The Classic choice in the app icon picker shows it in your accent colour.
+  const classic = document.querySelector('.icon-choice[data-icon="default"] img');
+  if (classic) classic.src = accent ? `${API_BASE}/api/accent-icons/${accent}/icon-192.png` : 'icons/icon-192.png';
   try {
     if (choice === 'default') localStorage.removeItem(APP_ICON_KEY);
     else localStorage.setItem(APP_ICON_KEY, JSON.stringify(appIcon));
@@ -3551,6 +3565,8 @@ async function saveAccent(value) {
   state.plan.accentColor = accentColor;
   window.koolkatTheme.setAccent(accentColor);
   applyAppIcon(state.plan.appIcon);
+  state.me.accent = accentColor;
+  renderPlan();
   $('accent-hex').value = (accentColor || '').toUpperCase();
   renderAccentEditor(state.plan);
   renderChatThemeEditor(state.plan);
@@ -3925,8 +3941,7 @@ function renderUserPage() {
   $('up-username').textContent = `@${user.username}`;
   $('up-marks').replaceChildren();
   $('up-admin').hidden = !user.isAdmin;
-  $('up-flair').textContent = user.flair || '';
-  $('up-flair').hidden = !user.flair;
+  showFlair($('up-flair'), user);
   showActivity($('up-activity'), user.activity);
   $('up-friends').textContent = compactNumber(user.stats?.friends ?? 0);
   $('up-reels').textContent = compactNumber(user.stats?.reels ?? 0);

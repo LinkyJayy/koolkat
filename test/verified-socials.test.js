@@ -90,6 +90,8 @@ describe('accent colour (KoolKat Unlimited)', () => {
     assert.equal((await call('POST', '/me/accent', { token: boss.token, body: { color: 'red' } })).status, 400);
     assert.equal((await call('POST', '/me/accent', { token: boss.token, body: { color: '#FF0000' } })).body.accentColor, '#ff0000');
     assert.equal((await call('GET', '/me', { token: boss.token })).body.plan.accentColor, '#ff0000');
+    assert.equal((await call('GET', `/users/${boss.id}`, { token: ann.token })).body.user.accent, '#ff0000', 'others see the crown and flair in it');
+    assert.equal((await fetch(`${base}/api/accent-icons/ff0000/kool-badge.png`)).status, 200);
     assert.equal((await call('POST', '/me/accent', { token: boss.token, body: { color: null } })).body.accentColor, null);
     assert.equal((await call('GET', '/me', { token: boss.token })).body.plan.accentColor, null);
   });

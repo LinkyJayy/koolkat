@@ -158,7 +158,7 @@ export function createApp({
     friendship: db.prepare('SELECT * FROM friendships WHERE user_low = ? AND user_high = ?'),
     friendshipsOf: db.prepare(`
       SELECT f.*, u.id AS other_id, u.username, u.display_name, u.public_key,
-             u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz, u.verified_at, u.activity_emoji, u.activity_text, u.activity_until
+             u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz, u.verified_at, u.accent_color, u.activity_emoji, u.activity_text, u.activity_until
       FROM friendships f
       JOIN users u ON u.id = CASE WHEN f.user_low = ? THEN f.user_high ELSE f.user_low END
       WHERE f.user_low = ? OR f.user_high = ?`),
@@ -174,7 +174,7 @@ export function createApp({
       SET low_last_day = ?, high_last_day = ?, streak_count = ?, streak_day = ?
       WHERE user_low = ? AND user_high = ?`),
     searchUsers: db.prepare(`
-      SELECT id, username, display_name, plan_until, flair, badge_id, avatar_id, birth_month, birth_day, birth_tz, verified_at FROM users
+      SELECT id, username, display_name, plan_until, flair, badge_id, avatar_id, birth_month, birth_day, birth_tz, verified_at, accent_color FROM users
       WHERE username LIKE ? ESCAPE '\\' AND id != ?
       ORDER BY length(username), username LIMIT 20`),
     insertSnap: db.prepare(`
@@ -187,7 +187,7 @@ export function createApp({
     // Received snaps from people who are still friends, newest first, one page at a time.
     inbox: db.prepare(`
       SELECT s.id, s.created_at, s.size, s.ciphertext IS NOT NULL AS available, r.viewed_at,
-             u.id AS sender_id, u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz, u.verified_at
+             u.id AS sender_id, u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz, u.verified_at, u.accent_color
       FROM snap_recipients r
       JOIN snaps s ON s.id = r.snap_id
       JOIN users u ON u.id = s.sender_id
@@ -197,7 +197,7 @@ export function createApp({
       ORDER BY s.created_at DESC LIMIT ?`),
     sent: db.prepare(`
       SELECT s.id, s.created_at, s.sender_wrapped_key IS NOT NULL AND s.ciphertext IS NOT NULL AS viewable,
-             r.viewed_at, u.id AS recipient_id, u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz, u.verified_at
+             r.viewed_at, u.id AS recipient_id, u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz, u.verified_at, u.accent_color
       FROM snaps s
       JOIN snap_recipients r ON r.snap_id = s.id
       JOIN users u ON u.id = r.recipient_id
@@ -206,7 +206,7 @@ export function createApp({
     snapForRecipient: db.prepare(`
       SELECT s.*, r.wrapped_key, r.wrap_iv, r.viewed_at,
              u.username AS sender_username, u.display_name AS sender_display_name,
-             u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz, u.verified_at
+             u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz, u.verified_at, u.accent_color
       FROM snaps s
       JOIN snap_recipients r ON r.snap_id = s.id AND r.recipient_id = ?
       JOIN users u ON u.id = s.sender_id
@@ -219,7 +219,7 @@ export function createApp({
     deleteSnap: db.prepare('DELETE FROM snaps WHERE id = ?'),
     snapForSender: db.prepare('SELECT * FROM snaps WHERE id = ? AND sender_id = ?'),
     snapRecipients: db.prepare(`
-      SELECT u.id, u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz, u.verified_at
+      SELECT u.id, u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz, u.verified_at, u.accent_color
       FROM snap_recipients r JOIN users u ON u.id = r.recipient_id WHERE r.snap_id = ?`),
     storageUsed: db.prepare(
       'SELECT COALESCE(SUM(size), 0) AS used FROM snaps WHERE sender_id = ? AND ciphertext IS NOT NULL'
@@ -232,7 +232,7 @@ export function createApp({
     favorites: db.prepare(`
       SELECT f.created_at AS favorited_at, s.id, s.sender_id, s.created_at, s.ciphertext IS NOT NULL AS available,
              s.sender_wrapped_key IS NOT NULL AS sender_viewable,
-             u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz, u.verified_at
+             u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz, u.verified_at, u.accent_color
       FROM favorites f
       JOIN snaps s ON s.id = f.snap_id
       JOIN users u ON u.id = s.sender_id
@@ -242,7 +242,7 @@ export function createApp({
     request: db.prepare('SELECT * FROM unlimited_requests WHERE id = ?'),
     insertRequest: db.prepare('INSERT INTO unlimited_requests (user_id, message, created_at) VALUES (?, ?, ?)'),
     pendingRequests: db.prepare(`
-      SELECT r.*, u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz, u.verified_at
+      SELECT r.*, u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz, u.verified_at, u.accent_color
       FROM unlimited_requests r JOIN users u ON u.id = r.user_id
       WHERE r.status = 'pending' ORDER BY r.created_at`),
     handleRequest: db.prepare(
