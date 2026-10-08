@@ -576,7 +576,7 @@ dialog { max-height: 90dvh; overflow-y: auto; }
 .perks { list-style: none; margin: 0; padding: 0; font-size: 14px; display: grid; gap: 4px; }
 .plan-card .btn.wide { margin-top: 0; }
 .inline-form { display: flex; gap: 8px; align-items: center; }
-.inline-form input, .admin-form input {
+.inline-form input, .admin-form input, .social-field input {
   flex: 1;
   min-width: 0;
   padding: 9px 12px;
@@ -585,7 +585,7 @@ dialog { max-height: 90dvh; overflow-y: auto; }
   background: var(--bg);
   color: var(--text);
 }
-.inline-form input:focus, .admin-form input:focus { outline: 2px solid var(--brand); border-color: transparent; }
+.inline-form input:focus, .admin-form input:focus, .social-field input:focus { outline: 2px solid var(--brand); border-color: transparent; }
 .admin-form { padding: 0 16px; }
 .admin-form label { display: block; font-size: 14px; font-weight: var(--w-heading); margin: 10px 0 0; }
 .admin-form label .fineprint { display: block; font-weight: var(--w-text); margin: 2px 0 0; }
@@ -1346,3 +1346,18 @@ dialog.sheet[open] { display: flex; }
   color: var(--text);
   font: inherit;
 }
+
+/* ---------- verified badge and social links ---------- */
+.verified-badge { height: 0.95em; width: 0.95em; margin-left: 5px; vertical-align: -0.12em; border-radius: 50%; }
+.author-link .verified-badge { height: 14px; width: 14px; }
+.section-title .verified-badge { margin: 0 4px 0 0; }
+.name-marks .verified-badge + .kool-badge { margin-left: 3px; }
+.social-row { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; margin: 8px 0 10px; }
+.social-link { display: inline-flex; width: 36px; height: 36px; border-radius: 50%; transition: transform 0.15s; }
+.social-link:active { transform: scale(0.92); }
+.social-link img { width: 100%; height: 100%; border-radius: 50%; }
+.socials-dialog form { text-align: left; }
+.social-field { display: grid; grid-template-columns: 28px 1fr; grid-template-rows: auto auto; column-gap: 10px; align-items: center; margin: 10px 0; }
+.social-field img { grid-row: 1 / 3; width: 28px; height: 28px; border-radius: 50%; }
+.social-field span { font-size: 0.85em; opacity: 0.75; }
+.social-field input { width: 100%; }

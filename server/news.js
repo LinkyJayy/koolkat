@@ -46,12 +46,12 @@ export function registerNewsRoutes({ api, db, clock, auth, wrap, publicUser, isA
 
   const q = {
     posts: db.prepare(`
-      SELECT n.*, u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz
+      SELECT n.*, u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz, u.verified_at
       FROM news n LEFT JOIN users u ON u.id = n.author_id
       ORDER BY n.created_at DESC, n.id DESC LIMIT ?`),
     post: db.prepare('SELECT * FROM news WHERE id = ?'),
     postWithAuthor: db.prepare(`
-      SELECT n.*, u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz
+      SELECT n.*, u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz, u.verified_at
       FROM news n LEFT JOIN users u ON u.id = n.author_id WHERE n.id = ?`),
     update: db.prepare(`
       UPDATE news SET title = ?, body = ?, code = ?, media_id = ?, media_kind = ?, media_type = ?, edited_at = ?
@@ -65,7 +65,7 @@ export function registerNewsRoutes({ api, db, clock, auth, wrap, publicUser, isA
     save: db.prepare('INSERT OR IGNORE INTO news_saves (post_id, user_id, created_at) VALUES (?, ?, ?)'),
     unsave: db.prepare('DELETE FROM news_saves WHERE post_id = ? AND user_id = ?'),
     saved: db.prepare(`
-      SELECT n.*, u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz, s.created_at AS saved_at
+      SELECT n.*, u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz, u.verified_at, s.created_at AS saved_at
       FROM news_saves s JOIN news n ON n.id = s.post_id LEFT JOIN users u ON u.id = n.author_id
       WHERE s.user_id = ? ORDER BY s.created_at DESC LIMIT ?`),
     removeReactions: db.prepare('DELETE FROM news_likes WHERE post_id = ?'),
@@ -83,7 +83,7 @@ export function registerNewsRoutes({ api, db, clock, auth, wrap, publicUser, isA
     unvote: db.prepare('DELETE FROM news_votes WHERE post_id = ? AND user_id = ?'),
     commentCounts: db.prepare('SELECT post_id, COUNT(*) AS n FROM news_comments GROUP BY post_id'),
     comments: db.prepare(`
-      SELECT c.*, u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz
+      SELECT c.*, u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz, u.verified_at
       FROM news_comments c JOIN users u ON u.id = c.user_id
       WHERE c.post_id = ? ORDER BY c.created_at ASC, c.id ASC LIMIT 500`),
     comment: db.prepare('SELECT * FROM news_comments WHERE id = ?'),

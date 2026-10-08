@@ -31,6 +31,8 @@ Photos taken in KoolKat are called **Klicks**.
   - 📰 **Formal**: like reading a newspaper: serif headline, "By @username" byline with the date, the photo or video across the page, and a big first letter on longer articles.
   - 📱 **TikTok**: a full-screen feed you swipe up through, one post per screen. The @username above the title opens their profile; *...more* shows the whole title and text; ❤️ likes the post (with a count) and ⭐ saves it to **Favorite Articles** (*Favorites → Favorite Articles*, separate from Favorite Klicks). Videos play muted while they're on screen; tap for sound.
 - **Profiles and profile pictures.** Tap your picture in *Profile* to choose one from your gallery (cropped to a square), or *Remove picture*. It shows everywhere your name does. Tapping someone's name in News opens their profile (picture, badge, flair, admin tag, when they joined, and *Add friend* or *Message*). Admins can reset a profile picture in *Admin tools*.
+- **Verified badge.** The owner (zalith9) can give any account a blue verified tick in *Admin tools → Verified accounts*, and take it away again. It shows next to their name everywhere, before the Kool badge.
+- **Social links.** Anyone can add their YouTube, Instagram, TikTok, Facebook and X (Twitter) in *Profile → 🔗 Social links*, as a username or a link. They show as round buttons on your profile that open your pages. Links are checked on the server and can only point to that site.
 - **Installable app (PWA).** KoolKat installs like a normal app, with its own icon, full screen and no browser bars. On Android and desktop, use *Profile → Install KoolKat*. On iPhone, use Safari's *Share → Add to Home Screen*. Long-press the icon for shortcuts to the camera, Klicks and Chats. It opens even offline, and when a new version is deployed it shows *"A new version of KoolKat is ready → Reload"*.
 - **Emojis.** 😺 iPhones, iPads and Macs show Apple's own emojis. Everyone else (Android, Windows, Linux) sees the newest Android emojis: Google's **Android 17 "Noto 3D"** designs, including the Unicode 17 ones, even on older phones. The emoji font is split into pieces and each device only downloads the ones it shows (most pieces are 20–900 KB; people, hands and skin tones together are about 5 MB, downloaded the first time one appears, then kept). Browsers that can't draw the 3D format (e.g. Firefox) get the previous flat Android designs. (Apple's emoji font can't be included: Apple only licenses it for its own devices.)
 - **Birthdays.** 🎉 shows next to your name on your birthday. After signing up (or the first sign-in with this version) KoolKat asks for your birthday: just the month and day, never the year, and only to show the 🎉; nobody sees the date itself. You can skip it, and change or remove it any time with *Profile → Birthday*. It follows your time zone, and 29 February birthdays are celebrated on the 28th in other years.
@@ -76,6 +78,7 @@ There are three ways to get Unlimited:
 The account **`zalith9`** is the admin. Capitalisation doesn't matter, and usernames are unique regardless of capitalisation, so there can only be one zalith9. Set `KOOLKAT_ADMINS` to a comma-separated list to change it. Admins always have **KoolKat Unlimited forever** (it can't expire or be taken away), and get an **Admin tools** button in their profile, where they can:
 
 - **(owner only) make other people admins, or remove them** (*Admins*). The owner is the account in `KOOLKAT_ADMINS` (zalith9); only the owner sees this section, and the owner can't be removed. Admins added this way are saved in the database;
+- **(owner only) verify accounts** (*Verified accounts*): give someone the verified tick by username, or remove it. They get a notification;
 
 - **create redeemable codes** with their own text (or a random `KOOL-XXXX-XXXX`), a **usage limit**, an **expiry date**, and how many days of Unlimited they give (or forever). Each person can use a code once;
 - see how many times each code has been used, and copy or delete codes;
@@ -210,6 +213,7 @@ server/
   customize.js  Unlimited app icons, custom badges, BFFs, per-icon manifest
   social.js     QR friend codes, Nearby, Activity Bubbles, chat themes
   katmap.js     Kat Map sharing settings and friends' locations
+  socials.js    Social media links: turns a username or link into a safe link to that site
   calls.js      Calls and FaceTime: ringing, answering, passing encrypted call setup between phones
   chats.js      direct and group chats (end-to-end encrypted messages)
   http.js       shared request validation helpers
@@ -308,6 +312,9 @@ All endpoints are under `/api` and take and return JSON. Authenticated endpoints
 | DELETE | `/news/comments/:id` | Delete your comment (admins: any) |
 | GET / POST | `/admin/admins` | Owner: list admins / make someone an admin (`username`) |
 | DELETE | `/admin/admins/:username` | Owner: remove an admin |
+| GET / POST | `/admin/verified` | Owner: list verified accounts / verify someone (`username`) |
+| DELETE | `/admin/verified/:username` | Owner: remove someone's verified badge |
+| POST | `/me/socials` | Save social links (`youtube, instagram, tiktok, facebook, x`; a username or link, `''` removes it) |
 | POST / DELETE | `/me/birthday` | `month, day, timeZone` (or `skip`) / remove your birthday |
 | POST / DELETE | `/me/avatar` | `image` (square JPEG, base64): set / remove your profile picture |
 | GET | `/news/media/:id` | A post's photo or video |

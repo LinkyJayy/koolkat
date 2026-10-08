@@ -87,9 +87,10 @@ const avatar = (user, cls = '') => fillAvatar(el('span', { class: `avatar ${cls}
 /** A user's display name, with the Kool badge if they have KoolKat Unlimited. */
 // The default Kool badge, or the custom badge picture someone uploaded.
 const badgeSrc = (user) => (user?.badgeUrl ? `${API_BASE}/api/${user.badgeUrl}` : 'icons/kool-badge.png');
-/** The Kool badge (Unlimited) and, on their birthday, a 🎉, to go after someone's name. */
+/** The verified tick, the Kool badge (Unlimited) and, on their birthday, a 🎉, to go after someone's name. */
 const badgeImg = (user) => {
   const parts = nodes(
+    user?.verified && el('img', { src: 'icons/social/verified.png', alt: 'Verified', title: 'Verified', class: 'verified-badge' }),
     user?.badge && el('img', { src: badgeSrc(user), alt: 'KoolKat Unlimited', title: 'KoolKat Unlimited', class: 'kool-badge' }),
     user?.birthday && el('span', { class: 'birthday-pop', title: "It's their birthday!", 'aria-label': "It's their birthday", text: '🎉' })
   );
@@ -2197,6 +2198,10 @@ async function openFriend(friend) {
     friend.streak.count > 0 ? `🔥 ${friend.streak.count} day streak${friend.streak.expiring ? ' ⌛' : ''}` : 'No streak yet. Send each other Klicks every day to start one!';
   $('friend-fingerprint').textContent = await fingerprint(friend.publicKey);
   renderBffButton(friend);
+  renderSocials($('friend-socials'), null);
+  api('GET', `/users/${friend.id}`)
+    .then(({ user }) => renderSocials($('friend-socials'), user.socials))
+    .catch(() => {});
   dialog.returnValue = '';
   dialog.onclose = () => {
     if (dialog.returnValue === 'message') {
@@ -2294,6 +2299,7 @@ async function refreshMe() {
     flair: me.user.flair,
     avatarUrl: me.user.avatarUrl,
     birthday: me.user.birthday,
+    verified: me.user.verified,
   });
   renderMyAvatar();
   applyAppIcon(me.plan.appIcon);
@@ -2327,6 +2333,7 @@ function renderPlan() {
   if (unlimited) renderPersonalisation(plan);
   if (unlimited && document.activeElement !== $('flair-input')) $('flair-input').value = plan.flair;
   $('btn-admin').hidden = !plan.isAdmin;
+  renderSocials($('profile-socials'), plan.socials);
   $('storage-warning').hidden = !plan.storageWarning;
   $('storage-warning').textContent = plan.storageWarning
     ? `⚠️ Admin: accounts will be lost on the next update (${plan.storageWarning}). In Railway, attach a volume at /data to this service.`
@@ -2406,7 +2413,53 @@ $('btn-admin').addEventListener('click', () => {
   loadCodes();
   loadRequests();
   $('admins-section').hidden = !state.plan?.isOwner;
-  if (state.plan?.isOwner) loadAdmins();
+  $('verified-section').hidden = !state.plan?.isOwner;
+  if (state.plan?.isOwner) {
+    loadAdmins();
+    loadVerified();
+  }
+});
+
+// Only the owner can give out (and take back) the verified badge.
+async function loadVerified() {
+  try {
+    const { users } = await api('GET', '/admin/verified');
+    $('verified-empty').hidden = users.length > 0;
+    $('verified-list').replaceChildren(
+      ...users.map((u) =>
+        userRow(
+          u,
+          `@${u.username} · Verified ${formatDate(u.verifiedAt)}`,
+          actionButton(
+            'Remove',
+            async () => {
+              if (!confirm(`Take the verified badge away from ${u.displayName}?`)) return;
+              await api('DELETE', `/admin/verified/${encodeURIComponent(u.username)}`);
+              toast(`${u.displayName} is no longer verified`);
+              await loadVerified();
+            },
+            'danger'
+          )
+        )
+      )
+    );
+  } catch (err) {
+    toast(err.message, { error: true });
+  }
+}
+
+$('verified-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.currentTarget;
+  await withBusy(form.querySelector('button[type=submit]'), async () => {
+    const username = form.username.value.trim();
+    if (!username) throw new Error('Type a username');
+    const { user } = await api('POST', '/admin/verified', { username });
+    form.reset();
+    toast(`✔ ${user.displayName} is now verified`);
+    await loadVerified();
+    if (user.id === state.me.userId) await refreshMe();
+  });
 });
 
 // Only the owner (zalith9) can add or remove admins.
@@ -3740,6 +3793,7 @@ async function openUserProfile(userId) {
   $('user-flair').hidden = !user.flair;
   showActivity($('user-activity'), user.activity);
   $('user-joined').textContent = `On KoolKat since ${formatDate(user.joinedAt)}`;
+  renderSocials($('user-socials'), user.socials);
   const friend = state.friends.find((f) => f.id === user.id);
   const close = () => dialog.close();
   const actions = {
@@ -3754,6 +3808,48 @@ async function openUserProfile(userId) {
   $('user-actions').replaceChildren(...nodes(el('button', { class: 'btn', value: 'close', text: 'Close' }), ...actions));
   dialog.showModal();
 }
+
+// ---------- social media links ----------
+const SOCIAL_SITES = [
+  ['youtube', 'YouTube'],
+  ['instagram', 'Instagram'],
+  ['tiktok', 'TikTok'],
+  ['facebook', 'Facebook'],
+  ['x', 'X'],
+];
+
+/** A row of round social media buttons that open someone's pages. */
+function renderSocials(row, socials) {
+  const links = SOCIAL_SITES.filter(([site]) => typeof socials?.[site] === 'string' && socials[site].startsWith('https://')).map(
+    ([site, name]) =>
+      el(
+        'a',
+        { class: 'social-link', href: socials[site], target: '_blank', rel: 'noopener noreferrer', title: name, 'aria-label': name },
+        el('img', { src: `icons/social/${site}.png`, alt: '' })
+      )
+  );
+  row.replaceChildren(...links);
+  row.hidden = links.length === 0;
+}
+
+function openSocials() {
+  const saved = state.plan?.socials ?? {};
+  for (const [site] of SOCIAL_SITES) $(`social-${site}`).value = saved[site] ?? '';
+  $('dialog-socials').showModal();
+}
+$('btn-profile-socials').addEventListener('click', openSocials);
+$('btn-socials-cancel').addEventListener('click', () => $('dialog-socials').close());
+$('socials-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  await withBusy($('btn-socials-save'), async () => {
+    const body = Object.fromEntries(SOCIAL_SITES.map(([site]) => [site, $(`social-${site}`).value.trim()]));
+    const { socials } = await api('POST', '/me/socials', body);
+    if (state.plan) state.plan.socials = socials;
+    renderSocials($('profile-socials'), socials);
+    $('dialog-socials').close();
+    toast('🔗 Social links saved');
+  });
+});
 
 // ---------- birthdays ----------
 const MONTHS = Array.from({ length: 12 }, (_, i) => new Date(2000, i, 1).toLocaleDateString(undefined, { month: 'long' }));

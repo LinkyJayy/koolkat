@@ -513,6 +513,19 @@
       </form>
     </div>
 
+    <div id="verified-section" hidden>
+      <h3 class="section-title"><img src="icons/social/verified.png" alt="" class="verified-badge"> Verified accounts (only you can change these)</h3>
+      <p class="fineprint" id="verified-empty">No one is verified yet.</p>
+      <ul class="list" id="verified-list"></ul>
+      <form id="verified-form" class="admin-form" novalidate>
+        <label>Verify an account
+          <input name="username" required autocapitalize="none" spellcheck="false" placeholder="Username">
+        </label>
+        <p class="fineprint">Verified accounts get the blue tick next to their name, everywhere in KoolKat.</p>
+        <button type="submit" class="btn primary">Verify</button>
+      </form>
+    </div>
+
     <h3 class="section-title">Unlimited requests</h3>
     <div class="admin-form">
       <label>Approve for how many days? <span class="fineprint">Blank = forever</span>
@@ -586,8 +599,10 @@
       <p class="muted" id="profile-username"></p>
       <p class="flair-line" id="profile-flair" hidden></p>
       <p class="activity-bubble" id="profile-activity" hidden></p>
+      <div class="social-row" id="profile-socials" hidden></div>
       <button type="button" class="btn small" id="btn-profile-qr">🔳 My QR code</button>
       <button type="button" class="btn small" id="btn-profile-birthday">🎂 Birthday</button>
+      <button type="button" class="btn small" id="btn-profile-socials">🔗 Social links</button>
 
       <p class="storage-warning" id="storage-warning" role="alert" hidden></p>
       <section class="plan-card" aria-labelledby="plan-name">
@@ -836,6 +851,22 @@
   </dialog>
 
   <!-- Someone's KoolKat profile (tapping a name, e.g. in News) -->
+  <dialog id="dialog-socials" class="socials-dialog">
+    <form id="socials-form" novalidate>
+      <h2>Social links</h2>
+      <p class="fineprint">Add your username or a link to your page. Anyone who opens your profile can see these.</p>
+      <label class="social-field"><img src="icons/social/youtube.png" alt=""><span>YouTube</span><input id="social-youtube" autocapitalize="none" spellcheck="false" placeholder="@channel"></label>
+      <label class="social-field"><img src="icons/social/instagram.png" alt=""><span>Instagram</span><input id="social-instagram" autocapitalize="none" spellcheck="false" placeholder="username"></label>
+      <label class="social-field"><img src="icons/social/tiktok.png" alt=""><span>TikTok</span><input id="social-tiktok" autocapitalize="none" spellcheck="false" placeholder="@username"></label>
+      <label class="social-field"><img src="icons/social/facebook.png" alt=""><span>Facebook</span><input id="social-facebook" autocapitalize="none" spellcheck="false" placeholder="username or link"></label>
+      <label class="social-field"><img src="icons/social/x.png" alt=""><span>X (Twitter)</span><input id="social-x" autocapitalize="none" spellcheck="false" placeholder="@username"></label>
+      <div class="row">
+        <button type="button" class="btn" id="btn-socials-cancel">Cancel</button>
+        <button type="submit" class="btn primary" id="btn-socials-save">Save</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="dialog-user">
     <form method="dialog">
       <span class="avatar large" id="user-avatar"></span>
@@ -844,6 +875,7 @@
       <p class="admin-tag" id="user-admin" hidden>🛠 KoolKat admin</p>
       <p class="flair-line" id="user-flair" hidden></p>
       <p class="activity-bubble" id="user-activity" hidden></p>
+      <div class="social-row" id="user-socials" hidden></div>
       <p class="fineprint" id="user-joined"></p>
       <div class="row" id="user-actions"></div>
       <p class="dialog-brand"><img src="icons/logo.png" alt="">KoolKat</p>
@@ -858,6 +890,7 @@
       <p class="muted" id="friend-username"></p>
       <p class="flair-line" id="friend-flair" hidden></p>
       <p class="activity-bubble" id="friend-activity" hidden></p>
+      <div class="social-row" id="friend-socials" hidden></div>
       <p class="streak-line" id="friend-streak"></p>
       <p class="fineprint">Safety code</p>
       <code class="fingerprint" id="friend-fingerprint"></code>

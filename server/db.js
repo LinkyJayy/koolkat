@@ -272,6 +272,10 @@ const MIGRATIONS = [
   ['users', 'birth_day', 'INTEGER'],
   ['users', 'birth_tz', 'TEXT'],
   ['users', 'birthday_asked_at', 'INTEGER'],
+  // A ✔ verified badge, given by the owner.
+  ['users', 'verified_at', 'INTEGER'],
+  // Social media links on the profile (JSON: site -> https link).
+  ['users', 'socials', 'TEXT'],
   // Lets the sender open their own snaps (the snap key wrapped for the sender).
   ['snaps', 'sender_wrapped_key', 'TEXT'],
   ['snaps', 'sender_wrap_iv', 'TEXT'],
