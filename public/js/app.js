@@ -28,6 +28,7 @@ import { playNotification, setSoundsOn, soundsOn } from './sounds.js';
 import { createKatWordle } from './wordle.js';
 import { focusFirst, initInput } from './input.js';
 import { createKatEscape } from './escape.js';
+import { choose as ccChoose, draw as ccDraw, newDeck as ccNewDeck, ranked as ccRanked } from './circle-rules.js';
 import { TEAMS as CC_TEAMS, TEAM_COLORS as CC_TEAM_COLORS, TEAM_NAMES as CC_TEAM_NAMES, TURNS as CC_TURNS, circleIcon as ccCircleIcon, createCircleTable, describeEvent as ccDescribe, teamIcon as ccTeamIcon } from './circles.js';
 import { RACE_SONGS, RACERS as KART_RACERS, createKatKart, formatRaceTime } from './kart.js';
 
@@ -5679,6 +5680,7 @@ const ccTable = createCircleTable($('cc-canvas'));
 const cc = { code: null, room: null, timer: null, playing: false, seen: 0, sent: 0, applied: 0, myTurn: false };
 
 function openCirclesMenu() {
+  renderPracticePicks();
   $('cc-menu-main').hidden = false;
   $('cc-lobby').hidden = true;
   $('cc-code').value = '';
@@ -5819,10 +5821,129 @@ $('dialog-circles').addEventListener('close', () => {
 
 function leaveCirclesRoom() {
   clearInterval(cc.timer);
+  clearInterval(ccPractice.timer);
+  ccPractice.game = null;
+  cc.practice = false;
   cc.playing = false;
   if (!cc.code) return;
   api('POST', `/circles/rooms/${cc.code}/leave`).catch(() => {});
   cc.code = null;
+}
+
+// ---------- Practice: the same rules, here on your phone, against bots ----------
+const CC_PRACTICE = 'koolkat.circleChaos.practice';
+const CC_BOT_NAMES = ['Whiskers', 'Mittens', 'Nala', 'Tigger'];
+const ccPractice = { game: null, timer: null, last: 0, team: 'red', bots: 3 };
+try {
+  Object.assign(ccPractice, JSON.parse(localStorage.getItem(CC_PRACTICE) || '{}'));
+} catch {
+  // Red against 3 bots it is.
+}
+if (!CC_TEAMS.includes(ccPractice.team)) ccPractice.team = 'red';
+ccPractice.bots = Math.max(1, Math.min(4, Number(ccPractice.bots) || 3));
+
+function renderPracticePicks() {
+  $('cc-practice-team').replaceChildren(
+    ...CC_TEAMS.map((team) => {
+      const b = el(
+        'button',
+        { type: 'button', class: 'cc-team-btn', role: 'radio', 'aria-checked': String(ccPractice.team === team), onclick: () => setPractice({ team }) },
+        el('img', { src: ccTeamIcon(team), alt: '', class: 'pixel' }),
+        el('span', { text: CC_TEAM_NAMES[team] })
+      );
+      b.style.setProperty('--cc-team', CC_TEAM_COLORS[team]);
+      return b;
+    })
+  );
+  for (const b of document.querySelectorAll('.cc-bot-btn')) b.setAttribute('aria-checked', String(Number(b.dataset.bots) === ccPractice.bots));
+}
+function setPractice(change) {
+  Object.assign(ccPractice, change);
+  try {
+    localStorage.setItem(CC_PRACTICE, JSON.stringify({ team: ccPractice.team, bots: ccPractice.bots }));
+  } catch {
+    // Remembering it is only a convenience.
+  }
+  renderPracticePicks();
+}
+for (const b of document.querySelectorAll('.cc-bot-btn')) b.addEventListener('click', () => setPractice({ bots: Number(b.dataset.bots) }));
+$('btn-cc-practice').addEventListener('click', () => {
+  $('dialog-circles').close();
+  startCirclesPractice();
+});
+
+/** What the screen needs, shaped like an online game from the server. */
+const practiceView = (g) => ({
+  code: null,
+  practice: true,
+  state: g.state,
+  hostId: state.me.userId,
+  serverNow: Date.now(),
+  startAt: g.startAt,
+  turnId: g.turnId,
+  turnEndsAt: null,
+  dir: g.dir,
+  deck: g.deck.length,
+  pending: g.pending,
+  players: g.players.map((p) => ({ ...p })),
+  events: g.events,
+  results: g.results ?? null,
+});
+
+function startCirclesPractice() {
+  leaveCirclesRoom();
+  const teams = [ccPractice.team, ...CC_TEAMS.filter((t) => t !== ccPractice.team).slice(0, ccPractice.bots)];
+  const players = teams
+    .map((team, i) => (i === 0 ? { id: state.me.userId, name: state.me.displayName } : { id: `bot-${i}`, name: `🤖 ${CC_BOT_NAMES[i - 1]}`, bot: true }))
+    .map((p, i) => ({ ...p, team: teams[i], circles: 0, turns: 0, gone: false }))
+    .sort((a, b) => CC_TEAMS.indexOf(a.team) - CC_TEAMS.indexOf(b.team));
+  const g = { state: 'dealing', startAt: Date.now() + 3200, players, deck: ccNewDeck(teams), dir: 1, prevId: null, pending: null, turnId: players[0].id, events: [], seq: 0 };
+  ccPractice.game = g;
+  practiceEvent(g, { type: 'deal', count: g.deck.length });
+  cc.practice = true;
+  startCircles(practiceView(g));
+  ccPractice.last = Date.now();
+  ccPractice.timer = setInterval(practiceTick, 250);
+}
+
+function practiceEvent(g, event) {
+  g.seq += 1;
+  g.events = [...g.events, { ...event, id: g.seq, at: Date.now() }].slice(-30);
+}
+
+/** One move (yours or a bot's) in Practice. */
+function practiceMove(g, { target } = {}) {
+  let event;
+  if (g.pending) {
+    event = ccChoose(g, target);
+    if (!event) return;
+  } else event = ccDraw(g);
+  practiceEvent(g, event);
+  if (!g.turnId) {
+    g.state = 'done';
+    g.results = ccRanked(g.players);
+    practiceEvent(g, { type: 'done' });
+  }
+  ccPractice.last = Date.now();
+  renderCircles(practiceView(g));
+}
+
+function practiceTick() {
+  const g = ccPractice.game;
+  if (!g || !cc.practice) return;
+  if (g.state === 'dealing' && Date.now() >= g.startAt) {
+    g.state = 'playing';
+    ccPractice.last = Date.now();
+    renderCircles(practiceView(g));
+    return;
+  }
+  if (g.state !== 'playing') return;
+  const current = g.players.find((p) => p.id === g.turnId);
+  // Bots take a moment, so you can see what they did.
+  if (!current?.bot || Date.now() - ccPractice.last < 1100) return;
+  // Bots make whoever has the most circles lose them.
+  const target = g.pending ? g.players.filter((p) => p.id !== current.id).sort((a, b) => b.circles - a.circles || Math.random() - 0.5)[0].id : undefined;
+  practiceMove(g, { target });
 }
 
 // ---------- the game ----------
@@ -5838,7 +5959,7 @@ function startCircles(room) {
   $('cc-log').replaceChildren();
   ccTable.start(room.players.map((p) => p.team)).catch(() => {});
   renderCircles(room);
-  pollCircles(700, renderCircles);
+  if (!room.practice) pollCircles(700, renderCircles);
 }
 
 /** Make a team's circle count bounce (got some) or shake (lost some). */
@@ -5937,7 +6058,7 @@ function renderCircles(room) {
   } else $('cc-target-list').dataset.ids = '';
   const left = room.turnEndsAt ? Math.max(0, Math.ceil((room.turnEndsAt - room.serverNow) / 1000)) : 0;
   $('cc-wait').textContent =
-    room.state !== 'playing' ? '' : mine ? `${left}s, or the bot takes your turn for you` : current ? `Waiting for ${CC_TEAM_NAMES[current.team]}… (${left}s)` : '';
+    room.state !== 'playing' ? '' : !room.turnEndsAt ? (mine ? '' : current?.bot ? `${current.name} is thinking…` : '') : mine ? `${left}s, or the bot takes your turn for you` : current ? `Waiting for ${CC_TEAM_NAMES[current.team]}… (${left}s)` : '';
   if (mine && !cc.myTurn) {
     navigator.vibrate?.(40);
     focusFirst();
@@ -5947,6 +6068,11 @@ function renderCircles(room) {
 }
 
 async function ccPlay(body = {}) {
+  if (cc.practice) {
+    const g = ccPractice.game;
+    if (g?.state === 'playing' && g.turnId === state.me.userId) practiceMove(g, body);
+    return;
+  }
   try {
     const { room } = await api('POST', `/circles/rooms/${cc.code}/play`, body);
     ccApply(room);
@@ -5975,6 +6101,9 @@ function showCirclesResults(room) {
     )
   );
   $('cc-results').hidden = false;
+  $('btn-cc-again').textContent = room.practice ? 'Practice again' : 'Play again';
+  focusFirst();
+  if (room.practice) return; // only real games count
   const stats = readJson(CC_STATS) ?? { played: 0, wins: 0 };
   stats.played += 1;
   if (me?.place === 1) stats.wins += 1;
@@ -5991,11 +6120,12 @@ const leaveCircles = () => {
   openPlayables();
 };
 $('btn-cc-quit').addEventListener('click', async () => {
-  if (cc.room?.state !== 'done' && !(await askConfirm('Leave the game? The others keep playing without you.', { ok: 'Leave' }))) return;
+  if (cc.room?.state !== 'done' && !(await askConfirm(cc.practice ? 'Stop practising?' : 'Leave the game? The others keep playing without you.', { ok: cc.practice ? 'Stop' : 'Leave' }))) return;
   leaveCircles();
 });
 $('btn-cc-exit').addEventListener('click', leaveCircles);
 $('btn-cc-again').addEventListener('click', () => {
+  if (cc.practice) return startCirclesPractice();
   leaveCircles();
   openCirclesMenu();
 });

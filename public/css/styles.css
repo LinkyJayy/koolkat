@@ -2636,3 +2636,6 @@ img.pixel { image-rendering: pixelated; }
 #cc-lobby-players img.cc-mini { width: 22px; image-rendering: pixelated; }
 .cc-pts { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
 .cc-results-list img.cc-mini-circle { width: 18px; }
+.cc-bots { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 4px 0 10px; font-weight: 800; }
+.cc-bot-btn { width: 44px; height: 40px; border: 3px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); font: inherit; font-weight: 900; cursor: pointer; }
+.cc-bot-btn[aria-checked="true"] { border-color: var(--brand); background: var(--brand-soft); }

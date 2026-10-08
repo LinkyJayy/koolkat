@@ -52,6 +52,7 @@ const PRECACHE = [
   'icons/powerups/food.png',
   'icons/kat-kart.png',
   'js/circles.js',
+  'js/circle-rules.js',
   'icons/circles/team-red.png',
   'icons/circles/team-yellow.png',
   'icons/circles/team-green.png',

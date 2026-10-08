@@ -30,13 +30,24 @@ describe('Circle Chaos rules', () => {
     assert.equal(deck.filter((c) => c === 'lucky').length, 4);
   });
 
-  test('a coloured circle goes to the team of that colour', () => {
+  test("each team only takes its own colour and the rainbow circles", () => {
     const g = game();
-    g.deck = ['green'];
+    g.deck = ['lucky', 'red', 'green', 'blue']; // the top is the end
     const ev = draw(g);
-    assert.equal(ev.to, 3);
-    assert.deepEqual(circles(g), [5, 5, 6]);
+    assert.deepEqual([ev.circle, ev.to], ['red', 1], 'Red passes over Blue and Green to its own circle');
+    assert.deepEqual(circles(g), [6, 5, 5]);
+    assert.deepEqual(g.deck, ['lucky', 'green', 'blue'], "the others' circles stay in the Deck");
     assert.equal(g.turnId, 2, "next person's turn");
+    // Yellow: no yellow left, but a rainbow one is fine.
+    assert.equal(draw(g).circle, 'lucky');
+    // Green takes green; then Red has nothing left, so the bot spills the bag again.
+    g.turnId = 3;
+    g.deck = ['blue', 'green'];
+    draw(g);
+    g.turnId = 1;
+    const refill = draw(g);
+    assert.equal(refill.refill, true);
+    assert.ok(refill.circle === 'red' || ['lose2', 'lose4', 'lucky'].includes(refill.circle));
   });
 
   test('Lose 2 / Lose 4: you pick the opponent', () => {
@@ -79,7 +90,7 @@ describe('Circle Chaos rules', () => {
 
   test('flipped: the turn goes the other way', () => {
     const g = game(4);
-    g.deck = ['red', 'lucky'];
+    g.deck = ['blue', 'lucky'];
     const flipOnly = (n) => (n === LUCKY.length - 2 ? LUCKY.filter((o) => !o.startsWith('prev')).indexOf('flip') : 0);
     draw(g, flipOnly);
     assert.equal(g.turnId, 4, 'Red flipped it, so Blue (before Red) goes next');

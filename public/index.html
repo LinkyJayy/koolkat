@@ -214,7 +214,7 @@
       <button type="button" class="playable-card big circles-card" data-play="circles">
         <img src="icons/circles/bag.png" alt="" class="pixel">
         <span class="playable-name">Circle Chaos</span>
-        <span class="playable-sub">2 to 5 friends, one team colour each. The bot spills the bag into the Deck; take turns grabbing circles. Lose 2, Lose 4 and Lucky Cards cause chaos. Most circles after 15 turns wins.</span>
+        <span class="playable-sub">2 to 5 friends, one team colour each. The bot spills the bag into the Deck; take turns grabbing circles. Lose 2, Lose 4 and Lucky Cards cause chaos. Most circles after 15 turns wins. Practice against bots too.</span>
         <span class="playable-best" id="circles-best"></span>
       </button>
       <button type="button" class="playable-card big wordle-card" data-play="wordle">
@@ -967,12 +967,23 @@
       <img src="icons/circles/bag.png" alt="" class="kart-menu-art pixel">
       <h2>Circle Chaos</h2>
       <ul class="cc-rules">
-        <li><img src="icons/circles/red.png" alt="" class="pixel"> Coloured circles go to the team of that colour.</li>
+        <li><img src="icons/circles/red.png" alt="" class="pixel"> Take your own team's colour (+1), or a rainbow circle:</li>
         <li><img src="icons/circles/lose2.png" alt="" class="pixel"><img src="icons/circles/lose4.png" alt="" class="pixel"> Lose 2 / Lose 4: pick an opponent to lose them.</li>
         <li><img src="icons/circles/lucky.png" alt="" class="pixel"> Lucky Card: something random happens!</li>
       </ul>
-      <p class="fineprint">2 to 5 people, 15 turns each. Most circles wins.</p>
-      <button type="button" class="btn primary wide" id="btn-cc-create">👥 Make a game</button>
+      <p class="fineprint">2 to 5 teams, 15 turns each. Most circles wins.</p>
+      <p class="kart-menu-or">🤖 Practice vs bots</p>
+      <div class="cc-team-pick" id="cc-practice-team" role="radiogroup" aria-label="Your team"></div>
+      <div class="cc-bots" role="radiogroup" aria-label="How many bots">
+        <span>Bots</span>
+        <button type="button" class="cc-bot-btn" data-bots="1" role="radio">1</button>
+        <button type="button" class="cc-bot-btn" data-bots="2" role="radio">2</button>
+        <button type="button" class="cc-bot-btn" data-bots="3" role="radio">3</button>
+        <button type="button" class="cc-bot-btn" data-bots="4" role="radio">4</button>
+      </div>
+      <button type="button" class="btn primary wide" id="btn-cc-practice">🎯 Practice</button>
+      <p class="kart-menu-or">Play with friends</p>
+      <button type="button" class="btn wide" id="btn-cc-create">👥 Make a game</button>
       <div class="inline-form kart-join">
         <input id="cc-code" maxlength="4" placeholder="Game code" autocapitalize="characters" autocomplete="off" spellcheck="false" aria-label="Game code" enterkeyhint="go">
         <button type="button" class="btn small primary" id="btn-cc-join">Join</button>

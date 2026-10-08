@@ -1,6 +1,7 @@
 // Circle Chaos (Playables): 2 to 5 teams take turns taking circles from the
-// Deck that the bot spilled out of the bag. The server keeps the deck and the
-// rules (server/circlerooms.js); this draws the table in chunky pixels like
+// Deck that the bot spilled out of the bag (each team only takes its own
+// colour and the rainbow circles). Online the server keeps the deck; in
+// Practice the same rules (circle-rules.js) run here against bots. This draws the table in chunky pixels like
 // Kat Kart and KatEscape, and shows what each circle did.
 
 export const TEAMS = ['red', 'yellow', 'green', 'blue', 'purple'];
@@ -37,7 +38,7 @@ export function describeEvent(room, e) {
   if (e.type !== 'draw') return '';
   const refill = e.refill ? '🤖 The Deck ran out, so the bot spilled the bag again! ' : '';
   const took = `${refill}${by} took ${CIRCLE_NAMES[e.circle]}`;
-  if (TEAMS.includes(e.circle)) return e.to ? `${took} → ${who(e.to)} +1${auto}` : `${took} (no team has that colour)${auto}`;
+  if (TEAMS.includes(e.circle)) return `${took} (+1)${auto}`;
   if (e.choose) return `${took}! Picking who loses ${e.circle === 'lose4' ? 4 : 2}…`;
   if (e.circle === 'lose2' || e.circle === 'lose4') return `${took} → ${who(e.target)} loses ${e.lost}${auto}`;
   const lucky = {
