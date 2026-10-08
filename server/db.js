@@ -370,6 +370,8 @@ const MIGRATIONS = [
   ['users', 'socials', 'TEXT'],
   // KoolKat Unlimited accent colour (#rrggbb), used across the app instead of blue.
   ['users', 'accent_color', 'TEXT'],
+  // KoolKat Music: songs the artist marked as explicit (E).
+  ['songs', 'explicit', 'INTEGER NOT NULL DEFAULT 0'],
   // Lets the sender open their own snaps (the snap key wrapped for the sender).
   ['snaps', 'sender_wrapped_key', 'TEXT'],
   ['snaps', 'sender_wrap_iv', 'TEXT'],

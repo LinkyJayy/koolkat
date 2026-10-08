@@ -34,6 +34,10 @@ Photos taken in KoolKat are called **Klicks**.
 - **Home.** KoolKat opens on Home, laid out like YouTube: chips (All, Reels, News, Friends, ⭐ Favorites), your friends, a shelf of the newest KoolKat Reels, and News as big cards. A tab bar at the bottom has Home, Reels, the Camera, Music and Chats (Klicks are at the top of Home); the camera screen is now just the camera.
 - **KoolKat Reels** 🎬. Short videos, like TikTok: swipe up through them full screen, tap to pause, double-tap to heart, and open comments, share or mute from the side. Everyone can watch, heart and comment; posting (up to 100 MB and 3 minutes, 20 a day) is part of KoolKat Unlimited. Reels are public to everyone on KoolKat (not end-to-end encrypted). You (or an admin) can delete a Reel, and you can delete comments on your Reels.
 - **KoolKat Music** 🎵. Like Spotify: artists with KoolKat Unlimited post songs (MP3, M4A, WAV, OGG, FLAC or AAC, up to 50 MB) with an album name, an album cover and, if they like, a music video (up to 200 MB). Anyone can listen, heart ♥ (Liked Songs), comment and search by song, album or artist. The player keeps playing while you use the rest of KoolKat (a mini player sits above the tab bar; tap it for Now Playing, where you can switch between the song and its music video), works with your phone's lock-screen controls, and counts a play after 30 seconds. The artist (or an admin) can delete a song; artists can delete comments on their songs. Songs are public to everyone on KoolKat.
+- **Explicit songs.** Artists can mark a song as explicit when they post it; it shows an **E** next to the title.
+- **KoolKat Playables** 🎮 (for everyone, from Home):
+  - **Kat Kart**: a kart race like Mario Kart, drawn in pseudo-3D. You (blue) race seven computer Kats, each in its own colour (red, green, yellow, purple, orange, pink, brown), over three laps of the Kool Kircuit. Hold the left or right side of the screen (or the arrow keys) to steer; grass slows you down and the orange pads give you a boost. A silent 3-2-1-GO! countdown, music during the race (`public/sounds/kat-kart-music.mp3`), a live leaderboard and minimap, and a podium at the end. Your best finish is remembered on your device.
+  - **Kat Wordle**: guess the 5-letter word in six tries. Blue means the right letter in the right spot, dark blue means it's in the word somewhere else, grey means it isn't in the word. Every game has a new random word. Words come from SCOWL (see `public/vendor/SCOWL-COPYRIGHT.txt`).
 - **Profile pages.** Everyone has a profile page like TikTok's: their name, picture, @username, Friends, Reels and Likes counts, Message / Call / Add friend buttons, social links and a grid of their Reels. On your own page, *Edit profile* opens your settings.
 - **Verified badge.** The owner (zalith9) can give any account a blue verified tick in *Admin tools → Verified accounts*, and take it away again. It shows next to their name everywhere, before the Kool badge.
 - **Social links.** Anyone can add their YouTube, Instagram, TikTok, Facebook, X (Twitter) and Linktree in *Profile → 🔗 Social links*, as a username or a link. They show as round buttons on your profile that open your pages. Links are checked on the server and can only point to that site.
@@ -234,6 +238,8 @@ public/
   js/qr.js        drawing and scanning friend QR codes
   js/katcam.js    KatCam: both cameras in one Klick
   js/calls.js     Calls and FaceTime (WebRTC) and the call screen
+  js/kart.js      Kat Kart (Playables): the pseudo-3D kart race
+  js/wordle.js    Kat Wordle (Playables), with its word list in js/wordle-words.js
   js/sounds.js    notification and calling sounds
   sounds/         koolkat_notification.wav, koolkat_calling.wav
   vendor/         qrcode-generator (MIT), jsQR (Apache-2.0) and Leaflet (BSD-2), served locally

@@ -61,7 +61,7 @@ describe('KoolKat Music', () => {
     assert.equal((await call('POST', '/music', { token: boss.token, body: { title: 'x', audioId: cover.body.uploadId } })).status, 400);
     const res = await call('POST', '/music', {
       token: boss.token,
-      body: { title: 'Nine Lives', album: 'Kool Kuts', audioId: audio.body.uploadId, videoId: video.body.uploadId, coverId: cover.body.uploadId, duration: 187.4 },
+      body: { title: 'Nine Lives', album: 'Kool Kuts', audioId: audio.body.uploadId, videoId: video.body.uploadId, coverId: cover.body.uploadId, duration: 187.4, explicit: true },
     });
     assert.equal(res.status, 201);
     song = res.body.song;
@@ -70,6 +70,7 @@ describe('KoolKat Music', () => {
     assert.equal(song.artist.username, 'boss');
     assert.ok(song.video && song.cover);
     assert.equal(song.duration, 187.4);
+    assert.equal(song.explicit, true);
     const list = await call('GET', '/music', { token: amy.token });
     assert.equal(list.body.canPost, false);
     assert.deepEqual(list.body.songs.map((s) => s.id), [song.id]);

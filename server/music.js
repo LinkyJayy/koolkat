@@ -82,8 +82,8 @@ export function registerMusicRoutes({ api, db, clock, auth, wrap, publicUser, ha
     oldUploads: db.prepare('SELECT id FROM music_uploads WHERE created_at <= ?'),
     postedToday: db.prepare('SELECT COUNT(*) AS n FROM songs WHERE artist_id = ? AND created_at > ?'),
     insert: db.prepare(`
-      INSERT INTO songs (artist_id, title, album, audio_id, audio_type, audio_size, video_id, video_type, cover_id, cover_type, duration, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+      INSERT INTO songs (artist_id, title, album, audio_id, audio_type, audio_size, video_id, video_type, cover_id, cover_type, duration, explicit, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
     remove: db.prepare('DELETE FROM songs WHERE id = ?'),
     like: db.prepare('INSERT OR IGNORE INTO song_likes (song_id, user_id, created_at) VALUES (?, ?, ?)'),
     unlike: db.prepare('DELETE FROM song_likes WHERE song_id = ? AND user_id = ?'),
@@ -112,6 +112,8 @@ export function registerMusicRoutes({ api, db, clock, auth, wrap, publicUser, ha
     id: s.id,
     title: s.title,
     album: s.album || null,
+    // The artist marked it explicit (shown with an E).
+    explicit: Boolean(s.explicit),
     audio: { url: media(s.audio_id), type: s.audio_type },
     video: s.video_id ? { url: media(s.video_id), type: s.video_type } : null,
     cover: media(s.cover_id),
@@ -226,6 +228,7 @@ export function registerMusicRoutes({ api, db, clock, auth, wrap, publicUser, ha
           user.id, title, album, audio.id, audio.mime, audio.size,
           video?.id ?? null, video?.mime ?? null, cover?.id ?? null, cover?.mime ?? null,
           Number.isFinite(duration) && duration > 0 && duration < 24 * 60 * 60 ? duration : null,
+          req.body?.explicit === true ? 1 : 0,
           clock()
         ).lastInsertRowid
       );

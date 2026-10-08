@@ -25,6 +25,8 @@ import { drawQr, friendLink, parseFriendCode, scanVideo } from './qr.js';
 import { compose, grabFrame, openCamera, stopStream, waitForPicture } from './katcam.js';
 import { checkActive, initCalls, startCall, startCallEvents, stopCallEvents, usingCamera } from './calls.js';
 import { playNotification, setSoundsOn, soundsOn } from './sounds.js';
+import { createKatWordle } from './wordle.js';
+import { createKatKart, formatRaceTime } from './kart.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -160,6 +162,7 @@ function show(name) {
     for (const video of document.querySelectorAll('#screen-news video')) video.pause();
   }
   if (state.screen === 'reels' && name !== 'reels') pauseReels();
+  if (state.screen === 'kart' && name !== 'kart') katKart.stop();
   for (const s of document.querySelectorAll('.screen')) s.hidden = s.id !== `screen-${name}`;
   state.screen = name;
   // The tab bar (Home, Reels, Camera, Klicks, Chats) shows on the main screens.
@@ -373,6 +376,7 @@ function openView(view) {
   else if (view === 'news') openNews();
   else if (view === 'reels') openReels();
   else if (view === 'music') openMusic();
+  else if (view === 'playables') openPlayables();
   else if (view === 'camera') show('camera');
   else if (state.screen !== 'home') openHome();
 }
@@ -4122,6 +4126,7 @@ function renderHome() {
   showSection('home-reels-shelf', ['all', 'reels']);
   showSection('home-news-section', ['all', 'news']);
   showSection('home-music-shelf', ['all', 'music']);
+  showSection('home-playables-shelf', ['all']);
   // Songs: square covers to swipe through on All, a list on Music.
   const songList = chip === 'music';
   $('home-music').hidden = songList;
@@ -4730,7 +4735,7 @@ function songRow(song, list, i) {
         'span',
         { class: 'song-text' },
         el('span', { class: 'song-title', text: song.title }),
-        el('span', { class: 'song-sub' }, song.video ? el('span', { class: 'song-tag', text: 'VIDEO' }) : null, ...nodes(artistLine(song), badgeImg(song.artist)))
+        el('span', { class: 'song-sub' }, song.explicit ? el('span', { class: 'explicit-tag', title: 'Explicit', text: 'E' }) : null, song.video ? el('span', { class: 'song-tag', text: 'VIDEO' }) : null, ...nodes(artistLine(song), badgeImg(song.artist)))
       )
     ),
     likeButton(song)
@@ -4951,6 +4956,7 @@ function renderPlayer() {
   }
   fillCover($('player-cover'), song);
   $('player-title').textContent = song.title;
+  $('player-explicit').hidden = !song.explicit;
   $('player-artist').replaceChildren(...nodes(song.artist.displayName, badgeImg(song.artist)));
   $('player-album').textContent = song.album || song.artist.displayName;
   $('player-switch').hidden = !song.video;
@@ -5200,6 +5206,7 @@ $('song-form').addEventListener('submit', async (e) => {
         coverId: ids.cover ?? null,
         videoId: ids.video ?? null,
         duration: songDraft.duration,
+        explicit: form.explicit.checked,
       });
       $('dialog-song-new').close();
       toast(`🎵 “${song.title}” is out!`);
@@ -5210,6 +5217,121 @@ $('song-form').addEventListener('submit', async (e) => {
       step.hidden = true;
     }
   });
+});
+
+// ---------- KoolKat Playables (for everyone) ----------
+const WORDLE_STATS = 'koolkat.katWordle';
+const KART_BEST = 'koolkat.katKart.best';
+const readJson = (key) => {
+  try {
+    return JSON.parse(localStorage.getItem(key) || 'null');
+  } catch {
+    return null;
+  }
+};
+
+function openPlayables() {
+  show('playables');
+  const best = readJson(KART_BEST);
+  $('kart-best').textContent = best ? `🏆 Your best: ${ordinalPlace(best.place)} in ${formatRaceTime(best.time)}` : '';
+  const stats = readJson(WORDLE_STATS);
+  $('wordle-best').textContent = stats?.played ? `🔥 Streak ${stats.streak} · ${stats.wins}/${stats.played} won` : '';
+}
+$('chip-playables').addEventListener('click', openPlayables);
+document.addEventListener('click', (e) => {
+  const card = e.target.closest('[data-play]');
+  if (!card) return;
+  if (card.dataset.play === 'kart') openKart();
+  else openWordle();
+});
+
+const ordinalPlace = (n) => `${n}${n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'}`;
+
+// Kat Wordle
+const katWordle = createKatWordle({ board: $('kw-board'), keyboard: $('kw-keyboard'), message: $('kw-message'), result: $('kw-result') });
+function openWordle() {
+  show('wordle');
+  katWordle.start();
+}
+$('btn-wordle-back').addEventListener('click', openPlayables);
+$('btn-kw-exit').addEventListener('click', openPlayables);
+$('btn-kw-again').addEventListener('click', () => katWordle.start());
+$('btn-wordle-new').addEventListener('click', () => {
+  if (confirm('Start again with a new word?')) katWordle.start();
+});
+
+// Kat Kart
+const katKart = createKatKart({
+  canvas: $('kart-canvas'),
+  minimap: $('kart-minimap'),
+  place: $('kart-place'),
+  lap: $('kart-lap'),
+  time: $('kart-time'),
+  board: $('kart-board'),
+  countdown: $('kart-countdown'),
+  finish: $('kart-finish'),
+  podium: $('kart-podium'),
+  onFinish: showPodium,
+});
+function openKart() {
+  // One thing at a time: the race has its own music.
+  if (!audioEl.paused) audioEl.pause();
+  show('kart');
+  $('kart-podium').hidden = true;
+  katKart.start().catch((err) => toast(err.message, { error: true }));
+}
+$('btn-kart-quit').addEventListener('click', () => {
+  if (confirm('Quit the race?')) openPlayables();
+});
+$('btn-kart-exit').addEventListener('click', openPlayables);
+$('btn-kart-again').addEventListener('click', openKart);
+
+/** The podium: 2nd, 1st and 3rd on their steps, then everyone's times. */
+function showPodium(results) {
+  const me = results.find((r) => r.player);
+  $('podium-title').textContent = me.place === 1 ? '🏆 You won!' : me.place <= 3 ? `🎉 You came ${ordinalPlace(me.place)}!` : `You came ${ordinalPlace(me.place)}`;
+  const step = (r) =>
+    el(
+      'div',
+      { class: `podium-spot p${r.place}${r.player ? ' me' : ''}` },
+      el('img', { src: r.sprite, alt: '', class: 'podium-kart' }),
+      el('span', { class: 'podium-name', text: r.player ? 'You' : r.name }),
+      el('div', { class: 'podium-step' }, el('span', { text: String(r.place) }))
+    );
+  $('podium').replaceChildren(...[results[1], results[0], results[2]].filter(Boolean).map(step));
+  $('podium-list').replaceChildren(
+    ...results.map((r) => {
+      const dot = el('span', { class: 'kk-dot' });
+      dot.style.background = r.color;
+      return el(
+        'li',
+        { class: r.player ? 'me' : '' },
+        el('span', { class: 'podium-list-place', text: ordinalPlace(r.place) }),
+        dot,
+        el('span', { class: 'podium-list-name', text: r.player ? 'You' : r.name }),
+        el('span', { class: 'podium-list-time', text: r.time != null ? formatRaceTime(r.time) : '—' })
+      );
+    })
+  );
+  $('kart-podium').hidden = false;
+  const best = readJson(KART_BEST);
+  if (me.time != null && (!best || me.place < best.place || (me.place === best.place && me.time < best.time))) {
+    try {
+      localStorage.setItem(KART_BEST, JSON.stringify({ place: me.place, time: me.time }));
+    } catch {
+      // Just for fun.
+    }
+  }
+}
+
+// Keyboards: typing in Kat Wordle, arrow keys in Kat Kart.
+document.addEventListener('keydown', (e) => {
+  if (document.querySelector('dialog[open]') || e.target.closest?.('input, textarea')) return;
+  if (state.screen === 'wordle') katWordle.onKey(e);
+  else if (state.screen === 'kart') katKart.keyDown(e);
+});
+document.addEventListener('keyup', (e) => {
+  if (state.screen === 'kart') katKart.keyUp(e);
 });
 
 // ---------- social media links ----------

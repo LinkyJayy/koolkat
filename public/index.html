@@ -99,6 +99,7 @@
       <button type="button" role="tab" class="chip" data-chip="reels">Reels</button>
       <button type="button" role="tab" class="chip" data-chip="music">Music</button>
       <button type="button" role="tab" class="chip" data-chip="news">News</button>
+      <button type="button" class="chip" id="chip-playables">🎮 Playables</button>
       <button type="button" role="tab" class="chip" data-chip="friends">Friends</button>
       <button type="button" class="chip" id="chip-favorites">⭐ Favorites</button>
     </div>
@@ -119,6 +120,13 @@
         <div class="shelf-row" id="home-music"></div>
         <ul class="song-list" id="home-music-list" hidden></ul>
         <p class="home-empty" id="home-music-empty" hidden>No songs yet. Artists with KoolKat Unlimited can post the first one!</p>
+      </section>
+      <section class="shelf" id="home-playables-shelf" data-section="playables">
+        <h3 class="shelf-title"><svg viewBox="0 0 24 24" aria-hidden="true" class="pad-icon"><path d="M7 7h10a5 5 0 0 1 4.9 6l-1 4.6a2.5 2.5 0 0 1-4.3 1.2L14.2 16H9.8l-2.4 2.8a2.5 2.5 0 0 1-4.3-1.2l-1-4.6A5 5 0 0 1 7 7Zm-.5 3v1.5H5V13h1.5v1.5H8V13h1.5v-1.5H8V10H6.5Zm9 1a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm2.5-1.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/></svg>KoolKat Playables</h3>
+        <div class="shelf-row playables-row">
+          <button type="button" class="playable-card kart-card" data-play="kart"><img src="icons/kat-kart.png" alt=""><span class="playable-name">Kat Kart</span><span class="playable-sub">Race 7 Kats over 3 laps</span></button>
+          <button type="button" class="playable-card wordle-card" data-play="wordle"><span class="wordle-art" aria-hidden="true"><b class="c">K</b><b class="p">A</b><b class="a">T</b><b class="c">S</b><b class="a">!</b></span><span class="playable-name">Kat Wordle</span><span class="playable-sub">Guess the word in 6 tries</span></button>
+        </div>
       </section>
       <section class="home-news" id="home-news-section" data-section="news">
         <h3 class="shelf-title">📣 KoolKat News</h3>
@@ -176,6 +184,89 @@
       <div id="music-list-view" hidden>
         <ul class="song-list" id="music-list"></ul>
         <p class="music-empty" id="music-list-empty" hidden></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- KoolKat Playables -->
+  <section id="screen-playables" class="screen panel playables-screen" hidden>
+    <header class="panel-header">
+      <button type="button" class="icon-btn plain" data-back="home" aria-label="Back to Home"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12Z"/></svg></button>
+      <h2><svg viewBox="0 0 24 24" aria-hidden="true" class="pad-icon"><path d="M7 7h10a5 5 0 0 1 4.9 6l-1 4.6a2.5 2.5 0 0 1-4.3 1.2L14.2 16H9.8l-2.4 2.8a2.5 2.5 0 0 1-4.3-1.2l-1-4.6A5 5 0 0 1 7 7Zm-.5 3v1.5H5V13h1.5v1.5H8V13h1.5v-1.5H8V10H6.5Zm9 1a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm2.5-1.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/></svg>Playables</h2>
+      <span></span>
+    </header>
+    <p class="playables-intro">Games for everyone on KoolKat. Free, no Unlimited needed.</p>
+    <div class="playables-grid">
+      <button type="button" class="playable-card big kart-card" data-play="kart">
+        <img src="icons/kat-kart.png" alt="">
+        <span class="playable-name">Kat Kart</span>
+        <span class="playable-sub">Race seven Kats round the Kool Kircuit. Hold the left or right side of the screen to steer.</span>
+        <span class="playable-best" id="kart-best"></span>
+      </button>
+      <button type="button" class="playable-card big wordle-card" data-play="wordle">
+        <span class="wordle-art" aria-hidden="true"><b class="c">K</b><b class="p">A</b><b class="a">T</b><b class="c">S</b><b class="a">!</b></span>
+        <span class="playable-name">Kat Wordle</span>
+        <span class="playable-sub">Guess the 5-letter word in six tries. A new word every game.</span>
+        <span class="playable-best" id="wordle-best"></span>
+      </button>
+    </div>
+  </section>
+
+  <!-- Kat Kart -->
+  <section id="screen-kart" class="screen kart-screen" hidden>
+    <div class="kart-stage" id="kart-stage">
+      <canvas id="kart-canvas" width="256" height="400" aria-label="Kat Kart race"></canvas>
+      <div class="kart-hud">
+        <button type="button" class="icon-btn" id="btn-kart-quit" aria-label="Quit race">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12Z"/></svg>
+        </button>
+        <div class="kart-stats">
+          <strong class="kart-place" id="kart-place">8th</strong>
+          <span class="kart-lap" id="kart-lap">Lap 1/3</span>
+          <span class="kart-time" id="kart-time">0:00.00</span>
+        </div>
+        <canvas class="kart-minimap" id="kart-minimap" width="110" height="110"></canvas>
+      </div>
+      <ol class="kart-board" id="kart-board"></ol>
+      <div class="kart-countdown" id="kart-countdown" hidden>3</div>
+      <div class="kart-finish" id="kart-finish" hidden>FINISH!</div>
+      <div class="kart-steer" aria-hidden="true"><span>◀</span><span>▶</span></div>
+    </div>
+    <div class="kart-podium" id="kart-podium" hidden>
+      <h2 class="podium-title" id="podium-title">Results</h2>
+      <div class="podium" id="podium"></div>
+      <ol class="podium-list" id="podium-list"></ol>
+      <div class="row">
+        <button type="button" class="btn" id="btn-kart-exit">Back to Playables</button>
+        <button type="button" class="btn primary" id="btn-kart-again">Race again</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Kat Wordle -->
+  <section id="screen-wordle" class="screen wordle-screen" hidden>
+    <header class="panel-header">
+      <button type="button" class="icon-btn plain" id="btn-wordle-back" aria-label="Back to Playables"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12Z"/></svg></button>
+      <h2>Kat Wordle</h2>
+      <button type="button" class="icon-btn plain" id="btn-wordle-new" aria-label="New word">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.7 6.3A8 8 0 1 0 19.7 14h-2.1a6 6 0 1 1-1.4-6.2L13 11h7V4Z"/></svg>
+      </button>
+    </header>
+    <p class="kw-legend"><span class="kw-chip correct">Blue</span> right spot <span class="kw-chip present">Dark blue</span> wrong spot <span class="kw-chip absent">Grey</span> not in it</p>
+    <div class="kw-board" id="kw-board"></div>
+    <p class="kw-message" id="kw-message" hidden></p>
+    <div class="kw-keyboard" id="kw-keyboard"></div>
+    <div class="kw-result" id="kw-result" hidden>
+      <div class="kw-result-card">
+        <h3 class="kw-result-title"></h3>
+        <p class="kw-result-word"></p>
+        <div class="kw-stats"></div>
+        <p class="fineprint">Guesses</p>
+        <div class="kw-dist"></div>
+        <div class="row">
+          <button type="button" class="btn" id="btn-kw-exit">Back to Playables</button>
+          <button type="button" class="btn primary" id="btn-kw-again">Play again</button>
+        </div>
       </div>
     </div>
   </section>
@@ -646,7 +737,7 @@
       </div>
       <div class="player-info">
         <div class="player-names">
-          <strong id="player-title"></strong>
+          <strong class="player-title"><span id="player-title"></span><span class="explicit-tag" id="player-explicit" title="Explicit" hidden>E</span></strong>
           <button type="button" class="player-artist" id="player-artist"></button>
         </div>
         <button type="button" class="player-like" id="player-like" aria-label="Heart" aria-pressed="false">♥</button>
@@ -683,6 +774,7 @@
       <p class="fineprint song-file" id="song-audio-name"></p>
       <button type="button" class="btn small wide-ish" id="btn-song-video">🎬 Add a music video (optional)</button>
       <p class="fineprint song-file" id="song-video-name"></p>
+      <label class="explicit-toggle"><input type="checkbox" name="explicit"> <span class="explicit-tag" aria-hidden="true">E</span> Explicit <span class="fineprint">(swearing or adult themes)</span></label>
       <p class="fineprint">Songs are public to everyone on KoolKat. Only post music you made or have the rights to.</p>
       <div class="upload-progress" id="song-upload-progress" hidden><span id="song-upload-bar"></span></div>
       <p class="fineprint" id="song-upload-step" hidden></p>
