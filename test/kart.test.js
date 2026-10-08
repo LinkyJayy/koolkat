@@ -49,7 +49,12 @@ describe('Kat Kart online races', () => {
     assert.deepEqual(joined.body.room.players.map((p) => [p.name, p.slot]), [['ann', 0], ['ben', 1]]);
     assert.equal((await call('POST', `/kart/rooms/${code}/start`, { token: ben.token })).status, 403, 'only the host starts');
     assert.equal((await call('GET', `/kart/rooms/${code}`, { token: cat.token })).status, 403);
+    // The host picks the music.
+    assert.equal((await call('POST', `/kart/rooms/${code}/song`, { token: ben.token, body: { song: 'crystal-cavern' } })).status, 403);
+    assert.equal((await call('POST', `/kart/rooms/${code}/song`, { token: ann.token, body: { song: 'not-a-song' } })).status, 400);
+    assert.equal((await call('POST', `/kart/rooms/${code}/song`, { token: ann.token, body: { song: 'crystal-cavern' } })).body.room.song, 'crystal-cavern');
     const started = await call('POST', `/kart/rooms/${code}/start`, { token: ann.token });
+    assert.equal(started.body.room.song, 'crystal-cavern');
     assert.equal(started.body.room.state, 'racing');
     assert.ok(started.body.room.startAt > started.body.room.serverNow);
     assert.equal((await call('POST', `/kart/rooms/${code}/join`, { token: cat.token })).status, 409, 'too late to join');

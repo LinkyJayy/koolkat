@@ -249,8 +249,8 @@ async function loadAssets() {
 // run) picks one, never the same one twice in a row. Played with Web Audio so
 // the loop has no gap; falls back to a plain <audio> loop.
 export const RACE_SONGS = [
-  { title: 'Natho Town', artist: 'Zalith9', src: 'sounds/kat-kart-music.mp3' },
-  { title: 'Crystal Cavern', artist: 'Zalith9', src: 'sounds/crystal-cavern.mp3' },
+  { id: 'natho-town', title: 'Natho Town', artist: 'Zalith9', src: 'sounds/kat-kart-music.mp3' },
+  { id: 'crystal-cavern', title: 'Crystal Cavern', artist: 'Zalith9', src: 'sounds/crystal-cavern.mp3' },
 ];
 
 export function createRaceMusic() {
@@ -294,8 +294,10 @@ export function createRaceMusic() {
       }
       for (const song of RACE_SONGS) load(song);
     },
-    /** The next song: a random one, not the one just played. */
-    pick() {
+    /** The next song: the one asked for by id, or a random one (not the one just played). */
+    pick(id) {
+      const chosen = RACE_SONGS.find((song) => song.id === id);
+      if (chosen) return (last = chosen);
       const choices = RACE_SONGS.filter((song) => song !== last);
       last = choices[Math.floor(Math.random() * choices.length)] ?? RACE_SONGS[0];
       return last;
@@ -495,6 +497,7 @@ export function createKatKart(els) {
       online,
       level,
       sync: opts.sync,
+      song: opts.song ?? 'random', // the host's pick (or yours, solo)
       view: makeView(canvas.width, canvas.height),
       state: 'countdown',
       // GO is 3 seconds from now (solo) or when the server says (online).
@@ -964,7 +967,7 @@ export function createKatKart(els) {
         race.state = 'racing';
         race.startTime = t;
         race.last = t;
-        const song = music.pick();
+        const song = music.pick(race.song);
         music.play(song);
         showNowPlaying(els.nowPlaying, song);
         setTimeout(() => race && (els.countdown.hidden = true), 700);

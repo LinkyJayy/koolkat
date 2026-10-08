@@ -28,7 +28,7 @@ import { playNotification, setSoundsOn, soundsOn } from './sounds.js';
 import { createKatWordle } from './wordle.js';
 import { focusFirst, initInput } from './input.js';
 import { createKatEscape } from './escape.js';
-import { RACERS as KART_RACERS, createKatKart, formatRaceTime } from './kart.js';
+import { RACE_SONGS, RACERS as KART_RACERS, createKatKart, formatRaceTime } from './kart.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -5413,10 +5413,40 @@ $('btn-kart-again').addEventListener('click', () => {
     leaveKartRoom();
     openPlayables();
     openKartMenu();
-  } else openKart({ mode: 'solo', level: kartLevel() });
+  } else openKart({ mode: 'solo', level: kartLevel(), song: $('kart-song-solo').value });
 });
 
 // ---------- the Kat Kart menu: solo, or race friends with a code ----------
+// Race music: Random, or a song from the Kat Kart OST. Solo you pick; online the host does.
+const KART_SONG_KEY = 'koolkat.katKart.song';
+for (const select of [$('kart-song-solo'), $('kart-song-online')]) {
+  select.replaceChildren(
+    el('option', { value: 'random', text: '🔀 Random' }),
+    ...RACE_SONGS.map((song) => el('option', { value: song.id, text: `${song.title} · ${song.artist}` }))
+  );
+}
+try {
+  $('kart-song-solo').value = localStorage.getItem(KART_SONG_KEY) || 'random';
+} catch {
+  // Random it is.
+}
+if (!$('kart-song-solo').value) $('kart-song-solo').value = 'random';
+$('kart-song-solo').addEventListener('change', (e) => {
+  try {
+    localStorage.setItem(KART_SONG_KEY, e.target.value);
+  } catch {
+    // Remembering it is only a convenience.
+  }
+});
+$('kart-song-online').addEventListener('change', async (e) => {
+  try {
+    const { room } = await api('POST', `/kart/rooms/${kartOnline.code}/song`, { song: e.target.value });
+    renderLobby(room);
+  } catch (err) {
+    toast(err.message, { error: true });
+  }
+});
+
 function openKartMenu() {
   katKart.unlockAudio(); // this tap lets the race music play later
   $('kart-level').textContent = `Level ${kartLevel()}`;
@@ -5428,7 +5458,7 @@ function openKartMenu() {
 $('btn-kart-close').addEventListener('click', () => $('dialog-kart').close());
 $('btn-kart-solo').addEventListener('click', () => {
   $('dialog-kart').close();
-  openKart({ mode: 'solo', level: kartLevel() });
+  openKart({ mode: 'solo', level: kartLevel(), song: $('kart-song-solo').value });
 });
 $('btn-kart-create').addEventListener('click', (e) =>
   withBusy(e.currentTarget, async () => {
@@ -5488,6 +5518,11 @@ function renderLobby(room) {
     })
   );
   const host = room.hostId === state.me.userId;
+  // The host picks the music; everyone else sees what it'll be.
+  const songSelect = $('kart-song-online');
+  songSelect.disabled = !host;
+  if (document.activeElement !== songSelect) songSelect.value = room.song ?? 'random';
+  $('kart-song-note').textContent = host ? '(you pick)' : '(the host picks)';
   $('btn-kart-start').hidden = !host;
   $('btn-kart-start').disabled = players.length < 2;
   $('kart-lobby-status').textContent =
@@ -5506,6 +5541,7 @@ function startOnlineRace(room) {
     mySlot: me.slot,
     players: room.players.filter((p) => !p.gone).map((p) => ({ slot: p.slot, name: p.name })),
     startAt: performance.now() + (room.startAt - room.serverNow),
+    song: room.song,
     sync: (st) => api('POST', `/kart/rooms/${code}/state`, st, { timeout: 4000 }).then((r) => r.room),
   });
 }

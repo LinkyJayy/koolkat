@@ -2534,3 +2534,7 @@ img.pixel { image-rendering: pixelated; }
 .escape-over .fineprint { color: rgba(255,255,255,0.8); }
 .escape-over .btn:not(.primary) { background: #fff; color: #0f172a; }
 @media (min-width: 760px) { .escape-screen { left: 0 !important; right: 0 !important; } }
+
+.kart-song-pick { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 4px 0 10px; font-weight: var(--w-heading); flex-wrap: wrap; }
+.kart-song-pick select { padding: 6px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; }
+.kart-song-pick select:disabled { opacity: 0.75; }

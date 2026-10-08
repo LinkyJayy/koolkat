@@ -7,6 +7,8 @@ import { fail } from './http.js';
 // everyone else's back. Races live in memory (a restart ends them).
 
 export const MAX_RACERS = 8;
+/** The Kat Kart OST: the host picks one (or Random, picked when the race starts). */
+export const KART_SONGS = ['natho-town', 'crystal-cavern'];
 /** Power-ups a racer can use on everyone else (speed boosts only affect yourself). */
 export const ATTACKS = ['mouse', 'food', 'thunder'];
 const EVENT_ID_RE = /^[A-Za-z0-9-]{3,40}$/;
@@ -89,6 +91,7 @@ export function registerKartRoutes({ api, auth, wrap, clock, publicUser, db }) {
     state: room.state,
     hostId: room.hostId,
     startAt: room.startAt ?? null,
+    song: room.song ?? 'random',
     serverNow: now,
     players: [...room.players.values()].map((p) => ({
       id: p.id,
@@ -129,7 +132,7 @@ export function registerKartRoutes({ api, auth, wrap, clock, publicUser, db }) {
       const now = clock();
       for (const [code, r] of rooms) if (now - r.createdAt > ROOM_MAX_AGE) rooms.delete(code);
       leave(req.user.id);
-      const room = { code: newCode(), hostId: req.user.id, state: 'lobby', players: new Map(), createdAt: now };
+      const room = { code: newCode(), hostId: req.user.id, state: 'lobby', players: new Map(), createdAt: now, song: 'random' };
       rooms.set(room.code, room);
       join(room, userById.get(req.user.id), now);
       res.status(201);
@@ -180,7 +183,24 @@ export function registerKartRoutes({ api, auth, wrap, clock, publicUser, db }) {
       if (ready.length < 2) fail(409, 'Wait for at least one friend to join');
       room.state = 'racing';
       room.startAt = now + COUNTDOWN;
+      // Random: pick now, so everyone hears the same song.
+      if (!KART_SONGS.includes(room.song)) room.song = KART_SONGS[crypto.randomInt(KART_SONGS.length)];
       return { room: describe(room, now) };
+    })
+  );
+
+  // The host picks the race music.
+  api.post(
+    '/kart/rooms/:code/song',
+    auth,
+    wrap((req) => {
+      const room = roomOr404(req);
+      if (room.hostId !== req.user.id) fail(403, 'Only the host picks the music');
+      if (room.state !== 'lobby') fail(409, 'The race has already started');
+      const song = String(req.body?.song ?? '');
+      if (song !== 'random' && !KART_SONGS.includes(song)) fail(400, "That song isn't on the Kat Kart OST");
+      room.song = song;
+      return { room: describe(room, clock()) };
     })
   );
 
