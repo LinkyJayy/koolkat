@@ -909,9 +909,9 @@ input[type="color"] { width: 44px; height: 32px; padding: 0; border: 1px solid v
   border: 1px solid var(--border);
 }
 .chat-preview .bubble { max-width: 80%; font-size: 14px; }
-.chat-preview .bubble.mine { align-self: flex-end; background: var(--bubble-mine, var(--brand)); color: var(--bubble-mine-text, #fff); }
+.chat-preview .bubble.mine { align-self: flex-end; background: var(--bubble-mine, var(--brand)); color: var(--bubble-mine-text, var(--brand-ink)); }
 .chat-preview .bubble.theirs { align-self: flex-start; }
-.message.mine .bubble { background: var(--bubble-mine, var(--brand)); color: var(--bubble-mine-text, #fff); }
+.message.mine .bubble { background: var(--bubble-mine, var(--brand)); color: var(--bubble-mine-text, var(--brand-ink)); }
 
 .bg-default { background: var(--bg); }
 .bg-midnight, .messages[data-bg="midnight"], .chat-preview[data-bg="midnight"] { background: linear-gradient(160deg, #0f172a, #1e1b4b 60%, #312e81); }

@@ -3457,7 +3457,8 @@ function renderChatThemeEditor(plan) {
     $('swatch-image').style.removeProperty('--chat-image');
     $('swatch-image').textContent = '＋';
   }
-  $('chat-bubble-color').value = theme?.bubble ?? '#1e90ff';
+  // No bubble colour of your own: your bubbles match your accent colour.
+  $('chat-bubble-color').value = theme?.bubble ?? plan.accentColor ?? '#002eff';
   $('btn-bubble-reset').disabled = !theme?.bubble;
   applyChatTheme($('chat-preview'), theme);
 }
@@ -3533,6 +3534,7 @@ async function saveAccent(value) {
   window.koolkatTheme.setAccent(accentColor);
   $('accent-hex').value = (accentColor || '').toUpperCase();
   renderAccentEditor(state.plan);
+  renderChatThemeEditor(state.plan);
   toast(accentColor ? `🎨 Accent colour set to ${accentColor.toUpperCase()}` : '🎨 Back to KoolKat blue');
 }
 
