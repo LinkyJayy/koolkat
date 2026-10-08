@@ -6,8 +6,8 @@ import { fail } from './http.js';
 import { cleanText } from './plans.js';
 import { sniffMedia } from './news.js';
 
-// KoolKat Reels: short videos, like TikTok. Everyone signed in can watch;
-// posting, hearts and comments are part of KoolKat Unlimited. Reels are public
+// KoolKat Reels: short videos, like TikTok. Everyone signed in can watch,
+// heart and comment; posting is part of KoolKat Unlimited. Reels are public
 // to everyone on KoolKat (they are not end-to-end encrypted like Klicks).
 
 export const MAX_REEL_CAPTION = 300;
@@ -201,8 +201,7 @@ export function registerReelRoutes({ api, db, clock, auth, wrap, publicUser, has
     auth,
     wrap((req) => {
       const reel = reelOr404(req);
-      const user = requireUnlimited(req, 'Liking Reels');
-      q.like.run(reel.id, user.id, clock());
+      q.like.run(reel.id, req.user.id, clock());
       return { liked: true, likes: q.likeCount.get(reel.id).n };
     })
   );
@@ -245,7 +244,6 @@ export function registerReelRoutes({ api, db, clock, auth, wrap, publicUser, has
       const reel = reelOr404(req);
       return {
         comments: q.comments.all(reel.id).map((c) => describeComment(c, req.user, reel.author_id)),
-        canComment: hasUnlimitedUser(userOf(req)),
       };
     })
   );
@@ -257,7 +255,7 @@ export function registerReelRoutes({ api, db, clock, auth, wrap, publicUser, has
     auth,
     wrap((req, res) => {
       const reel = reelOr404(req);
-      const user = requireUnlimited(req, 'Commenting on Reels');
+      const user = userOf(req);
       if (!commentLimiter(user.id)) fail(429, "You're commenting a lot. Wait a minute and try again.");
       const body = cleanText(req.body?.body, MAX_REEL_COMMENT, { multiline: true });
       if (!body) fail(400, 'Write a comment first');

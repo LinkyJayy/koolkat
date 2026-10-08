@@ -1767,7 +1767,6 @@ dialog.sheet[open] { display: flex; }
 .reel-new-dialog video { display: block; width: 100%; max-height: 46vh; border-radius: 12px; background: #000; margin: 8px 0 10px; }
 .reel-new-dialog form { text-align: left; }
 .reel-new-dialog textarea { width: 100%; }
-.comments-locked { margin: 10px 16px calc(14px + var(--safe-bottom)); text-align: center; }
 
 /* ---------- profile pages ---------- */
 .user-page { background: var(--bg); }

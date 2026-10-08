@@ -79,19 +79,22 @@ describe('KoolKat Reels', () => {
   });
 
   test('hearts, views and comments', async () => {
-    assert.equal((await call('POST', `/reels/${reel.id}/like`, { token: amy.token })).status, 403);
-    assert.equal((await call('POST', `/reels/${reel.id}/comments`, { token: amy.token, body: { body: 'hi' } })).status, 403);
-    assert.equal((await call('POST', `/reels/${reel.id}/like`, { token: boss.token })).body.likes, 1);
+    // Free accounts can heart and comment too.
+    assert.equal((await call('POST', `/reels/${reel.id}/like`, { token: amy.token })).body.likes, 1);
+    assert.equal((await call('POST', `/reels/${reel.id}/like`, { token: boss.token })).body.likes, 2);
+    assert.equal((await call('DELETE', `/reels/${reel.id}/like`, { token: amy.token })).body.likes, 1);
+    assert.equal((await call('POST', `/reels/${reel.id}/comments`, { token: amy.token, body: { body: 'hi' } })).status, 201);
     await call('POST', `/reels/${reel.id}/view`, { token: amy.token });
     assert.equal((await call('POST', `/reels/${reel.id}/view`, { token: amy.token })).body.views, 1, 'once per person');
     const c = await call('POST', `/reels/${reel.id}/comments`, { token: boss.token, body: { body: 'Nice' } });
     assert.equal(c.status, 201);
     const list = await call('GET', `/reels/${reel.id}/comments`, { token: amy.token });
-    assert.deepEqual(list.body.comments.map((x) => x.body), ['Nice']);
-    assert.equal(list.body.comments[0].canDelete, false);
+    assert.deepEqual(list.body.comments.map((x) => x.body), ['hi', 'Nice']);
+    assert.equal(list.body.comments[0].canDelete, true, 'your own comment');
+    assert.equal(list.body.comments[1].canDelete, false);
     const one = (await call('GET', `/reels/${reel.id}`, { token: boss.token })).body.reel;
     assert.equal(one.liked, true);
-    assert.equal(one.comments, 1);
+    assert.equal(one.comments, 2);
     const profile = (await call('GET', `/users/${boss.id}`, { token: amy.token })).body.user;
     assert.deepEqual(profile.stats, { friends: 0, reels: 1, likes: 1 });
   });

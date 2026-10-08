@@ -32,7 +32,7 @@ Photos taken in KoolKat are called **Klicks**.
   - 📱 **TikTok**: a full-screen feed you swipe up through, one post per screen. The @username above the title opens their profile; *...more* shows the whole title and text; ❤️ likes the post (with a count) and ⭐ saves it to **Favorite Articles** (*Favorites → Favorite Articles*, separate from Favorite Klicks). Videos play muted while they're on screen; tap for sound.
 - **Profiles and profile pictures.** Tap your picture in *Profile* to choose one from your gallery (cropped to a square), or *Remove picture*. It shows everywhere your name does. Tapping someone's name in News opens their profile (picture, badge, flair, admin tag, when they joined, and *Add friend* or *Message*). Admins can reset a profile picture in *Admin tools*.
 - **Home.** KoolKat opens on Home, laid out like YouTube: chips (All, Reels, News, Friends, ⭐ Favorites), your friends, a shelf of the newest KoolKat Reels, and News as big cards. A tab bar at the bottom has Home, Reels, the Camera, Klicks and Chats; the camera screen is now just the camera.
-- **KoolKat Reels** 🎬. Short videos, like TikTok: swipe up through them full screen, tap to pause, double-tap to heart, and open comments, share or mute from the side. Everyone can watch; posting (up to 100 MB and 3 minutes, 20 a day), hearts and comments are part of KoolKat Unlimited. Reels are public to everyone on KoolKat (not end-to-end encrypted). You (or an admin) can delete a Reel, and you can delete comments on your Reels.
+- **KoolKat Reels** 🎬. Short videos, like TikTok: swipe up through them full screen, tap to pause, double-tap to heart, and open comments, share or mute from the side. Everyone can watch, heart and comment; posting (up to 100 MB and 3 minutes, 20 a day) is part of KoolKat Unlimited. Reels are public to everyone on KoolKat (not end-to-end encrypted). You (or an admin) can delete a Reel, and you can delete comments on your Reels.
 - **Profile pages.** Everyone has a profile page like TikTok's: their name, picture, @username, Friends, Reels and Likes counts, Message / Call / Add friend buttons, social links and a grid of their Reels. On your own page, *Edit profile* opens your settings.
 - **Verified badge.** The owner (zalith9) can give any account a blue verified tick in *Admin tools → Verified accounts*, and take it away again. It shows next to their name everywhere, before the Kool badge.
 - **Social links.** Anyone can add their YouTube, Instagram, TikTok, Facebook, X (Twitter) and Linktree in *Profile → 🔗 Social links*, as a username or a link. They show as round buttons on your profile that open your pages. Links are checked on the server and can only point to that site.
@@ -322,9 +322,9 @@ All endpoints are under `/api` and take and return JSON. Authenticated endpoints
 | POST | `/reels/upload` | Unlimited: upload a video or its thumbnail (raw bytes) |
 | POST | `/reels` | Unlimited: post a Reel (`videoId, posterId, caption`) |
 | GET / DELETE | `/reels/:id` | One Reel / delete it (author or admin) |
-| POST / DELETE | `/reels/:id/like` | Unlimited: heart / unheart |
+| POST / DELETE | `/reels/:id/like` | Heart / unheart |
 | POST | `/reels/:id/view` | Count a view (once per person) |
-| GET / POST | `/reels/:id/comments` | Comments / comment (Unlimited) |
+| GET / POST | `/reels/:id/comments` | Comments / comment |
 | DELETE | `/reels/comments/:id` | Delete a comment (its author, the Reel's author or an admin) |
 | POST | `/me/socials` | Save social links (`youtube, instagram, tiktok, facebook, x, linktree`; a username or link, `''` removes it) |
 | POST / DELETE | `/me/birthday` | `month, day, timeZone` (or `skip`) / remove your birthday |

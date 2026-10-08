@@ -1416,11 +1416,8 @@ async function openComments(p, onChange, kind = 'news') {
 async function loadComments() {
   const p = comments.post;
   try {
-    const { comments: list, canComment } = await api('GET', `/${comments.kind}/${p.id}/comments`);
+    const { comments: list } = await api('GET', `/${comments.kind}/${p.id}/comments`);
     if (comments.post !== p) return;
-    // Commenting on Reels is part of KoolKat Unlimited.
-    $('comment-form').hidden = canComment === false;
-    $('comments-locked').hidden = canComment !== false;
     p.comments = list.length;
     comments.onChange?.();
     $('comments-empty').hidden = list.length > 0;
@@ -4090,8 +4087,8 @@ function renderHomeFriends() {
 }
 
 // ---------- KoolKat Reels ----------
-// A full-screen feed you swipe up through, like TikTok. Everyone can watch;
-// posting, hearts and comments are part of KoolKat Unlimited.
+// A full-screen feed you swipe up through, like TikTok. Everyone can watch,
+// heart and comment; posting is part of KoolKat Unlimited.
 const reels = { list: [], more: false, canPost: false, source: 'feed', observer: null, muted: false, loading: false, viewTimer: null };
 
 async function openReels({ list = null, start = 0, source = 'feed' } = {}) {
@@ -4253,7 +4250,7 @@ function reelItem(r) {
       like.setAttribute('aria-pressed', String(r.liked));
       likeCount.textContent = compactNumber(r.likes);
     } catch (err) {
-      toast(err.status === 403 ? '♥ Hearts on Reels are part of KoolKat Unlimited' : err.message, { error: true });
+      toast(err.message, { error: true });
     }
   };
   like.addEventListener('click', () => toggleLike());
