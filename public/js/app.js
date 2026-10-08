@@ -27,6 +27,7 @@ import { checkActive, initCalls, startCall, startCallEvents, stopCallEvents, usi
 import { playNotification, setSoundsOn, soundsOn } from './sounds.js';
 import { createKatWordle } from './wordle.js';
 import { focusFirst, initInput } from './input.js';
+import { createKatEscape } from './escape.js';
 import { RACERS as KART_RACERS, createKatKart, formatRaceTime } from './kart.js';
 
 const $ = (id) => document.getElementById(id);
@@ -181,6 +182,7 @@ function show(name) {
     for (const video of document.querySelectorAll('#screen-news video')) video.pause();
   }
   if (state.screen === 'reels' && name !== 'reels') pauseReels();
+  if (state.screen === 'escape' && name !== 'escape') katEscape.stop();
   if (state.screen === 'kart' && name !== 'kart') {
     katKart.stop();
     leaveKartRoom();
@@ -5303,6 +5305,8 @@ function openPlayables() {
   const best = readJson(KART_BEST);
   $('kart-best').textContent = [best && `🏆 Best: ${ordinalPlace(best.place)} in ${formatRaceTime(best.time)}`, `🤖 Bots: level ${kartLevel()}`].filter(Boolean).join(' · ');
   const stats = readJson(WORDLE_STATS);
+  const escapeBest = katEscape.best();
+  $('escape-best').textContent = escapeBest ? `🏃 Best: ${escapeBest.toLocaleString()} points` : '';
   $('wordle-best').textContent = stats?.played ? `🔥 Streak ${stats.streak} · ${stats.wins}/${stats.played} won` : '';
 }
 $('chip-playables').addEventListener('click', openPlayables);
@@ -5310,10 +5314,39 @@ document.addEventListener('click', (e) => {
   const card = e.target.closest('[data-play]');
   if (!card) return;
   if (card.dataset.play === 'kart') openKartMenu();
+  else if (card.dataset.play === 'escape') openEscape();
   else openWordle();
 });
 
 const ordinalPlace = (n) => `${n}${n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'}`;
+
+// KatEscape
+const katEscape = createKatEscape({
+  canvas: $('escape-canvas'),
+  score: $('escape-score'),
+  bolts: $('escape-bolts'),
+  boost: $('escape-boost'),
+  alert: $('escape-alert'),
+  hint: $('escape-hint'),
+  over: $('escape-over'),
+  onOver: ({ score, bolts, distance, best, newBest, reason }) => {
+    $('escape-over-title').textContent = reason === 'caught' ? '🚓 The cop caught you!' : '💥 Crashed into a train!';
+    $('escape-final').textContent = `${score.toLocaleString()} points`;
+    $('escape-over-detail').textContent = `${distance.toLocaleString()} m · ⚡ ${bolts.toLocaleString()} bolts · ${newBest ? '🏆 New best!' : `Best: ${best.toLocaleString()}`}`;
+    $('escape-over').hidden = false;
+    focusFirst();
+  },
+});
+function openEscape() {
+  if (!audioEl.paused) audioEl.pause();
+  show('escape');
+  katEscape.start().catch((err) => toast(err.message, { error: true }));
+}
+$('btn-escape-quit').addEventListener('click', async () => {
+  if (!katEscape.running || (await askConfirm('Stop running?', { ok: 'Stop' }))) openPlayables();
+});
+$('btn-escape-exit').addEventListener('click', openPlayables);
+$('btn-escape-again').addEventListener('click', () => katEscape.start());
 
 // Kat Wordle
 const katWordle = createKatWordle({ board: $('kw-board'), keyboard: $('kw-keyboard'), message: $('kw-message'), result: $('kw-result'), hints: $('kw-hints') });
@@ -5578,6 +5611,7 @@ document.addEventListener('keydown', (e) => {
   }
   if (state.screen === 'wordle') katWordle.onKey(e);
   else if (state.screen === 'kart') katKart.keyDown(e);
+  else if (state.screen === 'escape' && katEscape.running) katEscape.keyDown(e);
 });
 document.addEventListener('keyup', (e) => {
   if (state.screen === 'kart') katKart.keyUp(e);

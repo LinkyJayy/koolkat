@@ -125,6 +125,7 @@
         <h3 class="shelf-title"><svg viewBox="0 0 24 24" aria-hidden="true" class="pad-icon"><path d="M7 7h10a5 5 0 0 1 4.9 6l-1 4.6a2.5 2.5 0 0 1-4.3 1.2L14.2 16H9.8l-2.4 2.8a2.5 2.5 0 0 1-4.3-1.2l-1-4.6A5 5 0 0 1 7 7Zm-.5 3v1.5H5V13h1.5v1.5H8V13h1.5v-1.5H8V10H6.5Zm9 1a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm2.5-1.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/></svg>KoolKat Playables</h3>
         <div class="shelf-row playables-row">
           <button type="button" class="playable-card kart-card" data-play="kart"><img src="icons/kat-kart.png" alt=""><span class="playable-name">Kat Kart</span><span class="playable-sub">Race friends or bots</span></button>
+          <button type="button" class="playable-card escape-card" data-play="escape"><img src="icons/escape-cat.png" alt="" class="pixel"><span class="playable-name">KatEscape</span><span class="playable-sub">Run from the cop</span></button>
           <button type="button" class="playable-card wordle-card" data-play="wordle"><span class="wordle-art" aria-hidden="true"><b class="c">K</b><b class="p">A</b><b class="a">T</b><b class="c">S</b><b class="a">!</b></span><span class="playable-name">Kat Wordle</span><span class="playable-sub">Guess the word in 6 tries</span></button>
         </div>
       </section>
@@ -203,6 +204,12 @@
         <span class="playable-sub">Race your friends online, or bots that get better as you do. Hold the left or right side of the screen to steer.</span>
         <span class="playable-best" id="kart-best"></span>
       </button>
+      <button type="button" class="playable-card big escape-card" data-play="escape">
+        <img src="icons/escape-cat.png" alt="" class="pixel">
+        <span class="playable-name">KatEscape</span>
+        <span class="playable-sub">Run down the tracks, dodge trains and barriers, grab bolts and get away from the cop. Swipe (or arrows / WASD / D-pad) to move, jump and roll.</span>
+        <span class="playable-best" id="escape-best"></span>
+      </button>
       <button type="button" class="playable-card big wordle-card" data-play="wordle">
         <span class="wordle-art" aria-hidden="true"><b class="c">K</b><b class="p">A</b><b class="a">T</b><b class="c">S</b><b class="a">!</b></span>
         <span class="playable-name">Kat Wordle</span>
@@ -243,6 +250,40 @@
       <div class="row">
         <button type="button" class="btn" id="btn-kart-exit">Back to Playables</button>
         <button type="button" class="btn primary" id="btn-kart-again">Race again</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- KatEscape -->
+  <section id="screen-escape" class="screen escape-screen" hidden>
+    <div class="escape-stage">
+      <canvas id="escape-canvas" width="160" height="300" aria-label="KatEscape"></canvas>
+      <div class="escape-hud">
+        <button type="button" class="icon-btn" id="btn-escape-quit" aria-label="Quit">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12Z"/></svg>
+        </button>
+        <div class="escape-scores">
+          <strong id="escape-score">0</strong>
+          <span class="escape-bolts"><img src="icons/powerups/thunder.png" alt="Bolts"><span id="escape-bolts">0</span></span>
+        </div>
+        <div class="escape-boost" id="escape-boost" hidden><img alt=""><span class="escape-boost-bar"><span></span></span></div>
+      </div>
+      <div class="kart-alert" id="escape-alert" hidden></div>
+      <div class="escape-hint" id="escape-hint">
+        <img src="icons/escape-cat.png" alt="" class="pixel">
+        <strong>Tap to run!</strong>
+        <span>Swipe ← → to switch lanes, ↑ to jump, ↓ to roll.<br>Keyboard: arrows or WASD. Controller: D-pad / stick, A jump, B roll.</span>
+        <span>Follow the bolts ⚡ · every 100 = Double Speed, every 500 = Triple Speed</span>
+      </div>
+      <div class="escape-over" id="escape-over" data-modal hidden>
+        <img src="icons/escape-cop.png" alt="" class="pixel">
+        <h2 id="escape-over-title">Caught!</h2>
+        <p class="escape-final" id="escape-final"></p>
+        <p class="fineprint" id="escape-over-detail"></p>
+        <div class="row">
+          <button type="button" class="btn" id="btn-escape-exit">Back to Playables</button>
+          <button type="button" class="btn primary" id="btn-escape-again">Run again</button>
+        </div>
       </div>
     </div>
   </section>

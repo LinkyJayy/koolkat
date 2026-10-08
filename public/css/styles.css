@@ -2489,3 +2489,48 @@ dialog.player-dialog {
 }
 .kart-alert[hidden] { display: none; }
 .kart-alert img { width: 32px; height: 32px; image-rendering: pixelated; }
+
+/* ---------- KatEscape ---------- */
+img.pixel { image-rendering: pixelated; }
+.escape-card { background: linear-gradient(160deg, #ff9e6d, #7a4c6e); }
+.escape-card img { object-fit: contain; padding: 10%; }
+.escape-screen { background: #000; color: #fff; }
+.escape-stage { position: relative; flex: 1; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+#escape-canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
+.escape-hud { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: flex-start; gap: 10px; padding: calc(10px + var(--safe-top)) 10px 0; pointer-events: none; }
+.escape-hud > * { pointer-events: auto; }
+.escape-scores { display: flex; flex-direction: column; margin-left: auto; align-items: flex-end; font-weight: 900; text-shadow: 0 2px 0 #000; }
+.escape-scores strong { font-size: 30px; font-variant-numeric: tabular-nums; -webkit-text-stroke: 1px #000; }
+.escape-bolts { display: inline-flex; align-items: center; gap: 4px; font-size: 18px; }
+.escape-bolts img { width: 24px; height: 24px; image-rendering: pixelated; }
+.escape-boost { position: absolute; top: calc(90px + var(--safe-top)); right: 10px; display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 10px; background: rgba(0,0,0,0.5); }
+.escape-boost[hidden] { display: none; }
+.escape-boost img { width: 32px; height: 32px; image-rendering: pixelated; }
+.escape-boost-bar { width: 70px; height: 8px; border-radius: 4px; background: rgba(255,255,255,0.3); overflow: hidden; }
+.escape-boost-bar span { display: block; height: 100%; background: #ffd400; }
+.escape-hint, .escape-over {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(88%, 360px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 18px;
+  border-radius: 18px;
+  background: rgba(0, 0, 0, 0.72);
+  text-align: center;
+  font-size: 14px;
+}
+.escape-hint { pointer-events: none; }
+.escape-hint[hidden], .escape-over[hidden] { display: none; }
+.escape-hint img, .escape-over img { width: 64px; height: auto; image-rendering: pixelated; }
+.escape-hint strong { font-size: 24px; }
+.escape-over { background: rgba(0, 0, 0, 0.85); }
+.escape-over h2 { margin: 4px 0 0; font-size: 24px; }
+.escape-final { margin: 0; font-size: 34px; font-weight: 900; color: #ffd400; }
+.escape-over .fineprint { color: rgba(255,255,255,0.8); }
+.escape-over .btn:not(.primary) { background: #fff; color: #0f172a; }
+@media (min-width: 760px) { .escape-screen { left: 0 !important; right: 0 !important; } }

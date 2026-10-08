@@ -37,7 +37,7 @@ const TRACK = [
 const BOOST_AT = [0.18, 0.43, 0.7, 0.9]; // boost pads, as a fraction of the way round
 const ITEM_ROWS_AT = [0.08, 0.3, 0.52, 0.78]; // rows of item boxes
 const ITEM_LANES = [-18, -6, 6, 18];
-const ITEM_RESPAWN = 3000;
+const ITEM_RESPAWN = 900; // boxes come back quickly, so the Kats behind get one too
 const ROULETTE = 1100; // the item spins this long before you get it
 
 /**
