@@ -58,6 +58,8 @@ describe('verified badges (owner only)', () => {
 describe('social media links', () => {
   test('handles and links become clean links to that site only', () => {
     assert.equal(socialLink('youtube', '@KoolKat'), 'https://www.youtube.com/@KoolKat');
+    assert.equal(socialLink('linktree', 'linktr.ee/koolkat'), 'https://linktr.ee/koolkat');
+    assert.equal(socialLink('linktree', '@koolkat'), 'https://linktr.ee/koolkat');
     assert.equal(socialLink('youtube', 'https://m.youtube.com/channel/UC123abc/'), 'https://www.youtube.com/channel/UC123abc');
     assert.equal(socialLink('instagram', 'kool.kat_'), 'https://www.instagram.com/kool.kat_');
     assert.equal(socialLink('instagram', 'instagram.com/koolkat?igsh=abc'), 'https://www.instagram.com/koolkat');

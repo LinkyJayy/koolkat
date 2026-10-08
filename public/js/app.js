@@ -147,10 +147,23 @@ function show(name) {
   if (state.screen === 'news' && name !== 'news') {
     for (const video of document.querySelectorAll('#screen-news video')) video.pause();
   }
+  if (state.screen === 'reels' && name !== 'reels') pauseReels();
   for (const s of document.querySelectorAll('.screen')) s.hidden = s.id !== `screen-${name}`;
   state.screen = name;
+  // The tab bar (Home, Reels, Camera, Klicks, Chats) shows on the main screens.
+  const tabbed = TAB_SCREENS.has(name);
+  $('tabbar').hidden = !tabbed;
+  $('tabbar').classList.toggle('dark', name === 'reels');
+  document.body.classList.toggle('has-tabbar', tabbed);
+  for (const tab of document.querySelectorAll('[data-tab-screen]')) {
+    const on = tab.dataset.tabScreen === name;
+    tab.classList.toggle('active', on);
+    if (on) tab.setAttribute('aria-current', 'page');
+    else tab.removeAttribute('aria-current');
+  }
   if (name === 'camera') startCamera();
 }
+const TAB_SCREENS = new Set(['home', 'reels', 'inbox', 'chats']);
 
 document.addEventListener('click', (e) => {
   const back = e.target.closest('[data-back]');
@@ -158,6 +171,7 @@ document.addEventListener('click', (e) => {
   // Going back to the chat list reloads it (new messages, order, BFF pins).
   if (back.dataset.back === 'chats') openChats();
   else if (back.dataset.back === 'friends') openFriends();
+  else if (back.dataset.back === 'home') openHome();
   else show(back.dataset.back);
 });
 
@@ -292,7 +306,7 @@ setUnauthorizedHandler(() => {
 
 function enterApp() {
   fillAvatar($('my-avatar'), state.me);
-  show('camera');
+  openHome();
   refresh();
   clearInterval(state.pollTimer);
   state.pollTimer = setInterval(() => {
@@ -332,7 +346,9 @@ function openView(view) {
   else if (view === 'friends') openFriends();
   else if (view === 'chats') openChats();
   else if (view === 'news') openNews();
-  else if (state.screen !== 'camera') show('camera');
+  else if (view === 'reels') openReels();
+  else if (view === 'camera') show('camera');
+  else if (state.screen !== 'home') openHome();
 }
 
 // ---------- data ----------
@@ -384,6 +400,11 @@ async function refresh() {
       if ($('search-input').value.trim()) runSearch();
     }
     if (state.screen === 'inbox' && state.inboxTab === 'received') renderInbox();
+    if (state.screen === 'home') {
+      renderHomeKlicks();
+      renderHomeFriends();
+      if (home.chip === 'all') $('home-friends-shelf').hidden = !state.friends.length;
+    }
   } catch {
     /* offline; try again on the next tick */
   }
@@ -1033,12 +1054,13 @@ try {
   // Private mode: start in Formal.
 }
 
-function openNews() {
+function openNews(focus = null) {
   show('news');
+  news.focus = typeof focus === 'number' ? focus : null;
   renderNewsMode();
   loadNews();
 }
-$('btn-news').addEventListener('click', openNews);
+$('btn-news').addEventListener('click', () => openNews());
 
 async function loadNews() {
   try {
@@ -1046,6 +1068,12 @@ async function loadNews() {
     news.posts = posts;
     news.canPost = canPost;
     renderNews();
+    if (news.focus != null) {
+      const i = posts.findIndex((p) => p.id === news.focus);
+      const target = news.mode === 'tiktok' ? $('news-feed').children[i] : document.querySelector(`#news-list [data-post="${news.focus}"]`);
+      target?.scrollIntoView({ block: 'start' });
+      news.focus = null;
+    }
     await api('POST', '/news/seen');
     $('badge-news').hidden = true;
   } catch (err) {
@@ -1185,7 +1213,7 @@ function adminButtons(p) {
 
 // ---------- Formal: like a newspaper article ----------
 function formalArticle(p, { saved = false } = {}) {
-  const node = el('li', { class: 'news-post article' });
+  const node = el('li', { class: 'news-post article', 'data-post': String(p.id) });
   const draw = () =>
     node.replaceChildren(
       ...nodes(
@@ -1363,7 +1391,7 @@ function pollBox(p, redraw) {
 }
 
 // ---------- comments ----------
-const comments = { post: null, onChange: null };
+const comments = { post: null, onChange: null, kind: 'news' };
 
 function commentsButton(p, cls, onChange) {
   return el(
@@ -1374,10 +1402,11 @@ function commentsButton(p, cls, onChange) {
   );
 }
 
-async function openComments(p, onChange) {
+async function openComments(p, onChange, kind = 'news') {
   comments.post = p;
   comments.onChange = onChange;
-  $('comments-title').textContent = `Comments on “${p.title}”`;
+  comments.kind = kind;
+  $('comments-title').textContent = kind === 'reels' ? 'Comments' : `Comments on “${p.title}”`;
   $('comment-list').replaceChildren();
   $('comments-empty').hidden = true;
   $('dialog-comments').showModal();
@@ -1387,8 +1416,11 @@ async function openComments(p, onChange) {
 async function loadComments() {
   const p = comments.post;
   try {
-    const { comments: list } = await api('GET', `/news/${p.id}/comments`);
+    const { comments: list, canComment } = await api('GET', `/${comments.kind}/${p.id}/comments`);
     if (comments.post !== p) return;
+    // Commenting on Reels is part of KoolKat Unlimited.
+    $('comment-form').hidden = canComment === false;
+    $('comments-locked').hidden = canComment !== false;
     p.comments = list.length;
     comments.onChange?.();
     $('comments-empty').hidden = list.length > 0;
@@ -1412,11 +1444,11 @@ async function loadComments() {
               ? el('button', {
                   type: 'button',
                   class: 'link-btn comment-delete',
-                  text: c.mine ? 'Delete' : 'Delete (admin)',
+                  text: c.mine || comments.kind === 'reels' ? 'Delete' : 'Delete (admin)',
                   onclick: async () => {
                     if (!confirm('Delete this comment?')) return;
                     try {
-                      await api('DELETE', `/news/comments/${c.id}`);
+                      await api('DELETE', `/${comments.kind}/comments/${c.id}`);
                       await loadComments();
                     } catch (err) {
                       toast(err.message, { error: true });
@@ -1446,7 +1478,7 @@ $('comment-form').addEventListener('submit', async (e) => {
   const body = input.value.trim();
   if (!body || !comments.post) return;
   await withBusy($('btn-comment-send'), async () => {
-    await api('POST', `/news/${comments.post.id}/comments`, { body });
+    await api('POST', `/${comments.kind}/${comments.post.id}/comments`, { body });
     input.value = '';
     input.style.height = 'auto';
     await loadComments();
@@ -2204,6 +2236,10 @@ async function openFriend(friend) {
     .catch(() => {});
   dialog.returnValue = '';
   dialog.onclose = () => {
+    if (dialog.returnValue === 'profile') {
+      openUserProfile(friend.id);
+      return;
+    }
     if (dialog.returnValue === 'message') {
       startDirectChat(friend.id).catch((err) => toast(err.message, { error: true }));
       return;
@@ -2262,7 +2298,8 @@ $('btn-avatar-remove').addEventListener('click', async () => {
   }
 });
 
-$('btn-profile').addEventListener('click', async () => {
+// Your settings (plan, perks, notifications…), from "Edit profile" on your profile page.
+async function openProfileSettings() {
   const dialog = $('dialog-profile');
   renderMyAvatar();
   $('profile-username').textContent = `@${state.me.username}`;
@@ -2284,9 +2321,11 @@ $('btn-profile').addEventListener('click', async () => {
   dialog.returnValue = '';
   dialog.onclose = () => {
     if (dialog.returnValue === 'logout') logout();
+    else if (state.screen === 'user' && userPage.user?.relationship === 'you') openUserProfile(state.me.userId);
   };
   dialog.showModal();
-});
+}
+$('btn-profile').addEventListener('click', () => openUserProfile(state.me.userId));
 
 // ---------- KoolKat Unlimited ----------
 async function refreshMe() {
@@ -3771,12 +3810,18 @@ $('btn-sounds').addEventListener('click', () => {
   if (soundsOn()) playNotification();
 });
 
-// ---------- someone's profile ----------
+// ---------- profile pages (yours and everyone else's) ----------
+const userPage = { user: null, reels: [], from: 'home' };
+
+/** 1234 → "1,234"; 15300 → "15.3K"; 1100000 → "1.1M". */
+function compactNumber(n) {
+  if (n < 10000) return n.toLocaleString();
+  const [value, unit] = n >= 1e6 ? [n / 1e6, 'M'] : [n / 1e3, 'K'];
+  return `${value >= 100 ? Math.round(value) : Math.round(value * 10) / 10}${unit}`;
+}
+
 async function openUserProfile(userId) {
-  if (userId === state.me.userId) {
-    $('btn-profile').click();
-    return;
-  }
+  const from = state.screen === 'user' ? userPage.from : state.screen || 'home';
   let user;
   try {
     ({ user } = await api('GET', `/users/${userId}`));
@@ -3784,30 +3829,666 @@ async function openUserProfile(userId) {
     toast(err.message, { error: true });
     return;
   }
-  const dialog = $('dialog-user');
-  fillAvatar($('user-avatar'), user);
-  $('user-name').replaceChildren(...nodes(user.displayName, badgeImg(user)));
-  $('user-username').textContent = `@${user.username}`;
-  $('user-admin').hidden = !user.isAdmin;
-  $('user-flair').textContent = user.flair || '';
-  $('user-flair').hidden = !user.flair;
-  showActivity($('user-activity'), user.activity);
-  $('user-joined').textContent = `On KoolKat since ${formatDate(user.joinedAt)}`;
-  renderSocials($('user-socials'), user.socials);
-  const friend = state.friends.find((f) => f.id === user.id);
-  const close = () => dialog.close();
-  const actions = {
-    friends: [
-      el('button', { type: 'button', class: 'btn primary', text: 'Message', onclick: () => { close(); startDirectChat(user.id).catch((err) => toast(err.message, { error: true })); } }),
-      friend && el('button', { type: 'button', class: 'btn', text: '📞 Call', onclick: () => { close(); startCall(friend, 'audio'); } }),
-    ],
-    none: [actionButton('Add friend', async () => { await addFriend(user); close(); })],
-    incoming: [actionButton('Accept friend request', async () => { await acceptFriend(user); close(); })],
-    outgoing: [el('button', { type: 'button', class: 'btn', disabled: true, text: 'Request sent' })],
-  }[user.relationship] ?? [];
-  $('user-actions').replaceChildren(...nodes(el('button', { class: 'btn', value: 'close', text: 'Close' }), ...actions));
-  dialog.showModal();
+  for (const d of document.querySelectorAll('dialog[open]')) d.close();
+  userPage.user = user;
+  userPage.from = from;
+  renderUserPage();
+  show('user');
+  $('screen-user').scrollTop = 0;
+  try {
+    const { reels: list } = await api('GET', `/reels?user=${user.id}&limit=50`);
+    if (userPage.user !== user) return;
+    userPage.reels = list;
+    renderReelGrid($('up-grid'), list, { source: 'user' });
+    $('up-empty').hidden = list.length > 0;
+  } catch (err) {
+    toast(err.message, { error: true });
+  }
 }
+
+function renderUserPage() {
+  const user = userPage.user;
+  const you = user.relationship === 'you';
+  if (you) Object.assign(user, { displayName: state.me.displayName, avatarUrl: state.me.avatarUrl });
+  $('up-title').replaceChildren(...nodes(user.displayName, badgeImg(user)));
+  fillAvatar($('up-avatar'), user);
+  $('up-username').textContent = `@${user.username}`;
+  $('up-marks').replaceChildren();
+  $('up-admin').hidden = !user.isAdmin;
+  $('up-flair').textContent = user.flair || '';
+  $('up-flair').hidden = !user.flair;
+  showActivity($('up-activity'), user.activity);
+  $('up-friends').textContent = compactNumber(user.stats?.friends ?? 0);
+  $('up-reels').textContent = compactNumber(user.stats?.reels ?? 0);
+  $('up-likes').textContent = compactNumber(user.stats?.likes ?? 0);
+  renderSocials($('up-socials'), user.socials);
+  $('up-joined').textContent = `On KoolKat since ${formatDate(user.joinedAt)}`;
+  $('up-grid').replaceChildren();
+  $('up-empty').hidden = true;
+  $('up-more').hidden = true;
+
+  const friend = state.friends.find((f) => f.id === user.id);
+  const more = (items) =>
+    el('button', {
+      type: 'button',
+      class: 'btn up-btn up-btn-more',
+      'aria-label': 'More',
+      'aria-expanded': 'false',
+      onclick: (e) => {
+        const menu = $('up-more');
+        menu.hidden = !menu.hidden;
+        e.currentTarget.setAttribute('aria-expanded', String(!menu.hidden));
+        menu.replaceChildren(...nodes(...items));
+      },
+      text: '▾',
+    });
+  const big = (text, onclick, cls = '') => el('button', { type: 'button', class: `btn up-btn ${cls}`, text, onclick: (e) => withBusy(e.currentTarget, onclick) });
+  const reload = () => openUserProfile(user.id);
+  const actions = {
+    you: [
+      big('Edit profile', openProfileSettings, 'primary'),
+      big('Share profile', async () => openMyQr()),
+      more([el('button', { type: 'button', class: 'btn small', text: '🔗 Social links', onclick: openSocials }), el('button', { type: 'button', class: 'btn small', text: '🎂 Birthday', onclick: openBirthday })]),
+    ],
+    friends: [
+      big('Message', () => startDirectChat(user.id), 'primary'),
+      big('📞 Call', async () => friend && startCall(friend, 'audio')),
+      more(
+        friend
+          ? [
+              el('button', { type: 'button', class: 'btn small', text: '📹 FaceTime', onclick: () => startCall(friend, 'video') }),
+              el('button', { type: 'button', class: 'btn small', text: '🔒 Friend details', onclick: () => openFriend(friend) }),
+            ]
+          : []
+      ),
+    ],
+    none: [big('Add friend', () => addFriend(user).then(reload), 'primary snap')],
+    incoming: [big('Accept friend request', () => acceptFriend(user).then(reload), 'primary snap')],
+    outgoing: [el('button', { type: 'button', class: 'btn up-btn', disabled: true, text: 'Request sent' })],
+  }[user.relationship] ?? [];
+  $('up-actions').replaceChildren(...actions);
+}
+
+$('btn-up-back').addEventListener('click', () => {
+  const to = userPage.from;
+  if (to === 'chats') openChats();
+  else if (to === 'friends') openFriends();
+  else if (to === 'home' || !to || to === 'user') openHome();
+  else show(to);
+});
+$('btn-up-share').addEventListener('click', async () => {
+  const user = userPage.user;
+  if (!user) return;
+  if (user.relationship === 'you') return openMyQr();
+  const text = `${user.displayName} (@${user.username}) is on KoolKat`;
+  try {
+    if (navigator.share) await navigator.share({ title: 'KoolKat', text, url: location.origin });
+    else {
+      await navigator.clipboard.writeText(`${text}: ${location.origin}`);
+      toast('Copied');
+    }
+  } catch {
+    // Share sheet closed.
+  }
+});
+
+/** A grid of Reel thumbnails (profiles, and Reels on Home). */
+function renderReelGrid(grid, list, { source }) {
+  grid.replaceChildren(
+    ...list.map((r, i) =>
+      el(
+        'button',
+        { type: 'button', class: 'reel-thumb', 'aria-label': r.caption || `Reel by @${r.author.username}`, onclick: () => openReels({ list, start: i, source }) },
+        reelPoster(r),
+        el('span', { class: 'reel-thumb-views', text: `▶ ${compactNumber(r.views)}` })
+      )
+    )
+  );
+}
+
+function reelPoster(r) {
+  if (r.poster) return el('img', { src: `${API_BASE}/api/${r.poster}`, alt: '', loading: 'lazy' });
+  return el('video', { src: `${API_BASE}/api/${r.video.url}#t=0.5`, muted: true, playsinline: true, preload: 'metadata' });
+}
+
+// ---------- Home ----------
+const home = { chip: 'all', reels: [], posts: [] };
+
+function openHome() {
+  show('home');
+  renderHomeFriends();
+  loadHome();
+}
+$('tab-home').addEventListener('click', () => {
+  if (state.screen === 'home') $('home-feed').scrollTo({ top: 0, behavior: 'smooth' });
+  openHome();
+});
+$('tab-camera').addEventListener('click', () => show('camera'));
+$('btn-camera-close').addEventListener('click', openHome);
+$('chip-favorites').addEventListener('click', openFavorites);
+$('home-klicks').addEventListener('click', openInbox);
+
+$('home-chips').addEventListener('click', (e) => {
+  const chip = e.target.closest('[data-chip]');
+  if (!chip) return;
+  home.chip = chip.dataset.chip;
+  renderHome();
+  $('home-feed').scrollTo({ top: 0 });
+});
+
+async function loadHome() {
+  const [reelsRes, newsRes] = await Promise.allSettled([api('GET', '/reels?limit=24'), api('GET', '/news')]);
+  if (reelsRes.status === 'fulfilled') home.reels = reelsRes.value.reels;
+  if (newsRes.status === 'fulfilled') home.posts = newsRes.value.posts;
+  renderHome();
+}
+
+function renderHome() {
+  const chip = home.chip;
+  for (const c of document.querySelectorAll('#home-chips [data-chip]')) {
+    const on = c.dataset.chip === chip;
+    c.classList.toggle('active', on);
+    c.setAttribute('aria-selected', String(on));
+  }
+  const showSection = (id, kinds) => ($(id).hidden = !kinds.includes(chip));
+  showSection('home-reels-shelf', ['all', 'reels']);
+  showSection('home-news-section', ['all', 'news']);
+  showSection('home-friends-shelf', ['all', 'friends']);
+  if (chip === 'all' && !state.friends.length) $('home-friends-shelf').hidden = true;
+
+  renderHomeKlicks();
+
+  // Reels: a shelf you swipe sideways on All, a grid on Reels.
+  const grid = chip === 'reels';
+  $('home-reels').hidden = grid;
+  $('home-reels-grid').hidden = !grid;
+  $('home-reels-empty').hidden = home.reels.length > 0;
+  if (grid) renderReelGrid($('home-reels-grid'), home.reels, { source: 'home' });
+  else {
+    $('home-reels').replaceChildren(
+      ...home.reels.map((r, i) =>
+        el(
+          'button',
+          { type: 'button', class: 'shelf-reel', onclick: () => openReels({ list: home.reels, start: i, source: 'home' }) },
+          el('span', { class: 'shelf-reel-poster' }, reelPoster(r)),
+          el('span', { class: 'shelf-reel-caption', text: r.caption || `@${r.author.username}` }),
+          el('span', { class: 'shelf-reel-meta', text: `${compactNumber(r.views)} view${r.views === 1 ? '' : 's'}` })
+        )
+      )
+    );
+  }
+
+  // News, as video-style cards.
+  $('home-news-empty').hidden = home.posts.length > 0;
+  $('home-news').replaceChildren(...home.posts.map(homeNewsCard));
+  if (chip === 'friends') renderHomeFriends();
+}
+
+/** "You have 3 new Klicks", when there are some. */
+function renderHomeKlicks() {
+  const unopened = state.inbox.filter((s) => !s.opened).length;
+  $('home-klicks').hidden = !unopened || !['all', 'friends'].includes(home.chip);
+  $('home-klicks').replaceChildren(
+    el('span', { class: 'home-klicks-dot' }),
+    el('span', { text: unopened === 1 ? '📬 You have a new Klick' : `📬 You have ${unopened} new Klicks` }),
+    el('span', { class: 'home-klicks-go', text: 'Open ›' })
+  );
+}
+
+function homeNewsCard(p) {
+  const open = () => openNews(p.id);
+  let thumb;
+  if (p.media?.kind === 'image') thumb = el('img', { src: `${API_BASE}/api/${p.media.url}`, alt: '', loading: 'lazy' });
+  else if (p.media?.kind === 'video') {
+    thumb = el('video', { src: `${API_BASE}/api/${p.media.url}#t=0.5`, muted: true, playsinline: true, preload: 'metadata' });
+  } else thumb = el('span', { class: 'home-card-title-art' }, el('img', { src: 'icons/logo.png', alt: '' }), el('span', { text: p.title }));
+  const details = [p.author ? `@${p.author.username}` : 'KoolKat', `${compactNumber(p.likes)} ♥`, timeAgo(p.createdAt)];
+  return el(
+    'article',
+    { class: 'home-card' },
+    el(
+      'button',
+      { type: 'button', class: 'home-card-thumb', 'aria-label': p.title, onclick: open },
+      thumb,
+      p.media?.kind === 'video' ? el('span', { class: 'home-card-play', text: '▶' }) : null,
+      p.poll ? el('span', { class: 'home-card-tag', text: '📊 Poll' }) : p.code ? el('span', { class: 'home-card-tag', text: '🎁 Code' }) : null
+    ),
+    el(
+      'div',
+      { class: 'home-card-info' },
+      p.author
+        ? el('button', { type: 'button', class: 'home-card-avatar', 'aria-label': `@${p.author.username}`, onclick: () => openUserProfile(p.author.id) }, avatar(p.author))
+        : el('span', { class: 'home-card-avatar' }, el('img', { src: 'icons/logo.png', alt: '', class: 'avatar' })),
+      el(
+        'button',
+        { type: 'button', class: 'home-card-text', onclick: open },
+        el('span', { class: 'home-card-headline', text: p.title }),
+        el('span', { class: 'home-card-meta' }, ...nodes(details.join(' · '), p.author && badgeImg(p.author)))
+      )
+    )
+  );
+}
+
+function renderHomeFriends() {
+  $('home-friends').replaceChildren(
+    ...state.friends.map((f) =>
+      el(
+        'button',
+        { type: 'button', class: 'home-friend', onclick: () => openUserProfile(f.id) },
+        el('span', { class: `home-friend-ring${f.streak?.count ? ' streak' : ''}` }, avatar(f)),
+        el('span', { class: 'home-friend-name', text: f.displayName }),
+        f.streak?.count ? el('span', { class: 'home-friend-streak', text: `🔥 ${f.streak.count}` }) : null
+      )
+    ),
+    el(
+      'button',
+      { type: 'button', class: 'home-friend', onclick: openFriends },
+      el('span', { class: 'home-friend-ring add' }, el('span', { class: 'avatar', text: '＋' })),
+      el('span', { class: 'home-friend-name', text: 'Add friends' })
+    )
+  );
+}
+
+// ---------- KoolKat Reels ----------
+// A full-screen feed you swipe up through, like TikTok. Everyone can watch;
+// posting, hearts and comments are part of KoolKat Unlimited.
+const reels = { list: [], more: false, canPost: false, source: 'feed', observer: null, muted: false, loading: false, viewTimer: null };
+
+async function openReels({ list = null, start = 0, source = 'feed' } = {}) {
+  show('reels');
+  reels.source = source;
+  $('btn-reels-back').hidden = source === 'feed';
+  $('reels-title').textContent = source === 'user' ? `@${userPage.user?.username ?? ''}` : 'KoolKat Reels';
+  if (list) {
+    reels.list = list.slice();
+    reels.more = source === 'home';
+    renderReels(start);
+  } else {
+    $('reels-feed').replaceChildren();
+    await loadReels();
+  }
+  if (!list || source === 'home') {
+    api('GET', '/reels?limit=1')
+      .then((r) => (reels.canPost = r.canPost))
+      .catch(() => {});
+  }
+}
+$('tab-reels').addEventListener('click', () => {
+  if (state.screen === 'reels' && reels.source === 'feed') {
+    $('reels-feed').scrollTo({ top: 0, behavior: 'smooth' });
+    return;
+  }
+  openReels();
+});
+$('btn-reels-back').addEventListener('click', () => {
+  if (reels.source === 'user' && userPage.user) show('user');
+  else openHome();
+});
+
+async function loadReels({ append = false } = {}) {
+  if (reels.loading) return;
+  reels.loading = true;
+  try {
+    const before = append ? reels.list.at(-1)?.id : null;
+    const data = await api('GET', `/reels?limit=10${before ? `&before=${before}` : ''}`);
+    reels.canPost = data.canPost;
+    reels.more = data.more;
+    if (append) {
+      const known = new Set(reels.list.map((r) => r.id));
+      const fresh = data.reels.filter((r) => !known.has(r.id));
+      reels.list.push(...fresh);
+      for (const r of fresh) {
+        const node = reelItem(r);
+        $('reels-feed').append(node);
+        reels.observer?.observe(node);
+      }
+    } else {
+      reels.list = data.reels;
+      renderReels(0);
+    }
+  } catch (err) {
+    toast(err.message, { error: true });
+  } finally {
+    reels.loading = false;
+  }
+}
+
+function renderReels(start) {
+  reels.observer?.disconnect();
+  const feed = $('reels-feed');
+  feed.replaceChildren(...reels.list.map(reelItem));
+  $('reels-empty').hidden = reels.list.length > 0;
+  reels.observer = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        const video = entry.target.querySelector('video');
+        if (entry.isIntersecting && entry.intersectionRatio > 0.6) playReel(entry.target, video);
+        else {
+          video.pause();
+          if (reels.viewing === entry.target) clearTimeout(reels.viewTimer);
+        }
+      }
+    },
+    { root: feed, threshold: [0, 0.6, 1] }
+  );
+  for (const item of feed.children) reels.observer.observe(item);
+  feed.children[start]?.scrollIntoView({ block: 'start' });
+}
+
+function playReel(item, video) {
+  video.muted = reels.muted;
+  video.play().catch(() => {
+    // The browser wants a tap before playing sound: play muted until then.
+    reels.muted = true;
+    video.muted = true;
+    updateMuteButtons();
+    video.play().catch(() => {});
+  });
+  // Count a view after a couple of seconds of watching.
+  reels.viewing = item;
+  clearTimeout(reels.viewTimer);
+  const reel = reels.list.find((r) => String(r.id) === item.dataset.reel);
+  reels.viewTimer = setTimeout(() => {
+    if (!reel || reel.viewed) return;
+    reel.viewed = true;
+    api('POST', `/reels/${reel.id}/view`)
+      .then(({ views }) => (reel.views = views))
+      .catch(() => {});
+  }, 2000);
+  // Nearly at the end: load more.
+  if (reels.more && reels.source !== 'user' && item === $('reels-feed').lastElementChild?.previousElementSibling) loadReels({ append: true });
+  if (reels.more && reels.source !== 'user' && item === $('reels-feed').lastElementChild) loadReels({ append: true });
+}
+
+function pauseReels() {
+  clearTimeout(reels.viewTimer);
+  for (const video of document.querySelectorAll('#reels-feed video')) video.pause();
+}
+
+function updateMuteButtons() {
+  for (const b of document.querySelectorAll('.reel-mute')) {
+    b.textContent = reels.muted ? '🔇' : '🔊';
+    b.setAttribute('aria-label', reels.muted ? 'Turn sound on' : 'Mute');
+  }
+}
+
+function heartIcon() {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('class', 'reel-heart');
+  svg.setAttribute('aria-hidden', 'true');
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', 'M12 21.4 10.6 20C5.4 15.4 2 12.3 2 8.5 2 5.4 4.4 3 7.5 3c1.7 0 3.4.8 4.5 2.1C13.1 3.8 14.8 3 16.5 3 19.6 3 22 5.4 22 8.5c0 3.8-3.4 6.9-8.6 11.5L12 21.4Z');
+  svg.append(path);
+  return svg;
+}
+
+function reelItem(r) {
+  const video = el('video', {
+    class: 'reel-video',
+    src: `${API_BASE}/api/${r.video.url}`,
+    poster: r.poster ? `${API_BASE}/api/${r.poster}` : null,
+    loop: true,
+    playsinline: true,
+    preload: 'metadata',
+  });
+  const paused = el('span', { class: 'reel-paused', text: '▶', hidden: true });
+  video.addEventListener('pause', () => (paused.hidden = false));
+  video.addEventListener('play', () => (paused.hidden = true));
+  const likeCount = el('span', { class: 'reel-count', text: compactNumber(r.likes) });
+  const like = el(
+    'button',
+    { type: 'button', class: `reel-action reel-like${r.liked ? ' on' : ''}`, 'aria-label': 'Heart', 'aria-pressed': String(r.liked) },
+    heartIcon(),
+    likeCount
+  );
+  const toggleLike = async (force) => {
+    const on = force ?? !r.liked;
+    if (on === r.liked) return;
+    try {
+      const res = await api(on ? 'POST' : 'DELETE', `/reels/${r.id}/like`);
+      r.liked = res.liked;
+      r.likes = res.likes;
+      like.classList.toggle('on', r.liked);
+      like.setAttribute('aria-pressed', String(r.liked));
+      likeCount.textContent = compactNumber(r.likes);
+    } catch (err) {
+      toast(err.status === 403 ? '♥ Hearts on Reels are part of KoolKat Unlimited' : err.message, { error: true });
+    }
+  };
+  like.addEventListener('click', () => toggleLike());
+  const commentCount = el('span', { class: 'reel-count', text: compactNumber(r.comments) });
+  const mute = el('button', { type: 'button', class: 'reel-action reel-mute', text: reels.muted ? '🔇' : '🔊' });
+  mute.addEventListener('click', () => {
+    reels.muted = !reels.muted;
+    for (const v of document.querySelectorAll('#reels-feed video')) v.muted = reels.muted;
+    updateMuteButtons();
+  });
+  const stage = el('div', { class: 'reel-stage' }, video, paused);
+  // Tap to pause; double-tap to heart.
+  let lastTap = 0;
+  let tapTimer = null;
+  stage.addEventListener('click', () => {
+    const now = Date.now();
+    if (now - lastTap < 300) {
+      clearTimeout(tapTimer);
+      lastTap = 0;
+      toggleLike(true);
+      const heart = el('span', { class: 'reel-burst', text: '♥' });
+      stage.append(heart);
+      setTimeout(() => heart.remove(), 800);
+      return;
+    }
+    lastTap = now;
+    tapTimer = setTimeout(() => {
+      if (reels.muted && !video.paused) {
+        reels.muted = false;
+        video.muted = false;
+        updateMuteButtons();
+      } else if (video.paused) video.play().catch(() => {});
+      else video.pause();
+    }, 300);
+  });
+  const caption = el('p', { class: 'reel-caption', text: r.caption });
+  caption.hidden = !r.caption;
+  caption.addEventListener('click', () => caption.classList.toggle('open'));
+  return el(
+    'article',
+    { class: 'reel', 'data-reel': String(r.id) },
+    stage,
+    el(
+      'div',
+      { class: 'reel-rail' },
+      el('button', { type: 'button', class: 'reel-author-pic', 'aria-label': `@${r.author.username}`, onclick: () => openUserProfile(r.author.id) }, avatar(r.author)),
+      like,
+      el(
+        'button',
+        {
+          type: 'button',
+          class: 'reel-action',
+          'aria-label': 'Comments',
+          onclick: () => openComments(r, () => (commentCount.textContent = compactNumber(r.comments)), 'reels'),
+        },
+        el('span', { class: 'reel-icon', text: '💬' }),
+        commentCount
+      ),
+      el(
+        'button',
+        { type: 'button', class: 'reel-action', 'aria-label': 'Share', onclick: () => shareReel(r) },
+        el('span', { class: 'reel-icon', text: '↗' }),
+        el('span', { class: 'reel-count', text: 'Share' })
+      ),
+      mute,
+      r.canDelete
+        ? el('button', { type: 'button', class: 'reel-action', 'aria-label': 'Delete Reel', onclick: () => deleteReel(r) }, el('span', { class: 'reel-icon', text: '🗑' }))
+        : null
+    ),
+    el(
+      'div',
+      { class: 'reel-info' },
+      el(
+        'button',
+        { type: 'button', class: 'reel-author', onclick: () => openUserProfile(r.author.id) },
+        el('span', { text: `@${r.author.username}` }),
+        badgeImg(r.author),
+        el('span', { class: 'reel-time', text: ` · ${timeAgo(r.createdAt)}` })
+      ),
+      caption
+    )
+  );
+}
+
+async function shareReel(r) {
+  const text = r.caption ? `${r.caption} (a Reel by @${r.author.username} on KoolKat)` : `A Reel by @${r.author.username} on KoolKat`;
+  try {
+    if (navigator.share) await navigator.share({ title: 'KoolKat Reels', text, url: `${location.origin}/#reels` });
+    else {
+      await navigator.clipboard.writeText(`${text}: ${location.origin}/#reels`);
+      toast('Link copied');
+    }
+  } catch {
+    // Share sheet closed.
+  }
+}
+
+async function deleteReel(r) {
+  if (!confirm(r.mine ? 'Delete your Reel?' : `Delete this Reel by @${r.author.username}? (admin)`)) return;
+  try {
+    await api('DELETE', `/reels/${r.id}`);
+    reels.list = reels.list.filter((x) => x.id !== r.id);
+    home.reels = home.reels.filter((x) => x.id !== r.id);
+    userPage.reels = userPage.reels.filter((x) => x.id !== r.id);
+    document.querySelector(`#reels-feed [data-reel="${r.id}"]`)?.remove();
+    $('reels-empty').hidden = reels.list.length > 0;
+    toast('Reel deleted');
+  } catch (err) {
+    toast(err.message, { error: true });
+  }
+}
+
+// ---------- posting a Reel ----------
+const MAX_REEL_VIDEO = 100 * 1024 * 1024;
+const MAX_REEL_SECONDS = 3 * 60;
+const reelDraft = { file: null, url: null, duration: 0 };
+
+$('btn-reel-new').addEventListener('click', () => {
+  if (!reels.canPost) {
+    toast('🎬 Posting Reels is part of KoolKat Unlimited. Get it free in your profile!', { error: true });
+    return;
+  }
+  $('reel-file').click();
+});
+
+$('reel-file').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  if (!file.type.startsWith('video/')) return toast('Choose a video', { error: true });
+  if (file.size > MAX_REEL_VIDEO) return toast('Reels can be up to 100 MB', { error: true });
+  if (reelDraft.url) URL.revokeObjectURL(reelDraft.url);
+  reelDraft.file = file;
+  reelDraft.url = URL.createObjectURL(file);
+  const preview = $('reel-preview');
+  preview.src = reelDraft.url;
+  $('reel-caption').value = '';
+  $('dialog-reel-new').showModal();
+});
+
+function closeReelDraft() {
+  $('reel-preview').pause();
+  $('reel-preview').removeAttribute('src');
+  if (reelDraft.url) URL.revokeObjectURL(reelDraft.url);
+  reelDraft.file = null;
+  reelDraft.url = null;
+  $('dialog-reel-new').close();
+}
+$('btn-reel-cancel').addEventListener('click', closeReelDraft);
+
+/** A still from the video (JPEG), shown as the thumbnail on Home and profiles. */
+function reelThumbnail(url) {
+  return new Promise((resolve) => {
+    const video = document.createElement('video');
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = 'auto';
+    const done = (blob) => {
+      video.removeAttribute('src');
+      resolve(blob);
+    };
+    const timer = setTimeout(() => done(null), 8000);
+    video.addEventListener('loadedmetadata', () => {
+      reelDraft.duration = video.duration;
+      video.currentTime = Math.min(0.5, (video.duration || 1) / 2);
+    });
+    video.addEventListener('seeked', () => {
+      const scale = Math.min(1, 540 / Math.max(video.videoWidth, 1));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(video.videoWidth * scale);
+      canvas.height = Math.round(video.videoHeight * scale);
+      if (!canvas.width || !canvas.height) return done(null);
+      canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob((blob) => {
+        clearTimeout(timer);
+        done(blob);
+      }, 'image/jpeg', 0.8);
+    });
+    video.addEventListener('error', () => {
+      clearTimeout(timer);
+      done(null);
+    });
+    video.src = url;
+  });
+}
+
+/** Upload a file as raw bytes, with progress. */
+function uploadReelFile(blob, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${API_BASE}/api/reels/upload`);
+    xhr.setRequestHeader('authorization', `Bearer ${getToken()}`);
+    xhr.setRequestHeader('content-type', blob.type || 'application/octet-stream');
+    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress?.(e.loaded / e.total);
+    xhr.onload = () => {
+      let data = {};
+      try {
+        data = JSON.parse(xhr.responseText);
+      } catch {
+        // Not JSON: use the status below.
+      }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data);
+      else reject(new Error(data.error || `Upload failed (${xhr.status})`));
+    };
+    xhr.onerror = () => reject(new Error("Couldn't upload. Check your connection."));
+    xhr.send(blob);
+  });
+}
+
+$('reel-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!reelDraft.file) return;
+  await withBusy($('btn-reel-post'), async () => {
+    const poster = await reelThumbnail(reelDraft.url);
+    if (reelDraft.duration > MAX_REEL_SECONDS + 1) throw new Error('Reels can be up to 3 minutes long');
+    const bar = $('reel-upload-bar');
+    $('reel-upload-progress').hidden = false;
+    bar.style.width = '0%';
+    try {
+      const video = await uploadReelFile(reelDraft.file, (f) => (bar.style.width = `${Math.round(f * 100)}%`));
+      const thumb = poster ? await uploadReelFile(poster).catch(() => null) : null;
+      const { reel } = await api('POST', '/reels', { videoId: video.uploadId, posterId: thumb?.uploadId ?? null, caption: $('reel-caption').value });
+      closeReelDraft();
+      toast('🎬 Your Reel is up!');
+      reels.list = [reel, ...reels.list.filter((r) => r.id !== reel.id)];
+      home.reels = [reel, ...home.reels];
+      reels.source = 'feed';
+      $('btn-reels-back').hidden = true;
+      $('reels-title').textContent = 'KoolKat Reels';
+      renderReels(0);
+    } finally {
+      $('reel-upload-progress').hidden = true;
+    }
+  });
+});
 
 // ---------- social media links ----------
 const SOCIAL_SITES = [
@@ -3816,6 +4497,7 @@ const SOCIAL_SITES = [
   ['tiktok', 'TikTok'],
   ['facebook', 'Facebook'],
   ['x', 'X'],
+  ['linktree', 'Linktree'],
 ];
 
 /** A row of round social media buttons that open someone's pages. */

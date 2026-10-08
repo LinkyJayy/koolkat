@@ -31,8 +31,11 @@ Photos taken in KoolKat are called **Klicks**.
   - 📰 **Formal**: like reading a newspaper: serif headline, "By @username" byline with the date, the photo or video across the page, and a big first letter on longer articles.
   - 📱 **TikTok**: a full-screen feed you swipe up through, one post per screen. The @username above the title opens their profile; *...more* shows the whole title and text; ❤️ likes the post (with a count) and ⭐ saves it to **Favorite Articles** (*Favorites → Favorite Articles*, separate from Favorite Klicks). Videos play muted while they're on screen; tap for sound.
 - **Profiles and profile pictures.** Tap your picture in *Profile* to choose one from your gallery (cropped to a square), or *Remove picture*. It shows everywhere your name does. Tapping someone's name in News opens their profile (picture, badge, flair, admin tag, when they joined, and *Add friend* or *Message*). Admins can reset a profile picture in *Admin tools*.
+- **Home.** KoolKat opens on Home, laid out like YouTube: chips (All, Reels, News, Friends, ⭐ Favorites), your friends, a shelf of the newest KoolKat Reels, and News as big cards. A tab bar at the bottom has Home, Reels, the Camera, Klicks and Chats; the camera screen is now just the camera.
+- **KoolKat Reels** 🎬. Short videos, like TikTok: swipe up through them full screen, tap to pause, double-tap to heart, and open comments, share or mute from the side. Everyone can watch; posting (up to 100 MB and 3 minutes, 20 a day), hearts and comments are part of KoolKat Unlimited. Reels are public to everyone on KoolKat (not end-to-end encrypted). You (or an admin) can delete a Reel, and you can delete comments on your Reels.
+- **Profile pages.** Everyone has a profile page like TikTok's: their name, picture, @username, Friends, Reels and Likes counts, Message / Call / Add friend buttons, social links and a grid of their Reels. On your own page, *Edit profile* opens your settings.
 - **Verified badge.** The owner (zalith9) can give any account a blue verified tick in *Admin tools → Verified accounts*, and take it away again. It shows next to their name everywhere, before the Kool badge.
-- **Social links.** Anyone can add their YouTube, Instagram, TikTok, Facebook and X (Twitter) in *Profile → 🔗 Social links*, as a username or a link. They show as round buttons on your profile that open your pages. Links are checked on the server and can only point to that site.
+- **Social links.** Anyone can add their YouTube, Instagram, TikTok, Facebook, X (Twitter) and Linktree in *Profile → 🔗 Social links*, as a username or a link. They show as round buttons on your profile that open your pages. Links are checked on the server and can only point to that site.
 - **Installable app (PWA).** KoolKat installs like a normal app, with its own icon, full screen and no browser bars. On Android and desktop, use *Profile → Install KoolKat*. On iPhone, use Safari's *Share → Add to Home Screen*. Long-press the icon for shortcuts to the camera, Klicks and Chats. It opens even offline, and when a new version is deployed it shows *"A new version of KoolKat is ready → Reload"*.
 - **Emojis.** 😺 iPhones, iPads and Macs show Apple's own emojis. Everyone else (Android, Windows, Linux) sees the newest Android emojis: Google's **Android 17 "Noto 3D"** designs, including the Unicode 17 ones, even on older phones. The emoji font is split into pieces and each device only downloads the ones it shows (most pieces are 20–900 KB; people, hands and skin tones together are about 5 MB, downloaded the first time one appears, then kept). Browsers that can't draw the 3D format (e.g. Firefox) get the previous flat Android designs. (Apple's emoji font can't be included: Apple only licenses it for its own devices.)
 - **Birthdays.** 🎉 shows next to your name on your birthday. After signing up (or the first sign-in with this version) KoolKat asks for your birthday: just the month and day, never the year, and only to show the 🎉; nobody sees the date itself. You can skip it, and change or remove it any time with *Profile → Birthday*. It follows your time zone, and 29 February birthdays are celebrated on the 28th in other years.
@@ -213,6 +216,7 @@ server/
   customize.js  Unlimited app icons, custom badges, BFFs, per-icon manifest
   social.js     QR friend codes, Nearby, Activity Bubbles, chat themes
   katmap.js     Kat Map sharing settings and friends' locations
+  reels.js      KoolKat Reels: videos, hearts, views and comments
   socials.js    Social media links: turns a username or link into a safe link to that site
   calls.js      Calls and FaceTime: ringing, answering, passing encrypted call setup between phones
   chats.js      direct and group chats (end-to-end encrypted messages)
@@ -314,7 +318,15 @@ All endpoints are under `/api` and take and return JSON. Authenticated endpoints
 | DELETE | `/admin/admins/:username` | Owner: remove an admin |
 | GET / POST | `/admin/verified` | Owner: list verified accounts / verify someone (`username`) |
 | DELETE | `/admin/verified/:username` | Owner: remove someone's verified badge |
-| POST | `/me/socials` | Save social links (`youtube, instagram, tiktok, facebook, x`; a username or link, `''` removes it) |
+| GET | `/reels` | Reels, newest first (`?user=ID`, `?before=ID`, `?limit=`) and whether you can post |
+| POST | `/reels/upload` | Unlimited: upload a video or its thumbnail (raw bytes) |
+| POST | `/reels` | Unlimited: post a Reel (`videoId, posterId, caption`) |
+| GET / DELETE | `/reels/:id` | One Reel / delete it (author or admin) |
+| POST / DELETE | `/reels/:id/like` | Unlimited: heart / unheart |
+| POST | `/reels/:id/view` | Count a view (once per person) |
+| GET / POST | `/reels/:id/comments` | Comments / comment (Unlimited) |
+| DELETE | `/reels/comments/:id` | Delete a comment (its author, the Reel's author or an admin) |
+| POST | `/me/socials` | Save social links (`youtube, instagram, tiktok, facebook, x, linktree`; a username or link, `''` removes it) |
 | POST / DELETE | `/me/birthday` | `month, day, timeZone` (or `skip`) / remove your birthday |
 | POST / DELETE | `/me/avatar` | `image` (square JPEG, base64): set / remove your profile picture |
 | GET | `/news/media/:id` | A post's photo or video |

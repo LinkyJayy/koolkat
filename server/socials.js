@@ -8,6 +8,7 @@ export const SOCIALS = {
   instagram: { name: 'Instagram', home: 'www.instagram.com', at: false, hosts: ['instagram.com', 'www.instagram.com'] },
   tiktok: { name: 'TikTok', home: 'www.tiktok.com', at: true, hosts: ['tiktok.com', 'www.tiktok.com', 'm.tiktok.com'] },
   facebook: { name: 'Facebook', home: 'www.facebook.com', at: false, hosts: ['facebook.com', 'www.facebook.com', 'm.facebook.com', 'fb.com'] },
+  linktree: { name: 'Linktree', home: 'linktr.ee', at: false, hosts: ['linktr.ee', 'www.linktr.ee'] },
   x: { name: 'X', home: 'x.com', at: false, hosts: ['x.com', 'www.x.com', 'twitter.com', 'www.twitter.com', 'mobile.twitter.com'] },
 };
 const HANDLE_RE = /^[A-Za-z0-9._-]{1,60}$/;
@@ -21,7 +22,7 @@ export function socialLink(site, value) {
   const spec = SOCIALS[site];
   const text = String(value ?? '').trim();
   if (!text) return null;
-  if (/^https?:\/\//i.test(text) || /^(www\.|m\.)?[a-z]+\.com\//i.test(text)) {
+  if (/^https?:\/\//i.test(text) || /^(www\.|m\.)?[a-z]+\.(com|ee)\//i.test(text)) {
     let url;
     try {
       url = new URL(/^https?:\/\//i.test(text) ? text : `https://${text}`);

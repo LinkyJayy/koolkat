@@ -47,6 +47,7 @@ const PRECACHE = [
   'icons/social/tiktok.png',
   'icons/social/facebook.png',
   'icons/social/x.png',
+  'icons/social/linktree.png',
   'icons/bff-heart.png',
   'icons/icon-32.png',
   'icons/icon-64.png',

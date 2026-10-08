@@ -38,6 +38,7 @@ import { DAY_MS } from './streaks.js';
 import { HttpError, base64Field, fail, pair, parseUserId, validatePublicKey } from './http.js';
 import { registerChatRoutes } from './chats.js';
 import { registerNewsRoutes } from './news.js';
+import { registerReelRoutes } from './reels.js';
 import { manifestHandler, registerCustomizeRoutes } from './customize.js';
 import { activityOf, chatThemeOf, cleanupFriendCodes, registerSocialRoutes } from './social.js';
 import { registerKatMapRoutes } from './katmap.js';
@@ -776,6 +777,10 @@ export function createApp({
     })
   );
 
+  const friendCount = db.prepare(
+    "SELECT COUNT(*) AS n FROM friendships WHERE (user_low = ? OR user_high = ?) AND status = 'accepted'"
+  );
+
   // Someone's KoolKat profile (e.g. tapping a name in News).
   api.get(
     '/users/:userId',
@@ -801,6 +806,7 @@ export function createApp({
           joinedAt: u.created_at,
           isAdmin: isAdmin(u.username, admins),
           socials: socialsOf(u),
+          stats: { friends: friendCount.get(id, id).n, ...reels.statsFor(id) },
           // What they're up to is only for friends.
           activity: close ? activityOf(u, clock(), hasUnlimitedUser) : null,
         },
@@ -1266,7 +1272,12 @@ export function createApp({
   // ---------- news ----------
   const isAdminUser = (user) => isAdmin(user?.username, admins);
   const news = registerNewsRoutes({ api, db, clock, auth, wrap, publicUser, isAdminUser, pusher, mediaDir, rateLimiter });
-  app.locals.cleanupNewsUploads = news.cleanupUploads;
+  // ---------- KoolKat Reels ----------
+  const reels = registerReelRoutes({ api, db, clock, auth, wrap, publicUser, hasUnlimitedUser, isAdminUser, pusher, mediaDir, rateLimiter });
+  app.locals.cleanupNewsUploads = (now) => {
+    news.cleanupUploads(now);
+    reels.cleanupUploads(now);
+  };
 
   // ---------- push notifications ----------
   api.get('/push/key', (req, res) => res.json({ publicKey: pusher.publicKey }));

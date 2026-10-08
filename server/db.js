@@ -225,6 +225,50 @@ CREATE TABLE IF NOT EXISTS friend_codes (
 );
 CREATE INDEX IF NOT EXISTS friend_codes_user ON friend_codes (user_id, expires_at);
 
+-- KoolKat Reels: short videos anyone with KoolKat Unlimited can post, like and
+-- comment on, and everyone signed in can watch. (Files live in media/reels.)
+CREATE TABLE IF NOT EXISTS reels (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  author_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  caption      TEXT NOT NULL DEFAULT '',
+  video_id     TEXT NOT NULL,
+  video_type   TEXT NOT NULL,
+  video_size   INTEGER NOT NULL,
+  poster_id    TEXT,                      -- a still from the video, for thumbnails
+  poster_type  TEXT,
+  created_at   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_reels_author ON reels(author_id, created_at);
+CREATE TABLE IF NOT EXISTS reel_likes (
+  reel_id     INTEGER NOT NULL REFERENCES reels(id) ON DELETE CASCADE,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at  INTEGER NOT NULL,
+  PRIMARY KEY (reel_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS reel_views (
+  reel_id     INTEGER NOT NULL REFERENCES reels(id) ON DELETE CASCADE,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at  INTEGER NOT NULL,
+  PRIMARY KEY (reel_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS reel_comments (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  reel_id     INTEGER NOT NULL REFERENCES reels(id) ON DELETE CASCADE,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body        TEXT NOT NULL,
+  created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_reel_comments_reel ON reel_comments(reel_id, created_at);
+-- Videos and thumbnails uploaded for a Reel that hasn't been posted yet.
+CREATE TABLE IF NOT EXISTS reel_uploads (
+  id          TEXT PRIMARY KEY,
+  kind        TEXT NOT NULL,              -- 'video' | 'image'
+  mime        TEXT NOT NULL,
+  size        INTEGER NOT NULL,
+  created_by  INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  created_at  INTEGER NOT NULL
+);
+
 -- Server-wide key/value settings (e.g. generated VAPID keys).
 CREATE TABLE IF NOT EXISTS settings (
   key    TEXT PRIMARY KEY,
