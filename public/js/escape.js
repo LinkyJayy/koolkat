@@ -3,7 +3,7 @@
 // trains and barriers, and collect bolts. Stumble (clip a barrier or the side
 // of a train) and the cop catches up; stumble again before you've got away,
 // or hit a train head-on, and you're caught. The bolts make a trail along the safe way through.
-// Every 100 bolts gives you Double Speed, every 500 Triple Speed; speed
+// Every 750 bolts gives you Double Speed, every 2500 Triple Speed; speed
 // boosts also smash you through anything in your way. Thunder (found on the
 // track) clears the obstacles ahead. Drawn in chunky pixels like Kat Kart.
 
@@ -129,11 +129,8 @@ export function createKatEscape(els) {
       const lane = bz < z - 5 ? prevSafe + (safe - prevSafe) * Math.min(1, Math.max(0, (bz - from) / 6)) : safe;
       game.objects.push({ type: 'bolt', lane, z: bz, len: 0.4, y: 0.6 });
     }
-    // Now and then a power-up: Double Speed, Triple Speed (rarer) or Thunder.
-    if (Math.random() < 0.12) {
-      const kind = Math.random() < 0.55 ? 'double' : Math.random() < 0.6 ? 'thunder' : 'triple';
-      game.objects.push({ type: 'power', kind, lane: safe, z: z - 6, len: 0.5, y: 0.8 });
-    }
+    // Now and then Thunder on the track. (Double and Triple Speed only come from bolts.)
+    if (Math.random() < 0.06) game.objects.push({ type: 'power', kind: 'thunder', lane: safe, z: z - 6, len: 0.5, y: 0.8 });
     game.nextRow = z + Math.max(trainLen, 4) + 14 - 4 * difficulty;
   }
 
@@ -283,9 +280,9 @@ export function createKatEscape(els) {
     o.gone = true;
     const g = game;
     g.bolts += 1;
-    // Every 500 bolts: Triple Speed. Every other 100: Double Speed.
-    if (g.bolts % 500 === 0) power('triple', `${g.bolts} bolts!`);
-    else if (g.bolts % 100 === 0) power('double', `${g.bolts} bolts!`);
+    // Every 2500 bolts: Triple Speed. Every other 750: Double Speed.
+    if (g.bolts % 2500 === 0) power('triple', `${g.bolts} bolts!`);
+    else if (g.bolts % 750 === 0) power('double', `${g.bolts} bolts!`);
   }
 
   function power(kind, why) {
