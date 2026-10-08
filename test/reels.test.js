@@ -96,7 +96,7 @@ describe('KoolKat Reels', () => {
     assert.equal(one.liked, true);
     assert.equal(one.comments, 2);
     const profile = (await call('GET', `/users/${boss.id}`, { token: amy.token })).body.user;
-    assert.deepEqual(profile.stats, { friends: 0, reels: 1, likes: 1 });
+    assert.deepEqual(profile.stats, { friends: 0, reels: 1, likes: 1, songs: 0 });
   });
 
   test('only the author or an admin deletes a Reel', async () => {

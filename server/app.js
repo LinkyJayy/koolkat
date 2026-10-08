@@ -39,6 +39,7 @@ import { HttpError, base64Field, fail, pair, parseUserId, validatePublicKey } fr
 import { registerChatRoutes } from './chats.js';
 import { registerNewsRoutes } from './news.js';
 import { registerReelRoutes } from './reels.js';
+import { registerMusicRoutes } from './music.js';
 import { accentIconHandler, manifestHandler, registerCustomizeRoutes } from './customize.js';
 import { activityOf, chatThemeOf, cleanupFriendCodes, registerSocialRoutes } from './social.js';
 import { registerKatMapRoutes } from './katmap.js';
@@ -827,7 +828,7 @@ export function createApp({
           joinedAt: u.created_at,
           isAdmin: isAdmin(u.username, admins),
           socials: socialsOf(u),
-          stats: { friends: friendCount.get(id, id).n, ...reels.statsFor(id) },
+          stats: { friends: friendCount.get(id, id).n, ...reels.statsFor(id), songs: music.songCount(id) },
           // What they're up to is only for friends.
           activity: close ? activityOf(u, clock(), hasUnlimitedUser) : null,
         },
@@ -1295,9 +1296,12 @@ export function createApp({
   const news = registerNewsRoutes({ api, db, clock, auth, wrap, publicUser, isAdminUser, pusher, mediaDir, rateLimiter });
   // ---------- KoolKat Reels ----------
   const reels = registerReelRoutes({ api, db, clock, auth, wrap, publicUser, hasUnlimitedUser, isAdminUser, pusher, mediaDir, rateLimiter });
+  // ---------- KoolKat Music ----------
+  const music = registerMusicRoutes({ api, db, clock, auth, wrap, publicUser, hasUnlimitedUser, isAdminUser, pusher, mediaDir, rateLimiter });
   app.locals.cleanupNewsUploads = (now) => {
     news.cleanupUploads(now);
     reels.cleanupUploads(now);
+    music.cleanupUploads(now);
   };
 
   // The KoolKat icon in an accent colour (public, like the other icons).

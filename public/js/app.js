@@ -173,9 +173,14 @@ function show(name) {
     if (on) tab.setAttribute('aria-current', 'page');
     else tab.removeAttribute('aria-current');
   }
+  try {
+    updateMiniPlayer();
+  } catch {
+    // Starting up: the music player isn't ready yet.
+  }
   if (name === 'camera') startCamera();
 }
-const TAB_SCREENS = new Set(['home', 'reels', 'inbox', 'chats']);
+const TAB_SCREENS = new Set(['home', 'reels', 'music', 'inbox', 'chats']);
 
 document.addEventListener('click', (e) => {
   const back = e.target.closest('[data-back]');
@@ -291,6 +296,12 @@ async function logout() {
 }
 
 function signedOut() {
+  try {
+    audioEl.pause();
+    player.song = null;
+  } catch {
+    // Never started.
+  }
   window.koolkatTheme.setAccent(null);
   applyAppIcon({ icon: 'default' });
   stopMapSharing();
@@ -361,6 +372,7 @@ function openView(view) {
   else if (view === 'chats') openChats();
   else if (view === 'news') openNews();
   else if (view === 'reels') openReels();
+  else if (view === 'music') openMusic();
   else if (view === 'camera') show('camera');
   else if (state.screen !== 'home') openHome();
 }
@@ -1455,7 +1467,7 @@ async function loadComments() {
               ? el('button', {
                   type: 'button',
                   class: 'link-btn comment-delete',
-                  text: c.mine || comments.kind === 'reels' ? 'Delete' : 'Delete (admin)',
+                  text: c.mine || comments.kind !== 'news' ? 'Delete' : 'Delete (admin)',
                   onclick: async () => {
                     if (!confirm('Delete this comment?')) return;
                     try {
@@ -3897,7 +3909,7 @@ $('btn-sounds').addEventListener('click', () => {
 });
 
 // ---------- profile pages (yours and everyone else's) ----------
-const userPage = { user: null, reels: [], from: 'home' };
+const userPage = { user: null, reels: [], songs: [], from: 'home', tab: 'reels' };
 
 /** 1234 → "1,234"; 15300 → "15.3K"; 1100000 → "1.1M". */
 function compactNumber(n) {
@@ -3922,15 +3934,44 @@ async function openUserProfile(userId) {
   show('user');
   $('screen-user').scrollTop = 0;
   try {
-    const { reels: list } = await api('GET', `/reels?user=${user.id}&limit=50`);
+    const [{ reels: list }, { songs }] = await Promise.all([
+      api('GET', `/reels?user=${user.id}&limit=50`),
+      api('GET', `/music?user=${user.id}&limit=100`),
+    ]);
     if (userPage.user !== user) return;
     userPage.reels = list;
-    renderReelGrid($('up-grid'), list, { source: 'user' });
-    $('up-empty').hidden = list.length > 0;
+    userPage.songs = songs;
+    // Artists open on their music.
+    setUserTab(songs.length && !list.length ? 'music' : 'reels');
   } catch (err) {
     toast(err.message, { error: true });
   }
 }
+
+function setUserTab(tab) {
+  userPage.tab = tab;
+  for (const t of document.querySelectorAll('[data-up-tab]')) {
+    const on = t.dataset.upTab === tab;
+    t.classList.toggle('active', on);
+    t.setAttribute('aria-selected', String(on));
+  }
+  const musicTab = tab === 'music';
+  $('up-grid').hidden = musicTab;
+  $('up-songs').hidden = !musicTab;
+  if (musicTab) {
+    $('up-songs').replaceChildren(...userPage.songs.map((s, i) => songRow(s, userPage.songs, i)));
+    $('up-empty').textContent = 'No songs yet.';
+    $('up-empty').hidden = userPage.songs.length > 0;
+  } else {
+    renderReelGrid($('up-grid'), userPage.reels, { source: 'user' });
+    $('up-empty').textContent = 'No Reels yet.';
+    $('up-empty').hidden = userPage.reels.length > 0;
+  }
+}
+$('up-tabs').addEventListener('click', (e) => {
+  const t = e.target.closest('[data-up-tab]');
+  if (t) setUserTab(t.dataset.upTab);
+});
 
 function renderUserPage() {
   const user = userPage.user;
@@ -3949,6 +3990,7 @@ function renderUserPage() {
   renderSocials($('up-socials'), user.socials);
   $('up-joined').textContent = `On KoolKat since ${formatDate(user.joinedAt)}`;
   $('up-grid').replaceChildren();
+  $('up-songs').replaceChildren();
   $('up-empty').hidden = true;
   $('up-more').hidden = true;
 
@@ -4037,7 +4079,7 @@ function reelPoster(r) {
 }
 
 // ---------- Home ----------
-const home = { chip: 'all', reels: [], posts: [] };
+const home = { chip: 'all', reels: [], posts: [], songs: [] };
 
 function openHome() {
   show('home');
@@ -4062,8 +4104,9 @@ $('home-chips').addEventListener('click', (e) => {
 });
 
 async function loadHome() {
-  const [reelsRes, newsRes] = await Promise.allSettled([api('GET', '/reels?limit=24'), api('GET', '/news')]);
+  const [reelsRes, newsRes, musicRes] = await Promise.allSettled([api('GET', '/reels?limit=24'), api('GET', '/news'), api('GET', '/music?limit=20')]);
   if (reelsRes.status === 'fulfilled') home.reels = reelsRes.value.reels;
+  if (musicRes.status === 'fulfilled') home.songs = musicRes.value.songs;
   if (newsRes.status === 'fulfilled') home.posts = newsRes.value.posts;
   renderHome();
 }
@@ -4078,6 +4121,14 @@ function renderHome() {
   const showSection = (id, kinds) => ($(id).hidden = !kinds.includes(chip));
   showSection('home-reels-shelf', ['all', 'reels']);
   showSection('home-news-section', ['all', 'news']);
+  showSection('home-music-shelf', ['all', 'music']);
+  // Songs: square covers to swipe through on All, a list on Music.
+  const songList = chip === 'music';
+  $('home-music').hidden = songList;
+  $('home-music-list').hidden = !songList;
+  $('home-music-empty').hidden = home.songs.length > 0;
+  if (songList) $('home-music-list').replaceChildren(...home.songs.map((s, i) => songRow(s, home.songs, i)));
+  else $('home-music').replaceChildren(...home.songs.map((s, i) => songCard(s, home.songs, i)));
   showSection('home-friends-shelf', ['all', 'friends']);
   if (chip === 'all' && !state.friends.length) $('home-friends-shelf').hidden = true;
 
@@ -4261,6 +4312,8 @@ function renderReels(start) {
 }
 
 function playReel(item, video) {
+  // One thing at a time: a Reel pauses KoolKat Music.
+  if (!audioEl.paused) audioEl.pause();
   video.muted = reels.muted;
   video.play().catch(() => {
     // The browser wants a tap before playing sound: play muted until then.
@@ -4571,6 +4624,590 @@ $('reel-form').addEventListener('submit', async (e) => {
       renderReels(0);
     } finally {
       $('reel-upload-progress').hidden = true;
+    }
+  });
+});
+
+// ---------- KoolKat Music ----------
+// Like Spotify: songs from KoolKat artists, a player that keeps going while
+// you use the rest of the app, Liked Songs, search, and music videos.
+// Everyone can listen, heart and comment; posting is part of KoolKat Unlimited.
+const music = { view: 'home', top: [], newest: [], liked: [], list: [], canPost: false, searchTimer: null, listTitle: '' };
+const player = { queue: [], index: -1, song: null, mode: 'song', listened: 0, lastTime: null, counted: false };
+const audioEl = new Audio();
+audioEl.preload = 'auto';
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+function noteIcon() {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('class', 'note-icon');
+  const path = document.createElementNS(SVG_NS, 'path');
+  path.setAttribute('d', 'M12 3v10.6A4 4 0 1 0 14 17V7h4V3h-6Z');
+  svg.append(path);
+  return svg;
+}
+
+/** An album cover, or a coloured square with a note if there isn't one. */
+function fillCover(node, song) {
+  node.classList.add('song-cover');
+  if (song?.cover) node.replaceChildren(el('img', { src: `${API_BASE}/api/${song.cover}`, alt: '', loading: 'lazy' }));
+  else node.replaceChildren(noteIcon());
+  return node;
+}
+
+function formatTime(sec) {
+  if (!Number.isFinite(sec) || sec < 0) return '0:00';
+  const s = Math.floor(sec);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+const artistLine = (song) => [song.artist.displayName, song.album].filter(Boolean).join(' · ');
+
+/** Every copy of a song (they come from different lists) gets the same change. */
+function updateSong(id, changes) {
+  const lists = [music.top, music.newest, music.liked, music.list, player.queue, home.songs ?? [], userPage.songs ?? []];
+  for (const list of lists) for (const s of list) if (s.id === id) Object.assign(s, changes);
+  if (player.song?.id === id) Object.assign(player.song, changes);
+  for (const b of document.querySelectorAll(`[data-song-like="${id}"]`)) {
+    b.classList.toggle('on', Boolean(changes.liked ?? b.classList.contains('on')));
+    b.setAttribute('aria-pressed', String(b.classList.contains('on')));
+  }
+  if (player.song?.id === id) renderPlayer();
+}
+
+async function toggleSongLike(song) {
+  try {
+    const res = await api(song.liked ? 'DELETE' : 'POST', `/music/${song.id}/like`);
+    updateSong(song.id, { liked: res.liked, likes: res.likes });
+    if (res.liked && !music.liked.some((s) => s.id === song.id)) music.liked.unshift({ ...song, liked: true });
+    if (!res.liked) music.liked = music.liked.filter((s) => s.id !== song.id);
+    $('liked-songs-count').textContent = `${music.liked.length} song${music.liked.length === 1 ? '' : 's'}`;
+  } catch (err) {
+    toast(err.message, { error: true });
+  }
+}
+
+function songHeart() {
+  const svg = heartIcon();
+  svg.setAttribute('class', 'song-heart');
+  return svg;
+}
+for (const id of ['mini-like', 'player-like']) $(id).replaceChildren(songHeart());
+document.querySelector('.liked-songs-art').replaceChildren(songHeart());
+
+function likeButton(song, cls = 'song-like') {
+  const b = el(
+    'button',
+    {
+      type: 'button',
+      class: `${cls}${song.liked ? ' on' : ''}`,
+      'aria-label': 'Heart',
+      'aria-pressed': String(Boolean(song.liked)),
+      'data-song-like': String(song.id),
+    },
+    songHeart()
+  );
+  b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleSongLike(song);
+  });
+  return b;
+}
+
+/** A song in a list: cover, title, artist; tap to play from this list. */
+function songRow(song, list, i) {
+  const playing = player.song?.id === song.id;
+  return el(
+    'li',
+    { class: `song-row${playing ? ' playing' : ''}`, 'data-song': String(song.id) },
+    el(
+      'button',
+      { type: 'button', class: 'song-main', onclick: () => playSong(list, i) },
+      fillCover(el('span', { class: 'song-thumb' }), song),
+      el(
+        'span',
+        { class: 'song-text' },
+        el('span', { class: 'song-title', text: song.title }),
+        el('span', { class: 'song-sub' }, song.video ? el('span', { class: 'song-tag', text: 'VIDEO' }) : null, ...nodes(artistLine(song), badgeImg(song.artist)))
+      )
+    ),
+    likeButton(song)
+  );
+}
+
+/** A song as a square card (Top songs, Home). */
+function songCard(song, list, i) {
+  return el(
+    'button',
+    { type: 'button', class: 'song-card', onclick: () => playSong(list, i) },
+    fillCover(el('span', { class: 'song-card-cover' }), song),
+    el('span', { class: 'song-card-title', text: song.title }),
+    el('span', { class: 'song-card-sub', text: song.artist.displayName })
+  );
+}
+
+function markPlaying() {
+  for (const row of document.querySelectorAll('.song-row')) row.classList.toggle('playing', row.dataset.song === String(player.song?.id));
+}
+
+// ---------- the Music tab ----------
+async function openMusic() {
+  show('music');
+  if (music.view !== 'home' && !$('music-search').value.trim()) setMusicView('home');
+  await loadMusicHome();
+}
+$('tab-music').addEventListener('click', () => {
+  if (state.screen === 'music') {
+    $('music-search').value = '';
+    setMusicView('home');
+    $('music-body').scrollTo({ top: 0, behavior: 'smooth' });
+    return;
+  }
+  openMusic();
+});
+
+async function loadMusicHome() {
+  try {
+    const [homeData, newest] = await Promise.all([api('GET', '/music/home'), api('GET', '/music?limit=50')]);
+    music.top = homeData.top;
+    music.liked = homeData.liked;
+    music.newest = newest.songs;
+    music.canPost = homeData.canPost;
+    renderMusicHome();
+  } catch (err) {
+    toast(err.message, { error: true });
+  }
+}
+
+function renderMusicHome() {
+  $('liked-songs-count').textContent = `${music.liked.length} song${music.liked.length === 1 ? '' : 's'}`;
+  const top = music.top.filter((s) => s.plays > 0 || s.likes > 0);
+  $('music-top-heading').hidden = top.length === 0;
+  $('music-top').hidden = top.length === 0;
+  $('music-top').replaceChildren(...top.map((s, i) => songCard(s, top, i)));
+  $('music-new').replaceChildren(...music.newest.map((s, i) => songRow(s, music.newest, i)));
+  $('music-empty').hidden = music.newest.length > 0;
+}
+
+function setMusicView(view, { title = '', songs = [], empty = '' } = {}) {
+  music.view = view;
+  $('music-main').hidden = view !== 'home';
+  $('music-list-view').hidden = view === 'home';
+  $('btn-music-back').hidden = view !== 'liked';
+  $('music-title').textContent = view === 'liked' ? title : 'KoolKat Music';
+  if (view === 'home') return;
+  music.list = songs;
+  $('music-list').replaceChildren(...songs.map((s, i) => songRow(s, songs, i)));
+  $('music-list-empty').hidden = songs.length > 0;
+  $('music-list-empty').textContent = empty;
+}
+
+$('btn-liked-songs').addEventListener('click', () =>
+  setMusicView('liked', { title: 'Liked Songs', songs: music.liked, empty: 'Songs you heart ♥ show up here.' })
+);
+$('btn-music-back').addEventListener('click', () => setMusicView('home'));
+
+$('music-search').addEventListener('input', (e) => {
+  clearTimeout(music.searchTimer);
+  const text = e.target.value.trim();
+  if (!text) return setMusicView('home');
+  music.searchTimer = setTimeout(async () => {
+    try {
+      const { songs } = await api('GET', `/music?q=${encodeURIComponent(text)}`);
+      if ($('music-search').value.trim() !== text) return;
+      setMusicView('search', { songs, empty: `No songs, albums or artists match “${text}”.` });
+    } catch (err) {
+      toast(err.message, { error: true });
+    }
+  }, 250);
+});
+
+// ---------- playing ----------
+function playSong(list, i) {
+  player.queue = list.slice();
+  startSong(i);
+}
+
+function startSong(i) {
+  const song = player.queue[i];
+  if (!song) return;
+  stopVideoMode();
+  player.index = i;
+  player.song = song;
+  player.listened = 0;
+  player.lastTime = null;
+  player.counted = false;
+  audioEl.src = `${API_BASE}/api/${song.audio.url}`;
+  audioEl.play().catch(() => {});
+  pauseReels();
+  renderPlayer();
+  markPlaying();
+  updateMiniPlayer();
+  if ('mediaSession' in navigator) {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: song.title,
+      artist: song.artist.displayName,
+      album: song.album ?? 'KoolKat Music',
+      artwork: song.cover ? [{ src: `${location.origin}${API_BASE}/api/${song.cover}`, sizes: '512x512' }] : [],
+    });
+  }
+}
+
+const media = () => (player.mode === 'video' ? $('player-video') : audioEl);
+
+function togglePlay() {
+  const m = media();
+  if (m.paused) m.play().catch(() => {});
+  else m.pause();
+}
+function nextSong() {
+  if (player.index < player.queue.length - 1) startSong(player.index + 1);
+  else {
+    media().pause();
+    media().currentTime = 0;
+  }
+}
+function prevSong() {
+  if (media().currentTime > 3 || player.index === 0) media().currentTime = 0;
+  else startSong(player.index - 1);
+}
+
+if ('mediaSession' in navigator) {
+  navigator.mediaSession.setActionHandler('play', () => media().play().catch(() => {}));
+  navigator.mediaSession.setActionHandler('pause', () => media().pause());
+  navigator.mediaSession.setActionHandler('nexttrack', nextSong);
+  navigator.mediaSession.setActionHandler('previoustrack', prevSong);
+}
+
+// A play counts after 30 seconds of listening (or the whole song, if it's shorter).
+function countListening(m) {
+  if (player.counted || !player.song || m.paused) return;
+  if (player.lastTime != null) {
+    const step = m.currentTime - player.lastTime;
+    if (step > 0 && step < 2) player.listened += step;
+  }
+  player.lastTime = m.currentTime;
+  const needed = Math.min(30, (m.duration || 30) * 0.9);
+  if (player.listened >= needed) {
+    player.counted = true;
+    const song = player.song;
+    api('POST', `/music/${song.id}/play`)
+      .then(({ plays }) => updateSong(song.id, { plays }))
+      .catch(() => {});
+  }
+}
+
+for (const m of [audioEl, $('player-video')]) {
+  m.addEventListener('timeupdate', () => {
+    if (m !== media()) return;
+    countListening(m);
+    renderProgress();
+  });
+  m.addEventListener('play', renderPlayState);
+  m.addEventListener('pause', renderPlayState);
+  m.addEventListener('loadedmetadata', renderProgress);
+}
+audioEl.addEventListener('ended', nextSong);
+// The music video finished: back to the song.
+$('player-video').addEventListener('ended', () => setPlayerMode('song'));
+
+function renderPlayState() {
+  const playing = !media().paused;
+  for (const b of [$('mini-play'), $('player-play')]) {
+    b.classList.toggle('is-playing', playing);
+    b.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+  }
+}
+
+function renderProgress() {
+  const m = media();
+  const duration = m.duration || player.song?.duration || 0;
+  const pct = duration ? (m.currentTime / duration) * 100 : 0;
+  $('mini-progress-bar').style.width = `${pct}%`;
+  if (!player.seeking) $('player-seek').value = String(Math.round(pct * 10));
+  $('player-time').textContent = formatTime(m.currentTime);
+  $('player-duration').textContent = formatTime(duration);
+}
+
+// ---------- mini player ----------
+function updateMiniPlayer() {
+  const show_ = Boolean(player.song) && (TAB_SCREENS.has(state.screen) || state.screen === 'user') && state.screen !== 'reels';
+  $('mini-player').hidden = !show_;
+  document.body.classList.toggle('has-mini', show_);
+}
+
+function renderPlayer() {
+  const song = player.song;
+  if (!song) return;
+  fillCover($('mini-cover'), song);
+  $('mini-title').textContent = song.title;
+  $('mini-artist').textContent = song.artist.displayName;
+  for (const b of [$('mini-like'), $('player-like')]) {
+    b.dataset.songLike = String(song.id);
+    b.classList.toggle('on', Boolean(song.liked));
+    b.setAttribute('aria-pressed', String(Boolean(song.liked)));
+  }
+  fillCover($('player-cover'), song);
+  $('player-title').textContent = song.title;
+  $('player-artist').replaceChildren(...nodes(song.artist.displayName, badgeImg(song.artist)));
+  $('player-album').textContent = song.album || song.artist.displayName;
+  $('player-switch').hidden = !song.video;
+  $('btn-player-delete').hidden = !song.canDelete;
+  $('player-comment-count').textContent = compactNumber(song.comments);
+  $('player-plays').textContent = `${compactNumber(song.plays)} play${song.plays === 1 ? '' : 's'} · ${compactNumber(song.likes)} ♥`;
+  renderPlayState();
+  renderProgress();
+}
+
+$('mini-open').addEventListener('click', () => $('dialog-player').showModal());
+$('mini-play').addEventListener('click', togglePlay);
+$('mini-like').addEventListener('click', () => player.song && toggleSongLike(player.song));
+
+// ---------- Now Playing ----------
+$('btn-player-close').addEventListener('click', () => $('dialog-player').close());
+$('dialog-player').addEventListener('close', () => {
+  // The music video only plays here: carry on with the song.
+  if (player.mode === 'video') setPlayerMode('song');
+});
+$('player-play').addEventListener('click', togglePlay);
+$('player-next').addEventListener('click', nextSong);
+$('player-prev').addEventListener('click', prevSong);
+$('player-like').addEventListener('click', () => player.song && toggleSongLike(player.song));
+$('player-artist').addEventListener('click', () => {
+  if (!player.song) return;
+  $('dialog-player').close();
+  openUserProfile(player.song.artist.id);
+});
+$('player-seek').addEventListener('input', () => {
+  player.seeking = true;
+  const m = media();
+  const duration = m.duration || 0;
+  $('player-time').textContent = formatTime((Number($('player-seek').value) / 1000) * duration);
+});
+$('player-seek').addEventListener('change', () => {
+  const m = media();
+  if (m.duration) m.currentTime = (Number($('player-seek').value) / 1000) * m.duration;
+  player.lastTime = null;
+  player.seeking = false;
+});
+$('player-comments').addEventListener('click', () => {
+  const song = player.song;
+  if (song) openComments(song, () => updateSong(song.id, { comments: song.comments }), 'music');
+});
+$('player-share').addEventListener('click', async () => {
+  const song = player.song;
+  if (!song) return;
+  const text = `“${song.title}” by ${song.artist.displayName} on KoolKat Music`;
+  try {
+    if (navigator.share) await navigator.share({ title: 'KoolKat Music', text, url: `${location.origin}/#music` });
+    else {
+      await navigator.clipboard.writeText(`${text}: ${location.origin}/#music`);
+      toast('Link copied');
+    }
+  } catch {
+    // Share sheet closed.
+  }
+});
+$('btn-player-delete').addEventListener('click', async () => {
+  const song = player.song;
+  if (!song || !confirm(song.mine ? `Delete “${song.title}”?` : `Delete “${song.title}” by ${song.artist.displayName}? (admin)`)) return;
+  try {
+    await api('DELETE', `/music/${song.id}`);
+    toast('Song deleted');
+    stopVideoMode();
+    audioEl.pause();
+    audioEl.removeAttribute('src');
+    for (const key of ['top', 'newest', 'liked', 'list']) music[key] = music[key].filter((s) => s.id !== song.id);
+    player.queue = player.queue.filter((s) => s.id !== song.id);
+    player.song = null;
+    $('dialog-player').close();
+    updateMiniPlayer();
+    if (state.screen === 'music') renderMusicHome();
+  } catch (err) {
+    toast(err.message, { error: true });
+  }
+});
+
+// Song or music video. The video plays from the start; switching back
+// carries on with the song where you left it.
+$('player-switch').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-player-mode]');
+  if (b) setPlayerMode(b.dataset.playerMode);
+});
+function setPlayerMode(mode) {
+  const song = player.song;
+  if (mode === 'video' && !song?.video) return;
+  if (mode === player.mode) return;
+  const video = $('player-video');
+  for (const b of document.querySelectorAll('[data-player-mode]')) b.classList.toggle('active', b.dataset.playerMode === mode);
+  if (mode === 'video') {
+    player.songWasPlaying = !audioEl.paused;
+    audioEl.pause();
+    player.mode = 'video';
+    video.hidden = false;
+    $('player-cover').hidden = true;
+    video.src = `${API_BASE}/api/${song.video.url}`;
+    video.play().catch(() => {});
+  } else {
+    stopVideoMode();
+    if (player.songWasPlaying) audioEl.play().catch(() => {});
+  }
+  player.lastTime = null;
+  renderPlayState();
+}
+function stopVideoMode() {
+  const video = $('player-video');
+  video.pause();
+  video.removeAttribute('src');
+  video.hidden = true;
+  $('player-cover').hidden = false;
+  player.mode = 'song';
+  for (const b of document.querySelectorAll('[data-player-mode]')) b.classList.toggle('active', b.dataset.playerMode === 'song');
+}
+
+// ---------- posting a song (KoolKat Unlimited) ----------
+const songDraft = { audio: null, video: null, cover: null, coverUrl: null, duration: null };
+
+$('btn-song-new').addEventListener('click', () => {
+  if (!music.canPost) {
+    toast('🎵 Posting songs is part of KoolKat Unlimited. Get it free in your profile!', { error: true });
+    return;
+  }
+  resetSongDraft();
+  $('dialog-song-new').showModal();
+});
+
+function resetSongDraft() {
+  if (songDraft.coverUrl) URL.revokeObjectURL(songDraft.coverUrl);
+  Object.assign(songDraft, { audio: null, video: null, cover: null, coverUrl: null, duration: null });
+  $('song-form').reset();
+  $('btn-song-cover').replaceChildren(el('span', {}, '＋', el('br'), 'Album cover'));
+  $('song-audio-name').textContent = '';
+  $('song-video-name').textContent = '';
+  $('btn-song-audio').textContent = '🎵 Choose the song';
+  $('btn-song-video').textContent = '🎬 Add a music video (optional)';
+}
+
+$('btn-song-cancel').addEventListener('click', () => $('dialog-song-new').close());
+$('btn-song-cover').addEventListener('click', () => $('song-cover-file').click());
+$('btn-song-audio').addEventListener('click', () => $('song-audio-file').click());
+$('btn-song-video').addEventListener('click', () => $('song-video-file').click());
+
+$('song-cover-file').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  try {
+    // A square cover, at most 1000×1000, as a JPEG.
+    const img = await loadImageFile(file);
+    const side = Math.min(img.naturalWidth, img.naturalHeight);
+    const size = Math.min(1000, side);
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = size;
+    canvas.getContext('2d').drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, size, size);
+    songDraft.cover = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.88));
+    if (songDraft.coverUrl) URL.revokeObjectURL(songDraft.coverUrl);
+    songDraft.coverUrl = URL.createObjectURL(songDraft.cover);
+    $('btn-song-cover').replaceChildren(el('img', { src: songDraft.coverUrl, alt: 'Album cover' }));
+  } catch (err) {
+    toast(err.message, { error: true });
+  }
+});
+
+$('song-audio-file').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  if (file.size > 50 * 1024 * 1024) return toast('Songs can be up to 50 MB', { error: true });
+  songDraft.audio = file;
+  songDraft.duration = null;
+  $('btn-song-audio').textContent = '🎵 Change the song';
+  $('song-audio-name').textContent = file.name;
+  const probe = new Audio();
+  probe.preload = 'metadata';
+  const url = URL.createObjectURL(file);
+  probe.addEventListener('loadedmetadata', () => {
+    songDraft.duration = Number.isFinite(probe.duration) ? probe.duration : null;
+    if (songDraft.duration) $('song-audio-name').textContent = `${file.name} · ${formatTime(songDraft.duration)}`;
+    URL.revokeObjectURL(url);
+  });
+  probe.addEventListener('error', () => URL.revokeObjectURL(url));
+  probe.src = url;
+  // Use the file name as the title if there isn't one yet.
+  const form = $('song-form');
+  if (!form.title.value.trim()) form.title.value = file.name.replace(/\.[^.]+$/, '').replace(/[_]+/g, ' ').slice(0, 80);
+});
+
+$('song-video-file').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  if (file.size > 200 * 1024 * 1024) return toast('Music videos can be up to 200 MB', { error: true });
+  songDraft.video = file;
+  $('btn-song-video').textContent = '🎬 Change the music video';
+  $('song-video-name').textContent = file.name;
+});
+
+function uploadMusicFile(kind, blob, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${API_BASE}/api/music/upload?kind=${kind}`);
+    xhr.setRequestHeader('authorization', `Bearer ${getToken()}`);
+    xhr.setRequestHeader('content-type', blob.type || 'application/octet-stream');
+    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress?.(e.loaded / e.total);
+    xhr.onload = () => {
+      let data = {};
+      try {
+        data = JSON.parse(xhr.responseText);
+      } catch {
+        // Not JSON: use the status below.
+      }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data);
+      else reject(new Error(data.error || `Upload failed (${xhr.status})`));
+    };
+    xhr.onerror = () => reject(new Error("Couldn't upload. Check your connection."));
+    xhr.send(blob);
+  });
+}
+
+$('song-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.currentTarget;
+  await withBusy($('btn-song-post'), async () => {
+    const title = form.title.value.trim();
+    if (!title) throw new Error('Give your song a title');
+    if (!songDraft.audio) throw new Error('Choose the song first');
+    const bar = $('song-upload-bar');
+    const step = $('song-upload-step');
+    $('song-upload-progress').hidden = false;
+    step.hidden = false;
+    try {
+      const files = [['audio', songDraft.audio, 'Uploading the song…'], ['cover', songDraft.cover, 'Uploading the album cover…'], ['video', songDraft.video, 'Uploading the music video…']];
+      const ids = {};
+      for (const [kind, blob, label] of files) {
+        if (!blob) continue;
+        step.textContent = label;
+        bar.style.width = '0%';
+        ids[kind] = (await uploadMusicFile(kind, blob, (f) => (bar.style.width = `${Math.round(f * 100)}%`))).uploadId;
+      }
+      step.textContent = 'Posting…';
+      const { song } = await api('POST', '/music', {
+        title,
+        album: form.album.value.trim() || null,
+        audioId: ids.audio,
+        coverId: ids.cover ?? null,
+        videoId: ids.video ?? null,
+        duration: songDraft.duration,
+      });
+      $('dialog-song-new').close();
+      toast(`🎵 “${song.title}” is out!`);
+      music.newest.unshift(song);
+      if (state.screen === 'music') renderMusicHome();
+    } finally {
+      $('song-upload-progress').hidden = true;
+      step.hidden = true;
     }
   });
 });

@@ -81,6 +81,10 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm-8 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm0 2c-2.7 0-8 1.3-8 4v3h10v-3c0-1 .4-1.9 1.1-2.6C10 13.2 8.8 13 8 13Zm8 0c-2.7 0-8 1.3-8 4v3h16v-3c0-2.7-5.3-4-8-4Z"/></svg>
           <span class="badge" id="badge-friends" hidden></span>
         </button>
+        <button type="button" class="icon-btn plain" id="btn-inbox" aria-label="Klicks">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2ZM5 19l3.5-4.5 2.5 3 3.5-4.5 4.5 6H5Z"/></svg>
+          <span class="badge" id="badge-inbox" hidden></span>
+        </button>
         <button type="button" class="icon-btn plain" id="btn-news" aria-label="News">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 11v2h4v-2h-4Zm-2 6.6c1 .7 2.2 1.6 3.2 2.4l1.2-1.6c-1-.8-2.3-1.7-3.2-2.4L16 17.6ZM20.4 5.6 19.2 4c-1 .8-2.2 1.7-3.2 2.4L17.2 8c1-.7 2.2-1.6 3.2-2.4ZM4 9a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h1v4h2v-4h1l5 3V6L8 9H4Zm11.5 3c0-1.3-.6-2.5-1.5-3.4v6.8c.9-.8 1.5-2 1.5-3.4Z"/></svg>
           <span class="badge" id="badge-news" hidden></span>
@@ -93,6 +97,7 @@
     <div class="chips" id="home-chips" role="tablist" aria-label="Show">
       <button type="button" role="tab" class="chip active" data-chip="all">All</button>
       <button type="button" role="tab" class="chip" data-chip="reels">Reels</button>
+      <button type="button" role="tab" class="chip" data-chip="music">Music</button>
       <button type="button" role="tab" class="chip" data-chip="news">News</button>
       <button type="button" role="tab" class="chip" data-chip="friends">Friends</button>
       <button type="button" class="chip" id="chip-favorites">⭐ Favorites</button>
@@ -108,6 +113,12 @@
         <div class="shelf-row" id="home-reels"></div>
         <div class="reel-grid" id="home-reels-grid" hidden></div>
         <p class="home-empty" id="home-reels-empty" hidden>No Reels yet. Be the first to post one!</p>
+      </section>
+      <section class="shelf" id="home-music-shelf" data-section="music">
+        <h3 class="shelf-title"><svg viewBox="0 0 24 24" aria-hidden="true" class="note-icon"><path d="M12 3v10.6A4 4 0 1 0 14 17V7h4V3h-6Z"/></svg>KoolKat Music</h3>
+        <div class="shelf-row" id="home-music"></div>
+        <ul class="song-list" id="home-music-list" hidden></ul>
+        <p class="home-empty" id="home-music-empty" hidden>No songs yet. Artists with KoolKat Unlimited can post the first one!</p>
       </section>
       <section class="home-news" id="home-news-section" data-section="news">
         <h3 class="shelf-title">📣 KoolKat News</h3>
@@ -133,6 +144,40 @@
       <p class="fineprint">Tap + to post the first one.</p>
     </div>
     <input type="file" accept="video/*" id="reel-file" hidden>
+  </section>
+
+  <!-- KoolKat Music -->
+  <section id="screen-music" class="screen music-screen tabbed" hidden>
+    <header class="music-top">
+      <button type="button" class="icon-btn plain" id="btn-music-back" aria-label="Back" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12Z"/></svg>
+      </button>
+      <h2><svg viewBox="0 0 24 24" aria-hidden="true" class="note-icon"><path d="M12 3v10.6A4 4 0 1 0 14 17V7h4V3h-6Z"/></svg><span id="music-title">KoolKat Music</span></h2>
+      <button type="button" class="icon-btn plain" id="btn-song-new" aria-label="Post a song">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6Z"/></svg>
+      </button>
+    </header>
+    <div class="music-body" id="music-body">
+      <label class="music-search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 3a7 7 0 0 1 5.6 11.2l5.1 5.1-1.4 1.4-5.1-5.1A7 7 0 1 1 10 3Zm0 2a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z"/></svg>
+        <input type="search" id="music-search" placeholder="What do you want to listen to?" autocomplete="off" enterkeyhint="search">
+      </label>
+      <div id="music-main">
+        <button type="button" class="liked-songs" id="btn-liked-songs">
+          <span class="liked-songs-art">♥</span>
+          <span class="liked-songs-text"><strong>Liked Songs</strong><span id="liked-songs-count">0 songs</span></span>
+        </button>
+        <h3 class="music-heading" id="music-top-heading">Top songs</h3>
+        <div class="music-row" id="music-top"></div>
+        <h3 class="music-heading">New releases</h3>
+        <ul class="song-list" id="music-new"></ul>
+        <p class="music-empty" id="music-empty" hidden>No songs yet. Artists with KoolKat Unlimited can post one with +.</p>
+      </div>
+      <div id="music-list-view" hidden>
+        <ul class="song-list" id="music-list"></ul>
+        <p class="music-empty" id="music-list-empty" hidden></p>
+      </div>
+    </div>
   </section>
 
   <!-- Someone's profile (and yours) -->
@@ -162,11 +207,13 @@
       <div class="social-row" id="up-socials" hidden></div>
       <p class="fineprint" id="up-joined"></p>
     </div>
-    <div class="up-tabs" role="tablist">
-      <span class="up-tab active" role="tab" aria-selected="true"><svg viewBox="0 0 24 24" aria-hidden="true" class="clapper"><path fill-rule="evenodd" d="M3 10h18v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-9Zm-.5-2.3-.5-1.9A2 2 0 0 1 3.4 3.4L16.9.6a2 2 0 0 1 2.3 1.5l.5 1.9L2.5 7.7Zm3.3-3.9 3.1 2.6 2.4-.5L8.2 3.3l-2.4.5Zm6 -1.3 3.1 2.6 2.4-.5L14.2 2l-2.4.5Z"/></svg>Reels</span>
+    <div class="up-tabs" role="tablist" id="up-tabs">
+      <button type="button" class="up-tab active" role="tab" aria-selected="true" data-up-tab="reels"><svg viewBox="0 0 24 24" aria-hidden="true" class="clapper"><path fill-rule="evenodd" d="M3 10h18v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-9Zm-.5-2.3-.5-1.9A2 2 0 0 1 3.4 3.4L16.9.6a2 2 0 0 1 2.3 1.5l.5 1.9L2.5 7.7Zm3.3-3.9 3.1 2.6 2.4-.5L8.2 3.3l-2.4.5Zm6 -1.3 3.1 2.6 2.4-.5L14.2 2l-2.4.5Z"/></svg>Reels</button>
+      <button type="button" class="up-tab" role="tab" aria-selected="false" data-up-tab="music"><svg viewBox="0 0 24 24" aria-hidden="true" class="note-icon"><path d="M12 3v10.6A4 4 0 1 0 14 17V7h4V3h-6Z"/></svg>Music</button>
     </div>
     <div class="reel-grid" id="up-grid"></div>
     <p class="home-empty" id="up-empty" hidden>No Reels yet.</p>
+    <ul class="song-list" id="up-songs" hidden></ul>
   </section>
 
   <!-- Camera -->
@@ -557,15 +604,97 @@
     <button type="button" class="tab-btn tab-camera" id="tab-camera" aria-label="Camera">
       <span class="tab-camera-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3 7.2 5H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3.2L15 3H9Zm3 5a5 5 0 1 1 0 10 5 5 0 0 1 0-10Zm0 2a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"/></svg></span>
     </button>
-    <button type="button" class="tab-btn" id="btn-inbox" data-tab-screen="inbox">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2ZM5 19l3.5-4.5 2.5 3 3.5-4.5 4.5 6H5Z"/></svg><span>Klicks</span>
-      <span class="badge" id="badge-inbox" hidden></span>
+    <button type="button" class="tab-btn" id="tab-music" data-tab-screen="music">
+      <svg viewBox="0 0 24 24" aria-hidden="true" class="note-icon"><path d="M12 3v10.6A4 4 0 1 0 14 17V7h4V3h-6Z"/></svg><span>Music</span>
     </button>
     <button type="button" class="tab-btn" id="btn-chats" data-tab-screen="chats">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2Z"/></svg><span>Chats</span>
       <span class="badge" id="badge-chats" hidden></span>
     </button>
   </nav>
+
+  <!-- KoolKat Music: what's playing -->
+  <div class="mini-player" id="mini-player" hidden>
+    <button type="button" class="mini-open" id="mini-open" aria-label="Open Now Playing">
+      <span class="song-cover mini-cover" id="mini-cover"></span>
+      <span class="mini-text"><strong id="mini-title"></strong><span id="mini-artist"></span></span>
+    </button>
+    <button type="button" class="mini-btn" id="mini-like" aria-label="Heart" aria-pressed="false">♥</button>
+    <button type="button" class="mini-btn" id="mini-play" aria-label="Pause">
+      <svg viewBox="0 0 24 24" aria-hidden="true" class="icon-pause"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
+      <svg viewBox="0 0 24 24" aria-hidden="true" class="icon-play"><path d="M8 5v14l11-7z"/></svg>
+    </button>
+    <span class="mini-progress"><span id="mini-progress-bar"></span></span>
+  </div>
+
+  <dialog id="dialog-player" class="player-dialog">
+    <div class="player">
+      <header class="player-top">
+        <button type="button" class="icon-btn plain" id="btn-player-close" aria-label="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.4 8.6 12 13.2l4.6-4.6L18 10l-6 6-6-6Z"/></svg>
+        </button>
+        <span class="player-from"><span>Now playing</span><strong id="player-album"></strong></span>
+        <button type="button" class="icon-btn plain" id="btn-player-delete" aria-label="Delete song" hidden>🗑</button>
+      </header>
+      <div class="player-switch" id="player-switch" role="tablist" hidden>
+        <button type="button" role="tab" class="active" data-player-mode="song">Song</button>
+        <button type="button" role="tab" data-player-mode="video">Music video</button>
+      </div>
+      <div class="player-art">
+        <span class="song-cover player-cover" id="player-cover"></span>
+        <video id="player-video" playsinline hidden></video>
+      </div>
+      <div class="player-info">
+        <div class="player-names">
+          <strong id="player-title"></strong>
+          <button type="button" class="player-artist" id="player-artist"></button>
+        </div>
+        <button type="button" class="player-like" id="player-like" aria-label="Heart" aria-pressed="false">♥</button>
+      </div>
+      <input type="range" id="player-seek" min="0" max="1000" value="0" aria-label="Position">
+      <div class="player-times"><span id="player-time">0:00</span><span id="player-duration">0:00</span></div>
+      <div class="player-controls">
+        <button type="button" class="player-ctl" id="player-prev" aria-label="Previous"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg></button>
+        <button type="button" class="player-ctl big" id="player-play" aria-label="Pause">
+          <svg viewBox="0 0 24 24" aria-hidden="true" class="icon-pause"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
+          <svg viewBox="0 0 24 24" aria-hidden="true" class="icon-play"><path d="M8 5v14l11-7z"/></svg>
+        </button>
+        <button type="button" class="player-ctl" id="player-next" aria-label="Next"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 6h2v12h-2zM6 18l8.5-6L6 6z"/></svg></button>
+      </div>
+      <div class="player-extra">
+        <button type="button" class="btn small" id="player-comments">💬 <span id="player-comment-count">0</span></button>
+        <span class="fineprint" id="player-plays"></span>
+        <button type="button" class="btn small" id="player-share">↗ Share</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="dialog-song-new" class="song-new-dialog">
+    <form id="song-form" novalidate>
+      <h2>Post a song</h2>
+      <div class="song-new-top">
+        <button type="button" class="song-cover song-new-cover" id="btn-song-cover" aria-label="Choose the album cover"><span>＋<br>Album cover</span></button>
+        <div class="song-new-fields">
+          <label>Title<input name="title" maxlength="80" required placeholder="Song title"></label>
+          <label>Album <span class="fineprint">(optional)</span><input name="album" maxlength="80" placeholder="Album or single name"></label>
+        </div>
+      </div>
+      <button type="button" class="btn small wide-ish" id="btn-song-audio">🎵 Choose the song</button>
+      <p class="fineprint song-file" id="song-audio-name"></p>
+      <button type="button" class="btn small wide-ish" id="btn-song-video">🎬 Add a music video (optional)</button>
+      <p class="fineprint song-file" id="song-video-name"></p>
+      <p class="fineprint">Songs are public to everyone on KoolKat. Only post music you made or have the rights to.</p>
+      <div class="upload-progress" id="song-upload-progress" hidden><span id="song-upload-bar"></span></div>
+      <p class="fineprint" id="song-upload-step" hidden></p>
+      <div class="row">
+        <button type="button" class="btn" id="btn-song-cancel">Cancel</button>
+        <button type="submit" class="btn primary" id="btn-song-post">Post</button>
+      </div>
+      <input type="file" accept="audio/*,.mp3,.m4a,.wav,.ogg,.flac,.aac" id="song-audio-file" hidden>
+      <input type="file" accept="video/*" id="song-video-file" hidden>
+      <input type="file" accept="image/*" id="song-cover-file" hidden>
+    </form>
+  </dialog>
 
   <dialog id="dialog-group">
     <form method="dialog">

@@ -269,6 +269,54 @@ CREATE TABLE IF NOT EXISTS reel_uploads (
   created_at  INTEGER NOT NULL
 );
 
+-- KoolKat Music: songs posted by KoolKat Unlimited artists, with an album
+-- cover and an optional music video. Anyone signed in can listen, heart and
+-- comment. (Files live in media/music.)
+CREATE TABLE IF NOT EXISTS songs (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  artist_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title        TEXT NOT NULL,
+  album        TEXT,
+  audio_id     TEXT NOT NULL,
+  audio_type   TEXT NOT NULL,
+  audio_size   INTEGER NOT NULL,
+  video_id     TEXT,
+  video_type   TEXT,
+  cover_id     TEXT,
+  cover_type   TEXT,
+  duration     REAL,
+  created_at   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_songs_artist ON songs(artist_id, created_at);
+CREATE TABLE IF NOT EXISTS song_likes (
+  song_id     INTEGER NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at  INTEGER NOT NULL,
+  PRIMARY KEY (song_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS song_plays (
+  song_id     INTEGER NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_song_plays ON song_plays(song_id, user_id, created_at);
+CREATE TABLE IF NOT EXISTS song_comments (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  song_id     INTEGER NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body        TEXT NOT NULL,
+  created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_song_comments_song ON song_comments(song_id, created_at);
+CREATE TABLE IF NOT EXISTS music_uploads (
+  id          TEXT PRIMARY KEY,
+  kind        TEXT NOT NULL,              -- 'audio' | 'video' | 'cover'
+  mime        TEXT NOT NULL,
+  size        INTEGER NOT NULL,
+  created_by  INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  created_at  INTEGER NOT NULL
+);
+
 -- Server-wide key/value settings (e.g. generated VAPID keys).
 CREATE TABLE IF NOT EXISTS settings (
   key    TEXT PRIMARY KEY,

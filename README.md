@@ -31,8 +31,9 @@ Photos taken in KoolKat are called **Klicks**.
   - 📰 **Formal**: like reading a newspaper: serif headline, "By @username" byline with the date, the photo or video across the page, and a big first letter on longer articles.
   - 📱 **TikTok**: a full-screen feed you swipe up through, one post per screen. The @username above the title opens their profile; *...more* shows the whole title and text; ❤️ likes the post (with a count) and ⭐ saves it to **Favorite Articles** (*Favorites → Favorite Articles*, separate from Favorite Klicks). Videos play muted while they're on screen; tap for sound.
 - **Profiles and profile pictures.** Tap your picture in *Profile* to choose one from your gallery (cropped to a square), or *Remove picture*. It shows everywhere your name does. Tapping someone's name in News opens their profile (picture, badge, flair, admin tag, when they joined, and *Add friend* or *Message*). Admins can reset a profile picture in *Admin tools*.
-- **Home.** KoolKat opens on Home, laid out like YouTube: chips (All, Reels, News, Friends, ⭐ Favorites), your friends, a shelf of the newest KoolKat Reels, and News as big cards. A tab bar at the bottom has Home, Reels, the Camera, Klicks and Chats; the camera screen is now just the camera.
+- **Home.** KoolKat opens on Home, laid out like YouTube: chips (All, Reels, News, Friends, ⭐ Favorites), your friends, a shelf of the newest KoolKat Reels, and News as big cards. A tab bar at the bottom has Home, Reels, the Camera, Music and Chats (Klicks are at the top of Home); the camera screen is now just the camera.
 - **KoolKat Reels** 🎬. Short videos, like TikTok: swipe up through them full screen, tap to pause, double-tap to heart, and open comments, share or mute from the side. Everyone can watch, heart and comment; posting (up to 100 MB and 3 minutes, 20 a day) is part of KoolKat Unlimited. Reels are public to everyone on KoolKat (not end-to-end encrypted). You (or an admin) can delete a Reel, and you can delete comments on your Reels.
+- **KoolKat Music** 🎵. Like Spotify: artists with KoolKat Unlimited post songs (MP3, M4A, WAV, OGG, FLAC or AAC, up to 50 MB) with an album name, an album cover and, if they like, a music video (up to 200 MB). Anyone can listen, heart ♥ (Liked Songs), comment and search by song, album or artist. The player keeps playing while you use the rest of KoolKat (a mini player sits above the tab bar; tap it for Now Playing, where you can switch between the song and its music video), works with your phone's lock-screen controls, and counts a play after 30 seconds. The artist (or an admin) can delete a song; artists can delete comments on their songs. Songs are public to everyone on KoolKat.
 - **Profile pages.** Everyone has a profile page like TikTok's: their name, picture, @username, Friends, Reels and Likes counts, Message / Call / Add friend buttons, social links and a grid of their Reels. On your own page, *Edit profile* opens your settings.
 - **Verified badge.** The owner (zalith9) can give any account a blue verified tick in *Admin tools → Verified accounts*, and take it away again. It shows next to their name everywhere, before the Kool badge.
 - **Social links.** Anyone can add their YouTube, Instagram, TikTok, Facebook, X (Twitter) and Linktree in *Profile → 🔗 Social links*, as a username or a link. They show as round buttons on your profile that open your pages. Links are checked on the server and can only point to that site.
@@ -218,6 +219,7 @@ server/
   customize.js  Unlimited app icons, custom badges, BFFs, per-icon manifest
   social.js     QR friend codes, Nearby, Activity Bubbles, chat themes
   katmap.js     Kat Map sharing settings and friends' locations
+  music.js      KoolKat Music: songs, covers, music videos, hearts, plays and comments
   reels.js      KoolKat Reels: videos, hearts, views and comments
   png.js        Reads and writes PNGs, to draw the icon in an accent colour
   socials.js    Social media links: turns a username or link into a safe link to that site
@@ -321,6 +323,15 @@ All endpoints are under `/api` and take and return JSON. Authenticated endpoints
 | DELETE | `/admin/admins/:username` | Owner: remove an admin |
 | GET / POST | `/admin/verified` | Owner: list verified accounts / verify someone (`username`) |
 | DELETE | `/admin/verified/:username` | Owner: remove someone's verified badge |
+| GET | `/music` | Songs, newest first (`?user=ID`, `?q=` search, `?before=ID`) and whether you can post |
+| GET | `/music/home` | Top songs and your Liked Songs |
+| POST | `/music/upload?kind=audio\|video\|cover` | Unlimited: upload the song, music video or album cover (raw bytes) |
+| POST | `/music` | Unlimited: post a song (`title, album, audioId, videoId, coverId, duration`) |
+| GET / DELETE | `/music/:id` | One song / delete it (artist or admin) |
+| POST / DELETE | `/music/:id/like` | Heart / unheart |
+| POST | `/music/:id/play` | Count a play |
+| GET / POST | `/music/:id/comments` | Comments / comment |
+| DELETE | `/music/comments/:id` | Delete a comment (its author, the artist or an admin) |
 | GET | `/reels` | Reels, newest first (`?user=ID`, `?before=ID`, `?limit=`) and whether you can post |
 | POST | `/reels/upload` | Unlimited: upload a video or its thumbnail (raw bytes) |
 | POST | `/reels` | Unlimited: post a Reel (`videoId, posterId, caption`) |
