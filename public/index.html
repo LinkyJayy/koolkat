@@ -126,6 +126,7 @@
         <div class="shelf-row playables-row">
           <button type="button" class="playable-card kart-card" data-play="kart"><img src="icons/kat-kart.png" alt=""><span class="playable-name">Kat Kart</span><span class="playable-sub">Race friends or bots</span></button>
           <button type="button" class="playable-card escape-card" data-play="escape"><img src="icons/escape-cat.png" alt="" class="pixel"><span class="playable-name">KatEscape</span><span class="playable-sub">Run from the cop</span></button>
+          <button type="button" class="playable-card circles-card" data-play="circles"><img src="icons/circles/bag.png" alt="" class="pixel"><span class="playable-name">Circle Chaos</span><span class="playable-sub">Grab circles, cause chaos</span></button>
           <button type="button" class="playable-card wordle-card" data-play="wordle"><span class="wordle-art" aria-hidden="true"><b class="c">K</b><b class="p">A</b><b class="a">T</b><b class="c">S</b><b class="a">!</b></span><span class="playable-name">Kat Wordle</span><span class="playable-sub">Guess the word in 6 tries</span></button>
         </div>
       </section>
@@ -209,6 +210,12 @@
         <span class="playable-name">KatEscape</span>
         <span class="playable-sub">Run down the tracks, dodge trains and barriers, grab bolts and get away from the cop. Play solo, or with friends: All Chasers or Chaser vs Cop. Swipe (or arrows / WASD / D-pad) to move, jump and roll.</span>
         <span class="playable-best" id="escape-best"></span>
+      </button>
+      <button type="button" class="playable-card big circles-card" data-play="circles">
+        <img src="icons/circles/bag.png" alt="" class="pixel">
+        <span class="playable-name">Circle Chaos</span>
+        <span class="playable-sub">2 to 5 friends, one team colour each. The bot spills the bag into the Deck; take turns grabbing circles. Lose 2, Lose 4 and Lucky Cards cause chaos. Most circles after 15 turns wins.</span>
+        <span class="playable-best" id="circles-best"></span>
       </button>
       <button type="button" class="playable-card big wordle-card" data-play="wordle">
         <span class="wordle-art" aria-hidden="true"><b class="c">K</b><b class="p">A</b><b class="a">T</b><b class="c">S</b><b class="a">!</b></span>
@@ -302,6 +309,40 @@
           <button type="button" class="btn" id="btn-escape-exit">Back to Playables</button>
           <button type="button" class="btn primary" id="btn-escape-again">Run again</button>
         </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Circle Chaos -->
+  <section id="screen-circles" class="screen circles-screen" hidden>
+    <header class="cc-top">
+      <button type="button" class="icon-btn" id="btn-cc-quit" aria-label="Leave the game">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12Z"/></svg>
+      </button>
+      <div class="cc-turn"><strong id="cc-turn">Circle Chaos</strong><span class="fineprint" id="cc-turn-sub"></span></div>
+      <span class="cc-dir" id="cc-dir" title="Turn order">↻</span>
+    </header>
+    <ul class="cc-teams" id="cc-teams"></ul>
+    <div class="cc-table">
+      <canvas id="cc-canvas" width="240" height="120" aria-label="The bot, the bag and the Deck"></canvas>
+      <span class="cc-deck-count" id="cc-deck-count"></span>
+    </div>
+    <div class="cc-reveal" id="cc-reveal" hidden><img alt="" class="pixel"><p></p></div>
+    <div class="cc-actions">
+      <button type="button" class="btn primary wide" id="btn-cc-draw" hidden>Take a circle</button>
+      <div class="cc-targets" id="cc-targets" hidden>
+        <p id="cc-targets-title">Who loses the circles?</p>
+        <div class="cc-target-list" id="cc-target-list"></div>
+      </div>
+      <p class="cc-wait fineprint" id="cc-wait"></p>
+    </div>
+    <ol class="cc-log" id="cc-log"></ol>
+    <div class="cc-results" id="cc-results" data-modal hidden>
+      <h2 id="cc-results-title">Results</h2>
+      <ol class="cc-results-list" id="cc-results-list"></ol>
+      <div class="row">
+        <button type="button" class="btn" id="btn-cc-exit">Back to Playables</button>
+        <button type="button" class="btn primary" id="btn-cc-again">Play again</button>
       </div>
     </div>
   </section>
@@ -906,7 +947,7 @@
       <button type="button" class="btn small" id="btn-escape-share">Share the code</button>
       <div class="escape-modes" role="radiogroup" aria-label="Mode">
         <button type="button" class="escape-mode" id="btn-escape-mode-all" role="radio" data-mode="all"><strong>🐱 All Chasers</strong><span>Everyone runs from a bot cop. One revive, then spectate.</span></button>
-        <button type="button" class="escape-mode" id="btn-escape-mode-chase" role="radio" data-mode="chase"><strong>🚓 Chaser vs Cop</strong><span>2 players: one runs, one's the cop. Cops throw Mice.</span></button>
+        <button type="button" class="escape-mode" id="btn-escape-mode-chase" role="radio" data-mode="chase"><strong>🚓 Chaser vs Cop</strong><span>2 players: one runs, one's the cop. Cops throw Mice. One revive each.</span></button>
       </div>
       <ul class="kart-lobby-players" id="escape-lobby-players"></ul>
       <button type="button" class="btn small" id="btn-escape-swap" hidden>🔄 Swap chaser and cop</button>
@@ -917,6 +958,38 @@
       <div class="row">
         <button type="button" class="btn" id="btn-escape-leave">Leave</button>
         <button type="button" class="btn primary" id="btn-escape-start">Start</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="dialog-circles" class="kart-menu">
+    <div id="cc-menu-main">
+      <img src="icons/circles/bag.png" alt="" class="kart-menu-art pixel">
+      <h2>Circle Chaos</h2>
+      <ul class="cc-rules">
+        <li><img src="icons/circles/red.png" alt="" class="pixel"> Coloured circles go to the team of that colour.</li>
+        <li><img src="icons/circles/lose2.png" alt="" class="pixel"><img src="icons/circles/lose4.png" alt="" class="pixel"> Lose 2 / Lose 4: pick an opponent to lose them.</li>
+        <li><img src="icons/circles/lucky.png" alt="" class="pixel"> Lucky Card: something random happens!</li>
+      </ul>
+      <p class="fineprint">2 to 5 people, 15 turns each. Most circles wins.</p>
+      <button type="button" class="btn primary wide" id="btn-cc-create">👥 Make a game</button>
+      <div class="inline-form kart-join">
+        <input id="cc-code" maxlength="4" placeholder="Game code" autocapitalize="characters" autocomplete="off" spellcheck="false" aria-label="Game code" enterkeyhint="go">
+        <button type="button" class="btn small primary" id="btn-cc-join">Join</button>
+      </div>
+      <button type="button" class="btn wide" id="btn-cc-close">Close</button>
+    </div>
+    <div id="cc-lobby" hidden>
+      <p class="fineprint">Game code</p>
+      <p class="kart-code-big" id="cc-lobby-code"></p>
+      <button type="button" class="btn small" id="btn-cc-share">Share the code</button>
+      <p class="kart-menu-or">Your team</p>
+      <div class="cc-team-pick" id="cc-team-pick" role="radiogroup" aria-label="Your team"></div>
+      <ul class="kart-lobby-players" id="cc-lobby-players"></ul>
+      <p class="fineprint" id="cc-lobby-status"></p>
+      <div class="row">
+        <button type="button" class="btn" id="btn-cc-leave">Leave</button>
+        <button type="button" class="btn primary" id="btn-cc-start">Start</button>
       </div>
     </div>
   </dialog>

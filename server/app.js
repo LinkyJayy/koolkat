@@ -42,6 +42,7 @@ import { registerReelRoutes } from './reels.js';
 import { registerMusicRoutes } from './music.js';
 import { registerKartRoutes } from './kartrooms.js';
 import { registerEscapeRoutes } from './escaperooms.js';
+import { registerCircleRoutes } from './circlerooms.js';
 import { accentIconHandler, manifestHandler, registerCustomizeRoutes } from './customize.js';
 import { activityOf, chatThemeOf, cleanupFriendCodes, registerSocialRoutes } from './social.js';
 import { registerKatMapRoutes } from './katmap.js';
@@ -1301,6 +1302,7 @@ export function createApp({
   // ---------- KoolKat Playables: Kat Kart online races ----------
   registerKartRoutes({ api, auth, wrap, clock, publicUser, db });
   registerEscapeRoutes({ api, auth, wrap, clock, publicUser, db });
+  registerCircleRoutes({ api, auth, wrap, clock, publicUser, db });
 
   // ---------- KoolKat Music ----------
   const music = registerMusicRoutes({ api, db, clock, auth, wrap, publicUser, hasUnlimitedUser, isAdminUser, pusher, mediaDir, rateLimiter });

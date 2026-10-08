@@ -7,7 +7,8 @@ import { KART_SONGS } from './kartrooms.js';
 //  - "all": All Chasers. Up to 8 people run from a bot cop on the same
 //    course. Caught? Revive once, or spectate. Highest score wins.
 //  - "chase": Chaser vs Cop. Two people: one runs, one is the cop. The host
-//    picks who's who. The cop throws Mice to slow the chaser down.
+//    picks who's who. The cop throws Mice to slow the chaser down. Both
+//    get one revive.
 // Like Kat Kart, each phone sends where it is ~10 times a second and gets
 // everyone else's back. Games live in memory (a restart ends them).
 
@@ -89,13 +90,16 @@ export function registerEscapeRoutes({ api, auth, wrap, clock, publicUser, db })
       const chaser = room.players.get(room.chaserId);
       const cop = room.players.get(room.copId);
       let winner = null;
-      if (chaser?.status === 'out') winner = chaser.reason === 'escaped' ? 'chaser' : 'cop';
-      else if (!chaser || chaser.gone) winner = 'cop';
-      else if (!cop || cop.gone) winner = 'chaser';
-      else if (now - room.startAt > (CHASE_SECONDS + 15) * 1000) winner = 'chaser';
+      let reason = null;
+      if (chaser?.status === 'out') [winner, reason] = [chaser.reason === 'escaped' ? 'chaser' : 'cop', chaser.reason];
+      else if (cop?.status === 'out') [winner, reason] = ['chaser', 'cop-train']; // out of revives
+      else if (!chaser || chaser.gone) [winner, reason] = ['cop', 'left'];
+      else if (!cop || cop.gone) [winner, reason] = ['chaser', 'left'];
+      // (Time spent deciding on a revive doesn't count, so allow for it.)
+      else if (now - room.startAt > (CHASE_SECONDS + 45) * 1000) [winner, reason] = ['chaser', 'escaped'];
       if (!winner) return;
       room.state = 'done';
-      room.results = { winner, chaserId: room.chaserId, copId: room.copId, players: ranked(room) };
+      room.results = { winner, reason, chaserId: room.chaserId, copId: room.copId, players: ranked(room) };
       return;
     }
     if (present(room).every((p) => p.status === 'out')) {

@@ -38,8 +38,14 @@ Photos taken in KoolKat are called **Klicks**.
 - **KoolKat Playables** 🎮 (for everyone, from Home):
   - **Kat Kart**: a kart race like Mario Kart, drawn in pseudo-3D, over three laps of the Kool Kircuit. **Solo**: you (blue) race seven computer Kats, each in its own colour (red, green, yellow, purple, orange, pink, brown). The bots start easy (level 1); every win makes them faster and every loss makes them easier, so they settle at your level (remembered on your device). **Online**: tap *Make a race*, share the 4-letter code, and up to 8 friends join; the host starts it. Each racer gets their slot's colour, phones share positions through the server about 10 times a second, and everyone sees the same podium. Hold the left or right side of the screen (or A/D, the arrow keys, or a controller's D-pad or sticks) to steer; a minimap in the top-right corner shows everyone; grass slows you down and the orange pads give you a boost. A silent 3-2-1-GO! countdown, music during the race (the Kat Kart OST by Zalith9: *Natho Town*, *Crystal Cavern* and *Kingdom Dominance*, chosen in the Kat Kart menu, or by the host in an online race, or Random; looping without a gap, with a “Now Playing” popup at GO), a live leaderboard and minimap, and a podium at the end. Your best finish is remembered on your device.
   - **Kat Kart power-ups**: drive through the rainbow "?" boxes to get one, then tap the item button (or Space / W / ↑, or A, X or a shoulder button on a controller) to use it. **Double Speed** (×1.5) and **Triple Speed** (×2, half as common) speed you up; **Mouse** (others at ×0.5), **Food Bowl** (others at ×0.25, rarer than Mouse) and **Thunder** (others can't move at all, rarest) slow everyone else down, online too. The computer Kats use them as well. All the power-up pictures are pixelated like the game.
+  - **Circle Chaos**: 2 to 5 people online (make a game, share the 4-letter code), one team each: Red, Yellow, Green, Blue or Purple (pick a free one in the lobby). The dealer bot spills the bag of circles into a random pile, the Deck (all drawn in chunky pixels like Kat Kart and KatEscape). On your turn take the top circle:
+    - a Red / Yellow / Green / Blue / Purple circle goes to the team of that colour;
+    - **Lose 2** / **Lose 4**: pick an opponent to lose that many;
+    - **Lucky Card**: one of: everyone has no circles; everyone but you has no circles; the turn order is flipped; a random team goes next; everyone gets 4 circles; the next person loses all / 4 circles; the previous person loses all / 4 circles.
+    Everyone gets 15 turns; most circles wins (ties share a place). Take longer than 30 seconds and the bot takes your turn for you. The server keeps the deck, so nobody can peek.
   - **KatEscape**: an endless runner like Subway Surfers, in the same chunky pixels. KoolKat runs down three train tracks with the cop on its tail: switch lanes, jump over low barriers, roll under high ones and stay off the trains (some are coming at you). Collect bolts ⚡; they make a trail along the safe way through. Every 750 bolts gives you Double Speed and every 2500 Triple Speed (you smash through anything while boosted); those only come from bolts. Thunder, now and then on the track, clears the obstacles ahead. Clip a barrier or the side of a train and the cop catches up; do it again before you get away, or hit a train head-on, and you're caught. Swipe, use the arrow keys / WASD, or a controller's D-pad / stick (A jump, B roll). Music: the Kat Kart OST by Zalith9 (*Natho Town*, *Crystal Cavern*, *Kingdom Dominance* or Random, picked on the start screen and remembered), with a “Now Playing” popup when you start running. Your best score is remembered on your device.
     - **One revive a game** (solo and All Chasers): caught or crashed? Revive once with the way ahead cleared and a moment where nothing can hurt you.
+    - **One revive each in Chaser vs Cop** too, for both the chaser and the cop: you come back in at the normal 8 m gap. Out of revives? A cop who crashes into a train hands the win to the chaser.
     - **Multiplayer** (make a game and share its 4-letter code; the host picks the mode and the music):
       - **All Chasers**: up to 8 people run the same course, each from a bot cop. Mouse boxes on the track slow your cop down for 1 second (a stumble then can't get you caught). Out of revives? Spectate whoever's still running (◀ ▶ to switch). Highest score wins.
       - **Chaser vs Cop**: 2 people. One is the chaser, one is the cop running the same course behind them; the host picks who's who. Stumbles slow you down, the cop just bounces off trains, and the only power-up is the Mouse: the cop grabs it from item boxes and throws it (tap it, E / Enter, or X / Y on a controller), slowing the chaser down until the cop is closer than normal. The cop wins by closing the gap; the chaser wins by lasting 90 seconds.
@@ -234,6 +240,7 @@ server/
   katmap.js     Kat Map sharing settings and friends' locations
   kartrooms.js  Kat Kart online races: lobbies, positions and results (in memory)
   escaperooms.js  KatEscape online games: All Chasers and Chaser vs Cop (in memory)
+  circlerooms.js  Circle Chaos: the rules, the deck and online games (in memory)
   music.js      KoolKat Music: songs, covers, music videos, hearts, plays and comments
   reels.js      KoolKat Reels: videos, hearts, views and comments
   png.js        Reads and writes PNGs, to draw the icon in an accent colour
@@ -251,6 +258,7 @@ public/
   js/calls.js     Calls and FaceTime (WebRTC) and the call screen
   js/input.js     keyboard and game controller navigation for every menu
   js/escape.js    KatEscape (Playables): the endless runner, solo / practice / online
+  js/circles.js   Circle Chaos (Playables): the pixel table and what each circle did
   js/kart.js      Kat Kart (Playables): the pseudo-3D kart race
   js/wordle.js    Kat Wordle (Playables), with its word list in js/wordle-words.js
   js/sounds.js    notification and calling sounds

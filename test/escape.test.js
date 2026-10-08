@@ -121,4 +121,20 @@ describe('KatEscape online', () => {
     assert.equal(done.results.winner, 'chaser');
     assert.equal(done.results.chaserId, ann.id);
   });
+
+  test('Chaser vs Cop: the cop gets one revive too; crashing again hands it to the chaser', async () => {
+    const code = (await call('POST', '/escape/rooms', ann.token, { mode: 'chase' })).body.room.code;
+    await call('POST', `/escape/rooms/${code}/join`, ben.token); // ben: the cop
+    await call('POST', `/escape/rooms/${code}/start`, ann.token);
+    now += 5000;
+    await call('POST', `/escape/rooms/${code}/state`, ben.token, st(-8, { status: 'down', reason: 'train' }));
+    let room = (await call('POST', `/escape/rooms/${code}/state`, ben.token, st(-8))).body.room;
+    assert.equal(room.players.find((p) => p.name === 'ben').status, 'running', 'revived');
+    await call('POST', `/escape/rooms/${code}/state`, ben.token, st(50, { status: 'down', reason: 'train' }));
+    room = (await call('POST', `/escape/rooms/${code}/state`, ben.token, st(50))).body.room;
+    assert.equal(room.players.find((p) => p.name === 'ben').status, 'down', 'only once');
+    room = (await call('POST', `/escape/rooms/${code}/state`, ben.token, st(50, { status: 'out', reason: 'train' }))).body.room;
+    assert.equal(room.state, 'done');
+    assert.deepEqual([room.results.winner, room.results.reason], ['chaser', 'cop-train']);
+  });
 });

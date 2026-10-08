@@ -16,7 +16,8 @@
 //    boxes on the track slow your cop down for a second.
 //  - practice: All Chasers against bot runners, no friends needed.
 //  - chase: Chaser vs Cop, online. One person runs, the other is the cop
-//    running the same course behind them. Stumbles slow you down; the cop
+//    running the same course behind them. Both get one revive (back in at
+//    the normal gap). Stumbles slow you down; the cop
 //    catches the chaser by closing the gap, the chaser wins by lasting
 //    CHASE_SECONDS. No speed power-ups, only Mice: the cop throws one and the
 //    chaser slows down until the cop is closer than normal.
@@ -415,12 +416,7 @@ export function createKatEscape(els) {
         o.gone = true; // smash through
         g.flash = 0.08;
       } else if (o.type === 'train') {
-        if (g.mode === 'chase' && g.role === 'cop') {
-          // The cop isn't out, just knocked right back.
-          o.gone = true;
-          slow(0.3, 1.2);
-          announce('Ouch! Into a train');
-        } else return crash('train');
+        return crash('train');
       } else if ((o.type === 'low' && g.y < 0.75) || (o.type === 'high' && g.rollT < 0)) {
         o.gone = true;
         if (stumble()) return;
@@ -534,7 +530,7 @@ export function createKatEscape(els) {
     const g = game;
     if (reason === 'caught') g.copZ = -0.4; // he's got you
     g.flash = 0;
-    if (g.mode !== 'chase' && !g.reviveUsed) {
+    if (!g.reviveUsed) {
       g.state = 'down';
       g.reason = reason;
       music.pause();
@@ -551,6 +547,12 @@ export function createKatEscape(els) {
     g.reviveUsed = true;
     g.state = 'running';
     g.last = performance.now();
+    // Chaser vs Cop: back in the chase at the normal gap (the other one kept running).
+    if (g.mode === 'chase') {
+      const other = estimate(opponent());
+      if (other != null) g.dist = g.role === 'chaser' ? Math.max(g.dist, other + START_GAP) : Math.max(g.dist, other - START_GAP);
+      place(g.dist);
+    }
     // Clear the way, and a moment where nothing can hurt you.
     for (const o of g.objects) if (['train', 'low', 'high'].includes(o.type) && o.wz + o.len > g.dist - 1 && o.wz < g.dist + 25) o.gone = true;
     g.shieldUntil = g.time + REVIVE_SHIELD;
@@ -589,6 +591,7 @@ export function createKatEscape(els) {
     if (g.mode === 'chase') {
       // The game's over for both; the server says so on the next update.
       if (g.role === 'chaser') chaseOver(reason === 'escaped' ? 'chaser' : 'cop', reason);
+      else chaseOver('chaser', 'cop-train'); // the cop crashed for good
       return;
     }
     // All Chasers / Practice: watch the others, if anyone's still going.
@@ -720,6 +723,10 @@ export function createKatEscape(els) {
       if (p.st) o.at = now - (p.st.age ?? 0) - rtt;
       g.others.set(p.slot, o);
       if (g.mode === 'all' && was !== 'out' && o.status === 'out' && g.state === 'running') announce(`🚓 ${p.name} is out!`);
+      if (g.mode === 'chase' && g.state === 'running') {
+        if (was === 'running' && o.status === 'down') announce(`💥 ${p.name} crashed! Will they use their revive?`, null, 2400);
+        else if (was === 'down' && o.status === 'running') announce(`💖 ${p.name} revived!`);
+      }
     }
     // The cop's Mice.
     for (const ev of room.events ?? []) {
@@ -732,7 +739,7 @@ export function createKatEscape(els) {
     }
     if (room.state === 'done' && room.results) {
       g.serverDone = true;
-      if (g.mode === 'chase') return chaseOver(room.results.winner, room.results.players.find((p) => p.id === room.results.chaserId)?.reason);
+      if (g.mode === 'chase') return chaseOver(room.results.winner, room.results.reason);
       g.finished = true;
       g.state = 'out';
       music.pause();

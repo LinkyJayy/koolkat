@@ -28,6 +28,7 @@ import { playNotification, setSoundsOn, soundsOn } from './sounds.js';
 import { createKatWordle } from './wordle.js';
 import { focusFirst, initInput } from './input.js';
 import { createKatEscape } from './escape.js';
+import { TEAMS as CC_TEAMS, TEAM_COLORS as CC_TEAM_COLORS, TEAM_NAMES as CC_TEAM_NAMES, TURNS as CC_TURNS, circleIcon as ccCircleIcon, createCircleTable, describeEvent as ccDescribe, teamIcon as ccTeamIcon } from './circles.js';
 import { RACE_SONGS, RACERS as KART_RACERS, createKatKart, formatRaceTime } from './kart.js';
 
 const $ = (id) => document.getElementById(id);
@@ -185,6 +186,10 @@ function show(name) {
   if (state.screen === 'escape' && name !== 'escape') {
     katEscape.stop();
     leaveEscapeRoom();
+  }
+  if (state.screen === 'circles' && name !== 'circles') {
+    ccTable.stop();
+    leaveCirclesRoom();
   }
   if (state.screen === 'kart' && name !== 'kart') {
     katKart.stop();
@@ -5310,6 +5315,8 @@ function openPlayables() {
   const stats = readJson(WORDLE_STATS);
   const escapeBest = katEscape.best();
   $('escape-best').textContent = escapeBest ? `🏃 Best: ${escapeBest.toLocaleString()} points` : '';
+  const circles = readJson(CC_STATS);
+  $('circles-best').textContent = circles?.played ? `🏆 ${circles.wins} won of ${circles.played}` : '';
   $('wordle-best').textContent = stats?.played ? `🔥 Streak ${stats.streak} · ${stats.wins}/${stats.played} won` : '';
 }
 $('chip-playables').addEventListener('click', openPlayables);
@@ -5318,6 +5325,7 @@ document.addEventListener('click', (e) => {
   if (!card) return;
   if (card.dataset.play === 'kart') openKartMenu();
   else if (card.dataset.play === 'escape') openEscape();
+  else if (card.dataset.play === 'circles') openCirclesMenu();
   else openWordle();
 });
 
@@ -5406,7 +5414,7 @@ const katEscape = createKatEscape({
       detail: 'You get one revive a game. Use it now?',
       down: true,
     });
-    $('btn-escape-giveup').textContent = mode === 'solo' ? 'Give up' : '👀 Spectate';
+    $('btn-escape-giveup').textContent = mode === 'all' || mode === 'practice' ? '👀 Spectate' : 'Give up';
     if (!online) return;
     // The others are waiting: 10 seconds to decide.
     let left = 10;
@@ -5432,17 +5440,16 @@ const katEscape = createKatEscape({
   onResults: (r) => {
     if (r.mode === 'chase') {
       const won = r.winner === r.role;
-      const chaserWon = r.winner === 'chaser';
-      showEscapeOver({
-        title: chaserWon
-          ? r.role === 'cop' ? '🏃 They got away!' : '🏃 You got away!'
-          : r.reason === 'train'
-            ? r.role === 'cop' ? '💥 They crashed into a train!' : '💥 Crashed into a train!'
-            : r.role === 'cop' ? '🚓 You caught them!' : '🚓 The cop caught you!',
-        final: won ? 'You win!' : 'You lose',
-        detail: chaserWon ? `The chaser lasted all ${Math.round(r.time)} seconds` : `${r.reason === 'train' ? 'The cop wins' : 'Caught'} after ${Math.round(r.time)} seconds`,
-        img: chaserWon ? 'icons/escape-cat.png' : 'icons/escape-cop.png',
-      });
+      const cop = r.role === 'cop';
+      const seconds = Math.round(r.time);
+      // [title, detail] for how it ended.
+      const [title, detail] = {
+        'cop-train': [cop ? '💥 You crashed into a train!' : '💥 The cop crashed into a train!', 'The cop had used up their revive'],
+        left: [won ? '🏆 They left the game' : '👋 You left', ''],
+        escaped: [cop ? '🏃 They got away!' : '🏃 You got away!', `The chaser lasted all ${seconds} seconds`],
+        train: [cop ? '💥 They crashed into a train!' : '💥 Crashed into a train!', `The cop wins after ${seconds} seconds`],
+      }[r.reason] ?? [cop ? '🚓 You caught them!' : '🚓 The cop caught you!', `Caught after ${seconds} seconds`];
+      showEscapeOver({ title, detail, final: won ? 'You win!' : 'You lose', img: r.winner === 'chaser' ? 'icons/escape-cat.png' : 'icons/escape-cop.png' });
       return;
     }
     const me = r.players.find((p) => p.me);
@@ -5665,6 +5672,333 @@ function leaveEscapeRoom() {
   api('POST', `/escape/rooms/${escapeOnline.code}/leave`).catch(() => {});
   escapeOnline.code = null;
 }
+
+// ---------- Circle Chaos: 2 to 5 teams, online with a code ----------
+const CC_STATS = 'koolkat.circleChaos';
+const ccTable = createCircleTable($('cc-canvas'));
+const cc = { code: null, room: null, timer: null, playing: false, seen: 0, sent: 0, applied: 0, myTurn: false };
+
+function openCirclesMenu() {
+  $('cc-menu-main').hidden = false;
+  $('cc-lobby').hidden = true;
+  $('cc-code').value = '';
+  $('dialog-circles').showModal();
+}
+$('btn-cc-close').addEventListener('click', () => $('dialog-circles').close());
+$('btn-cc-create').addEventListener('click', (e) =>
+  withBusy(e.currentTarget, async () => {
+    const { room } = await api('POST', '/circles/rooms');
+    enterCirclesLobby(room);
+  })
+);
+const joinCircles = () =>
+  withBusy($('btn-cc-join'), async () => {
+    const code = $('cc-code').value.trim().toUpperCase();
+    if (!/^[A-Z]{4}$/.test(code)) throw new Error('Game codes are 4 letters');
+    const { room } = await api('POST', `/circles/rooms/${code}/join`);
+    enterCirclesLobby(room);
+  });
+$('btn-cc-join').addEventListener('click', joinCircles);
+$('cc-code').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    joinCircles();
+  }
+});
+
+/** Check in with the server every so often (lobby and game). Late answers to old requests are ignored. */
+function pollCircles(ms, apply) {
+  clearInterval(cc.timer);
+  cc.timer = setInterval(async () => {
+    if (!cc.code) return;
+    const n = ++cc.sent;
+    try {
+      const { room } = await api('GET', `/circles/rooms/${cc.code}`, undefined, { timeout: 5000 });
+      if (n > cc.applied) {
+        cc.applied = n;
+        apply(room);
+      }
+    } catch (err) {
+      if (err.status === 404 || err.status === 403) {
+        clearInterval(cc.timer);
+        toast(err.message, { error: true });
+        $('dialog-circles').close();
+      }
+    }
+  }, ms);
+}
+const ccApply = (room) => {
+  cc.applied = ++cc.sent;
+  if (cc.playing) renderCircles(room);
+  else renderCirclesLobby(room);
+};
+
+function enterCirclesLobby(room) {
+  cc.code = room.code;
+  $('cc-menu-main').hidden = true;
+  $('cc-lobby').hidden = false;
+  renderCirclesLobby(room);
+  focusFirst();
+  pollCircles(1000, renderCirclesLobby);
+}
+
+function renderCirclesLobby(room) {
+  if (cc.playing) return renderCircles(room);
+  cc.room = room;
+  $('cc-lobby-code').textContent = room.code;
+  const players = room.players.filter((p) => !p.gone);
+  const me = players.find((p) => p.id === state.me.userId);
+  const host = room.hostId === state.me.userId;
+  // Pick your team: the ones other people have are taken.
+  $('cc-team-pick').replaceChildren(
+    ...CC_TEAMS.map((team) => {
+      const taken = players.find((p) => p.team === team && p.id !== me?.id);
+      const b = el(
+        'button',
+        { type: 'button', class: 'cc-team-btn', role: 'radio', 'aria-checked': String(me?.team === team), 'aria-label': taken ? `${CC_TEAM_NAMES[team]} (${taken.name})` : CC_TEAM_NAMES[team], onclick: () => pickCircleTeam(team) },
+        el('img', { src: ccTeamIcon(team), alt: '', class: 'pixel' }),
+        el('span', { text: taken ? taken.name : CC_TEAM_NAMES[team] })
+      );
+      b.style.setProperty('--cc-team', CC_TEAM_COLORS[team]);
+      b.disabled = Boolean(taken);
+      return b;
+    })
+  );
+  $('cc-lobby-players').replaceChildren(
+    ...players.map((p) =>
+      el(
+        'li',
+        {},
+        el('img', { src: ccTeamIcon(p.team), alt: CC_TEAM_NAMES[p.team], class: 'cc-mini' }),
+        avatar(p.user, 'small'),
+        el('span', { text: p.id === state.me.userId ? `${p.name} (you)` : p.name }),
+        p.id === room.hostId ? el('span', { class: 'fineprint', text: ' · host' }) : null
+      )
+    )
+  );
+  $('btn-cc-start').hidden = !host;
+  $('btn-cc-start').disabled = players.length < 2;
+  $('cc-lobby-status').textContent =
+    players.length < 2 ? 'Waiting for friends to join with the code… (2 to 5 people)' : host ? `${players.length} teams ready. Start when everyone's in!` : 'Waiting for the host to start…';
+  if (room.state !== 'lobby') startCircles(room);
+}
+
+async function pickCircleTeam(team) {
+  try {
+    const { room } = await api('POST', `/circles/rooms/${cc.code}/team`, { team });
+    ccApply(room);
+  } catch (err) {
+    toast(err.message, { error: true });
+  }
+}
+$('btn-cc-start').addEventListener('click', (e) =>
+  withBusy(e.currentTarget, async () => {
+    const { room } = await api('POST', `/circles/rooms/${cc.code}/start`);
+    ccApply(room);
+  })
+);
+$('btn-cc-leave').addEventListener('click', () => {
+  leaveCirclesRoom();
+  $('dialog-circles').close();
+});
+$('btn-cc-share').addEventListener('click', async () => {
+  const text = `Play Circle Chaos with me on KoolKat! Open Playables → Circle Chaos and join with code ${cc.code}`;
+  try {
+    if (navigator.share) await navigator.share({ title: 'Circle Chaos', text, url: `${location.origin}/#playables` });
+    else {
+      await navigator.clipboard.writeText(text);
+      toast('Copied');
+    }
+  } catch {
+    // Share sheet closed.
+  }
+});
+$('dialog-circles').addEventListener('close', () => {
+  if (!cc.playing) leaveCirclesRoom();
+});
+
+function leaveCirclesRoom() {
+  clearInterval(cc.timer);
+  cc.playing = false;
+  if (!cc.code) return;
+  api('POST', `/circles/rooms/${cc.code}/leave`).catch(() => {});
+  cc.code = null;
+}
+
+// ---------- the game ----------
+function startCircles(room) {
+  cc.playing = true;
+  cc.seen = 0;
+  cc.myTurn = false;
+  $('dialog-circles').close();
+  if (!audioEl.paused) audioEl.pause();
+  show('circles');
+  $('cc-results').hidden = true;
+  $('cc-reveal').hidden = true;
+  $('cc-log').replaceChildren();
+  ccTable.start(room.players.map((p) => p.team)).catch(() => {});
+  renderCircles(room);
+  pollCircles(700, renderCircles);
+}
+
+/** Make a team's circle count bounce (got some) or shake (lost some). */
+function ccFlash(id, cls) {
+  const li = document.querySelector(`#cc-teams [data-id="${CSS.escape(String(id))}"]`);
+  if (!li) return;
+  li.classList.remove('bump', 'hit');
+  void li.offsetWidth;
+  li.classList.add(cls);
+}
+
+function renderCircles(room) {
+  if (!cc.playing) return;
+  cc.room = room;
+  const meId = state.me.userId;
+  const current = room.players.find((p) => p.id === room.turnId);
+  // Teams
+  const teams = $('cc-teams');
+  teams.style.setProperty('--cc-cols', String(room.players.length));
+  teams.replaceChildren(
+    ...room.players.map((p) => {
+      const li = el(
+        'li',
+        { class: `cc-team${p.id === room.turnId ? ' turn' : ''}${p.id === meId ? ' me' : ''}${p.gone ? ' gone' : ''}`, 'data-id': String(p.id) },
+        el('img', { src: ccTeamIcon(p.team), alt: '' }),
+        el('span', { class: 'cc-name', text: p.name }),
+        el('span', { class: 'cc-count', 'aria-label': `${p.circles} circles` }, el('img', { src: ccCircleIcon(p.team), alt: '' }), String(p.circles)),
+        el('span', { class: 'cc-left', text: p.gone ? 'left' : `${Math.max(0, CC_TURNS - p.turns)} turns left` })
+      );
+      li.style.setProperty('--cc-team', CC_TEAM_COLORS[p.team]);
+      return li;
+    })
+  );
+  // What's new: animate it and add it to the log.
+  const fresh = room.events.filter((e) => e.id > cc.seen);
+  cc.seen = Math.max(cc.seen, ...room.events.map((e) => e.id));
+  for (const e of fresh) {
+    if (e.type === 'deal') ccTable.deal();
+    if (e.type === 'draw') ccTable.take(e.circle);
+    if (e.type === 'draw' || e.type === 'penalty') {
+      const img = $('cc-reveal').querySelector('img');
+      img.src = ccCircleIcon(e.circle);
+      img.style.animation = 'none';
+      void img.offsetWidth;
+      img.style.animation = '';
+      $('cc-reveal').querySelector('p').textContent = ccDescribe(room, e);
+      $('cc-reveal').hidden = false;
+      if (e.to) setTimeout(() => ccFlash(e.to, 'bump'), 50);
+      if (e.target && e.lost) setTimeout(() => ccFlash(e.target, 'hit'), 50);
+      if (e.outcome === 'everyone-4') for (const p of room.players) setTimeout(() => ccFlash(p.id, 'bump'), 50);
+    }
+  }
+  if (fresh.length) {
+    const log = $('cc-log');
+    for (const e of fresh) {
+      const text = ccDescribe(room, e);
+      if (text) log.prepend(el('li', { text }));
+    }
+    while (log.children.length > 8) log.lastChild.remove();
+  }
+  // Whose turn
+  const mine = room.state === 'playing' && room.turnId === meId;
+  $('cc-turn').textContent =
+    room.state === 'dealing' ? '🤖 The bot is spilling the bag…' : room.state === 'done' ? '🏁 Game over' : mine ? '⭐ Your turn!' : current ? `${CC_TEAM_NAMES[current.team]}'s turn (${current.name})` : '';
+  $('cc-turn-sub').textContent = room.state === 'playing' && current ? `Turn ${Math.min(CC_TURNS, current.turns + 1)} of ${CC_TURNS}` : '';
+  $('cc-dir').classList.toggle('flipped', room.dir === -1);
+  $('cc-dir').title = room.dir === -1 ? 'Turn order: flipped' : 'Turn order';
+  $('cc-deck-count').textContent = room.state === 'lobby' ? '' : `${room.deck} in the Deck`;
+  ccTable.setCount(room.deck);
+  // What you can do
+  const choosing = mine && room.pending;
+  $('btn-cc-draw').hidden = !mine || Boolean(room.pending);
+  $('cc-targets').hidden = !choosing;
+  if (choosing) {
+    $('cc-targets-title').textContent = `Who loses ${room.pending.circle === 'lose4' ? 4 : 2}?`;
+    const list = $('cc-target-list');
+    const ids = room.players.filter((p) => p.id !== meId && !p.gone).map((p) => p.id).join();
+    if (list.dataset.ids !== ids) {
+      list.dataset.ids = ids;
+      list.replaceChildren(
+        ...room.players
+          .filter((p) => p.id !== meId && !p.gone)
+          .map((p) => {
+            const b = el(
+              'button',
+              { type: 'button', class: 'cc-target', onclick: () => ccPlay({ target: p.id }) },
+              el('img', { src: ccTeamIcon(p.team), alt: '' }),
+              `${CC_TEAM_NAMES[p.team]} · ${p.name} (${p.circles})`
+            );
+            b.style.setProperty('--cc-team', CC_TEAM_COLORS[p.team]);
+            return b;
+          })
+      );
+      focusFirst();
+    }
+  } else $('cc-target-list').dataset.ids = '';
+  const left = room.turnEndsAt ? Math.max(0, Math.ceil((room.turnEndsAt - room.serverNow) / 1000)) : 0;
+  $('cc-wait').textContent =
+    room.state !== 'playing' ? '' : mine ? `${left}s, or the bot takes your turn for you` : current ? `Waiting for ${CC_TEAM_NAMES[current.team]}… (${left}s)` : '';
+  if (mine && !cc.myTurn) {
+    navigator.vibrate?.(40);
+    focusFirst();
+  }
+  cc.myTurn = mine;
+  if (room.state === 'done' && room.results && $('cc-results').hidden) showCirclesResults(room);
+}
+
+async function ccPlay(body = {}) {
+  try {
+    const { room } = await api('POST', `/circles/rooms/${cc.code}/play`, body);
+    ccApply(room);
+  } catch (err) {
+    toast(err.message, { error: true });
+  }
+}
+$('btn-cc-draw').addEventListener('click', (e) => withBusy(e.currentTarget, () => ccPlay()));
+
+function showCirclesResults(room) {
+  clearInterval(cc.timer);
+  const meId = state.me.userId;
+  const me = room.results.find((r) => r.id === meId);
+  const winners = room.results.filter((r) => r.place === 1);
+  $('cc-results-title').textContent = me?.place === 1 ? (winners.length > 1 ? '🤝 You tied for 1st!' : '🏆 You won!') : `${CC_TEAM_NAMES[winners[0].team]} wins!`;
+  $('cc-results-list').replaceChildren(
+    ...room.results.map((r) =>
+      el(
+        'li',
+        { class: r.id === meId ? 'me' : null },
+        el('span', { class: 'place', text: ordinalPlace(r.place) }),
+        el('img', { src: ccTeamIcon(r.team), alt: '' }),
+        el('span', { class: 'name', text: `${CC_TEAM_NAMES[r.team]} · ${r.id === meId ? `${r.name} (you)` : r.name}${r.gone ? ' (left)' : ''}` }),
+        el('span', { class: 'cc-pts' }, String(r.circles), el('img', { src: ccCircleIcon(r.team), alt: ' circles', class: 'cc-mini-circle' }))
+      )
+    )
+  );
+  $('cc-results').hidden = false;
+  const stats = readJson(CC_STATS) ?? { played: 0, wins: 0 };
+  stats.played += 1;
+  if (me?.place === 1) stats.wins += 1;
+  try {
+    localStorage.setItem(CC_STATS, JSON.stringify(stats));
+  } catch {
+    // Just for fun.
+  }
+  focusFirst();
+}
+
+const leaveCircles = () => {
+  leaveCirclesRoom();
+  openPlayables();
+};
+$('btn-cc-quit').addEventListener('click', async () => {
+  if (cc.room?.state !== 'done' && !(await askConfirm('Leave the game? The others keep playing without you.', { ok: 'Leave' }))) return;
+  leaveCircles();
+});
+$('btn-cc-exit').addEventListener('click', leaveCircles);
+$('btn-cc-again').addEventListener('click', () => {
+  leaveCircles();
+  openCirclesMenu();
+});
 
 // Kat Wordle
 const katWordle = createKatWordle({ board: $('kw-board'), keyboard: $('kw-keyboard'), message: $('kw-message'), result: $('kw-result'), hints: $('kw-hints') });
@@ -5966,6 +6300,10 @@ document.addEventListener('keydown', (e) => {
   if (state.screen === 'wordle') katWordle.onKey(e);
   else if (state.screen === 'kart') katKart.keyDown(e);
   else if (state.screen === 'escape' && katEscape.running) katEscape.keyDown(e);
+  else if (state.screen === 'circles' && e.key === ' ' && !$('btn-cc-draw').hidden && !e.target.closest?.('button')) {
+    e.preventDefault();
+    $('btn-cc-draw').click();
+  }
 });
 document.addEventListener('keyup', (e) => {
   if (state.screen === 'kart') katKart.keyUp(e);
