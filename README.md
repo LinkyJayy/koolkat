@@ -36,8 +36,8 @@ Photos taken in KoolKat are called **Klicks**.
 - **KoolKat Music** 🎵. Like Spotify: artists with KoolKat Unlimited post songs (MP3, M4A, WAV, OGG, FLAC or AAC, up to 50 MB) with an album name, an album cover and, if they like, a music video (up to 200 MB). Anyone can listen, heart ♥ (Liked Songs), comment and search by song, album or artist. The player keeps playing while you use the rest of KoolKat (a mini player sits above the tab bar; tap it for Now Playing, where you can switch between the song and its music video), works with your phone's lock-screen controls, and counts a play after 30 seconds. The artist (or an admin) can delete a song; artists can delete comments on their songs. Songs are public to everyone on KoolKat.
 - **Explicit songs.** Artists can mark a song as explicit when they post it; it shows an **E** next to the title.
 - **KoolKat Playables** 🎮 (for everyone, from Home):
-  - **Kat Kart**: a kart race like Mario Kart, drawn in pseudo-3D. You (blue) race seven computer Kats, each in its own colour (red, green, yellow, purple, orange, pink, brown), over three laps of the Kool Kircuit. Hold the left or right side of the screen (or the arrow keys) to steer; grass slows you down and the orange pads give you a boost. A silent 3-2-1-GO! countdown, music during the race (`public/sounds/kat-kart-music.mp3`), a live leaderboard and minimap, and a podium at the end. Your best finish is remembered on your device.
-  - **Kat Wordle**: guess the 5-letter word in six tries. Blue means the right letter in the right spot, dark blue means it's in the word somewhere else, grey means it isn't in the word. Every game has a new random word. Words come from SCOWL (see `public/vendor/SCOWL-COPYRIGHT.txt`).
+  - **Kat Kart**: a kart race like Mario Kart, drawn in pseudo-3D, over three laps of the Kool Kircuit. **Solo**: you (blue) race seven computer Kats, each in its own colour (red, green, yellow, purple, orange, pink, brown). The bots start easy (level 1); every win makes them faster and every loss makes them easier, so they settle at your level (remembered on your device). **Online**: tap *Make a race*, share the 4-letter code, and up to 8 friends join; the host starts it. Each racer gets their slot's colour, phones share positions through the server about 10 times a second, and everyone sees the same podium. Hold the left or right side of the screen (or the arrow keys) to steer; grass slows you down and the orange pads give you a boost. A silent 3-2-1-GO! countdown, music during the race (`public/sounds/kat-kart-music.mp3`), a live leaderboard and minimap, and a podium at the end. Your best finish is remembered on your device.
+  - **Kat Wordle**: guess the 5-letter word in six tries, with up to three hints (the number of syllables, then the first letter, then the last letter). Blue means the right letter in the right spot, dark blue means it's in the word somewhere else, grey means it isn't in the word. Every game has a new random word. Words come from SCOWL (see `public/vendor/SCOWL-COPYRIGHT.txt`).
 - **Profile pages.** Everyone has a profile page like TikTok's: their name, picture, @username, Friends, Reels and Likes counts, Message / Call / Add friend buttons, social links and a grid of their Reels. On your own page, *Edit profile* opens your settings.
 - **Verified badge.** The owner (zalith9) can give any account a blue verified tick in *Admin tools → Verified accounts*, and take it away again. It shows next to their name everywhere, before the Kool badge.
 - **Social links.** Anyone can add their YouTube, Instagram, TikTok, Facebook, X (Twitter) and Linktree in *Profile → 🔗 Social links*, as a username or a link. They show as round buttons on your profile that open your pages. Links are checked on the server and can only point to that site.
@@ -223,6 +223,7 @@ server/
   customize.js  Unlimited app icons, custom badges, BFFs, per-icon manifest
   social.js     QR friend codes, Nearby, Activity Bubbles, chat themes
   katmap.js     Kat Map sharing settings and friends' locations
+  kartrooms.js  Kat Kart online races: lobbies, positions and results (in memory)
   music.js      KoolKat Music: songs, covers, music videos, hearts, plays and comments
   reels.js      KoolKat Reels: videos, hearts, views and comments
   png.js        Reads and writes PNGs, to draw the icon in an accent colour
@@ -329,6 +330,12 @@ All endpoints are under `/api` and take and return JSON. Authenticated endpoints
 | DELETE | `/admin/admins/:username` | Owner: remove an admin |
 | GET / POST | `/admin/verified` | Owner: list verified accounts / verify someone (`username`) |
 | DELETE | `/admin/verified/:username` | Owner: remove someone's verified badge |
+| POST | `/kart/rooms` | Kat Kart: make an online race (returns its 4-letter code) |
+| POST | `/kart/rooms/:code/join` | Join a race that hasn't started |
+| GET | `/kart/rooms/:code` | The lobby (who's in) |
+| POST | `/kart/rooms/:code/start` | Host: start the race (GO in 4 seconds) |
+| POST | `/kart/rooms/:code/state` | Send your kart (`x, y, h, v, progress, lap, finished`); returns everyone's, and the results when it's over |
+| POST | `/kart/rooms/:code/leave` | Leave the race |
 | GET | `/music` | Songs, newest first (`?user=ID`, `?q=` search, `?before=ID`) and whether you can post |
 | GET | `/music/home` | Top songs and your Liked Songs |
 | POST | `/music/upload?kind=audio\|video\|cover` | Unlimited: upload the song, music video or album cover (raw bytes) |
