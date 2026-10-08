@@ -83,7 +83,7 @@ h1, h2, h3, h4, strong, b, th { font-weight: var(--w-heading); }
 .error { color: var(--danger); min-height: 1.4em; margin: 8px 0 0; font-size: 14px; }
 .fineprint { font-size: 13px; color: var(--muted); margin: 8px 0; }
 
-.logo-big { width: 96px; height: 96px; border-radius: 22%; box-shadow: 0 8px 24px rgba(0, 46, 255, 0.35); }
+.logo-big { width: 96px; height: 96px; border-radius: 22%; box-shadow: 0 8px 24px color-mix(in srgb, var(--brand) 35%, transparent); }
 .logo, .brand img, .empty-logo, .dialog-brand img { border-radius: 22%; }
 .pulse { animation: pulse 1.2s ease-in-out infinite; }
 @keyframes pulse { 50% { transform: scale(0.92); opacity: 0.7; } }
@@ -129,7 +129,7 @@ h1, h2, h3, h4, strong, b, th { font-weight: var(--w-heading); }
   justify-content: center;
   padding: 24px 16px;
   background:
-    radial-gradient(circle at 20% 0%, rgba(0, 46, 255, 0.22), transparent 50%),
+    radial-gradient(circle at 20% 0%, color-mix(in srgb, var(--brand) 22%, transparent), transparent 50%),
     radial-gradient(circle at 100% 100%, rgba(79, 157, 255, 0.22), transparent 50%),
     var(--bg);
 }
@@ -1405,8 +1405,8 @@ dialog.sheet[open] { display: flex; }
   height: 36px;
   border-radius: 12px;
   background: linear-gradient(135deg, var(--brand-2), var(--brand));
-  color: #fff;
-  box-shadow: 0 2px 8px rgba(0, 46, 255, 0.35);
+  color: var(--brand-ink);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--brand) 35%, transparent);
 }
 .tab-camera-icon svg { width: 22px; height: 22px; }
 .has-tabbar .tabbed.panel,
@@ -1806,7 +1806,7 @@ dialog.sheet[open] { display: flex; }
 .up-stats span { font-size: 14px; color: var(--muted); }
 .up-actions { display: flex; gap: 8px; width: 100%; max-width: 420px; justify-content: center; }
 .up-btn { flex: 1; border-radius: 8px; padding: 11px 10px; font-size: 16px; border: 0; background: var(--surface); }
-.up-btn.primary { background: var(--brand); color: #fff; }
+.up-btn.primary { background: var(--brand); color: var(--brand-ink); }
 .up-btn.snap { background: var(--snap); }
 .up-btn-more { flex: 0 0 48px; font-size: 18px; }
 .up-more { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 10px; }
@@ -1850,3 +1850,30 @@ dialog.sheet[open] { display: flex; }
 .reel-like.on .reel-heart { fill: var(--snap); }
 .reel-like:active .reel-heart { transform: scale(0.85); }
 .shelf-reel { width: 132px; }
+
+/* ---------- accent colour (Unlimited) ---------- */
+.accent-swatches { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 8px; }
+.accent-swatch {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 3px solid var(--bg);
+  box-shadow: 0 0 0 1px var(--border);
+  background: var(--swatch);
+  padding: 0;
+}
+.accent-swatch[aria-checked="true"] { box-shadow: 0 0 0 2px var(--text); }
+.accent-row { display: flex; align-items: center; gap: 8px; }
+.accent-row input[type="color"] { width: 44px; height: 36px; flex: none; }
+.accent-row input.accent-hex {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-transform: uppercase;
+}
+.accent-row input.accent-hex:focus { outline: 2px solid var(--brand); border-color: transparent; }

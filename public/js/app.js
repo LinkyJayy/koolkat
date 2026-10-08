@@ -279,6 +279,7 @@ async function logout() {
 }
 
 function signedOut() {
+  window.koolkatTheme.setAccent(null);
   stopMapSharing();
   stopCallEvents();
   alertCounts = null;
@@ -2339,6 +2340,7 @@ async function refreshMe() {
   });
   renderMyAvatar();
   applyAppIcon(me.plan.appIcon);
+  window.koolkatTheme.setAccent(me.plan.accentColor);
   return me;
 }
 
@@ -2771,6 +2773,7 @@ try {
 }
 
 function renderPersonalisation(plan) {
+  renderAccentEditor(plan);
   const current = plan.appIcon?.icon || 'default';
   for (const button of document.querySelectorAll('.icon-choice')) {
     button.setAttribute('aria-checked', String(button.dataset.icon === current));
@@ -3506,6 +3509,55 @@ $('chat-bg-file').addEventListener('change', async (e) => {
 });
 $('chat-bubble-color').addEventListener('change', (e) => saveChatTheme({ bubble: e.target.value }).catch(reportError));
 $('btn-bubble-reset').addEventListener('click', () => saveChatTheme({ bubble: null }).catch(reportError));
+
+// ---------- KoolKat Unlimited: accent colour ----------
+const DEFAULT_ACCENT = '#002eff';
+for (const swatch of document.querySelectorAll('.accent-swatch')) {
+  swatch.style.setProperty('--swatch', swatch.dataset.accent || DEFAULT_ACCENT);
+}
+
+function renderAccentEditor(plan) {
+  const current = plan?.accentColor ?? '';
+  for (const swatch of document.querySelectorAll('.accent-swatch')) {
+    swatch.setAttribute('aria-checked', String(swatch.dataset.accent === current));
+  }
+  $('accent-picker').value = current || DEFAULT_ACCENT;
+  if (document.activeElement !== $('accent-hex')) $('accent-hex').value = (current || '').toUpperCase();
+}
+
+async function saveAccent(value) {
+  const color = value ? window.koolkatTheme.normaliseHex(value) : null;
+  if (value && !color) throw new Error("That isn't a hex colour. Try something like #FF0000.");
+  const { accentColor } = await api('POST', '/me/accent', { color });
+  state.plan.accentColor = accentColor;
+  window.koolkatTheme.setAccent(accentColor);
+  $('accent-hex').value = (accentColor || '').toUpperCase();
+  renderAccentEditor(state.plan);
+  toast(accentColor ? `🎨 Accent colour set to ${accentColor.toUpperCase()}` : '🎨 Back to KoolKat blue');
+}
+
+$('accent-swatches').addEventListener('click', (e) => {
+  const swatch = e.target.closest('.accent-swatch');
+  if (swatch) saveAccent(swatch.dataset.accent || null).catch(reportError);
+});
+// Dragging the picker previews the colour; letting go saves it.
+$('accent-picker').addEventListener('input', (e) => {
+  window.koolkatTheme.setAccent(e.target.value);
+  $('accent-hex').value = e.target.value.toUpperCase();
+});
+$('accent-picker').addEventListener('change', (e) => saveAccent(e.target.value).catch(reportError));
+// A pasted or typed hex code ("#FF0000", "ff0000" or "#f00").
+$('accent-hex').addEventListener('input', (e) => {
+  const hex = window.koolkatTheme.normaliseHex(e.target.value);
+  if (hex) $('accent-picker').value = hex;
+});
+const applyAccentHex = () => withBusy($('btn-accent-apply'), () => saveAccent($('accent-hex').value.trim()));
+$('btn-accent-apply').addEventListener('click', applyAccentHex);
+$('accent-hex').addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter') return;
+  e.preventDefault(); // don't close the profile dialog
+  applyAccentHex();
+});
 
 // ---------- KoolKat Unlimited: Kat Map ----------
 let leafletLoading = null;

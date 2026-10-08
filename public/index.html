@@ -779,6 +779,24 @@
             <p class="fineprint">Your friends see it on your profile and in their friends list.</p>
           </div>
 
+          <p class="fineprint extras-title">Accent colour</p>
+          <div class="accent-swatches" id="accent-swatches" role="radiogroup" aria-label="Accent colour">
+            <button type="button" class="accent-swatch" role="radio" data-accent="" aria-label="KoolKat blue (default)"></button>
+            <button type="button" class="accent-swatch" role="radio" data-accent="#e11d48" aria-label="Red"></button>
+            <button type="button" class="accent-swatch" role="radio" data-accent="#ec4899" aria-label="Pink"></button>
+            <button type="button" class="accent-swatch" role="radio" data-accent="#f97316" aria-label="Orange"></button>
+            <button type="button" class="accent-swatch" role="radio" data-accent="#16a34a" aria-label="Green"></button>
+            <button type="button" class="accent-swatch" role="radio" data-accent="#0d9488" aria-label="Teal"></button>
+            <button type="button" class="accent-swatch" role="radio" data-accent="#7c3aed" aria-label="Purple"></button>
+            <button type="button" class="accent-swatch" role="radio" data-accent="#111827" aria-label="Black"></button>
+          </div>
+          <div class="accent-row" id="accent-form">
+            <input type="color" id="accent-picker" value="#002eff" aria-label="Pick any colour">
+            <input class="accent-hex" id="accent-hex" maxlength="7" autocapitalize="characters" spellcheck="false" autocomplete="off" placeholder="#FF0000" aria-label="Hex code" enterkeyhint="done">
+            <button type="button" class="btn small primary" id="btn-accent-apply">Apply</button>
+          </div>
+          <p class="fineprint">Pick a colour, or paste a hex code like #FF0000. It changes KoolKat blue everywhere in the app.</p>
+
           <p class="fineprint extras-title">Chat theme</p>
           <div class="theme-swatches" id="chat-backgrounds" role="radiogroup" aria-label="Chat background">
             <button type="button" class="swatch" data-bg="default" role="radio"><span class="swatch-fill bg-default"></span><span>Normal</span></button>

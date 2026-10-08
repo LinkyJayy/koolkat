@@ -320,6 +320,8 @@ const MIGRATIONS = [
   ['users', 'verified_at', 'INTEGER'],
   // Social media links on the profile (JSON: site -> https link).
   ['users', 'socials', 'TEXT'],
+  // KoolKat Unlimited accent colour (#rrggbb), used across the app instead of blue.
+  ['users', 'accent_color', 'TEXT'],
   // Lets the sender open their own snaps (the snap key wrapped for the sender).
   ['snaps', 'sender_wrapped_key', 'TEXT'],
   ['snaps', 'sender_wrap_iv', 'TEXT'],

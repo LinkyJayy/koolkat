@@ -67,10 +67,65 @@
   }
   applyText(getText());
 
+  // Accent colour (KoolKat Unlimited): replaces KoolKat blue on buttons, tabs
+  // and highlights. Saved on the account; remembered here so it shows straight away.
+  var ACCENT_KEY = 'koolkat.accent';
+  function normaliseHex(value) {
+    var hex = String(value || '').trim().replace(/^#/, '').toLowerCase();
+    if (/^[0-9a-f]{3}$/.test(hex)) hex = hex.replace(/./g, '$&$&');
+    return /^[0-9a-f]{6}$/.test(hex) ? '#' + hex : null;
+  }
+  function applyAccent(value) {
+    var style = document.documentElement.style;
+    var hex = normaliseHex(value);
+    if (!hex) {
+      ['--brand', '--brand-2', '--brand-soft', '--brand-ink'].forEach(function (name) {
+        style.removeProperty(name);
+      });
+      return;
+    }
+    var n = parseInt(hex.slice(1), 16);
+    var r = n >> 16, g = (n >> 8) & 255, b = n & 255;
+    var light = function (c) { return Math.round(c + (255 - c) * 0.35); };
+    // Dark text on light accents (yellow, mint…), white on the rest.
+    var lin = function (c) { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+    var luminance = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+    style.setProperty('--brand', hex);
+    style.setProperty('--brand-2', 'rgb(' + light(r) + ', ' + light(g) + ', ' + light(b) + ')');
+    style.setProperty('--brand-soft', 'rgba(' + r + ', ' + g + ', ' + b + ', 0.16)');
+    style.setProperty('--brand-ink', luminance > 0.45 ? '#0f172a' : '#ffffff');
+  }
+  function getAccent() {
+    try {
+      return normaliseHex(localStorage.getItem(ACCENT_KEY));
+    } catch (e) {
+      return null;
+    }
+  }
+  function setAccent(value) {
+    var hex = normaliseHex(value);
+    try {
+      if (hex) localStorage.setItem(ACCENT_KEY, hex);
+      else localStorage.removeItem(ACCENT_KEY);
+    } catch (e) {
+      /* storage blocked: it still applies after signing in */
+    }
+    applyAccent(hex);
+  }
+  applyAccent(getAccent());
+
   if (window.matchMedia) {
     matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
       apply(get());
     });
   }
-  window.koolkatTheme = { get: get, set: set, getText: getText, setText: setText };
+  window.koolkatTheme = {
+    get: get,
+    set: set,
+    getText: getText,
+    setText: setText,
+    getAccent: getAccent,
+    setAccent: setAccent,
+    normaliseHex: normaliseHex,
+  };
 })();

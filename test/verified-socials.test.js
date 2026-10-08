@@ -83,3 +83,14 @@ describe('social media links', () => {
     assert.deepEqual((await call('GET', '/me', { token: ann.token })).body.plan.socials, res.body.socials);
   });
 });
+
+describe('accent colour (KoolKat Unlimited)', () => {
+  test('Unlimited members pick a hex colour; Free accounts cannot', async () => {
+    assert.equal((await call('POST', '/me/accent', { token: ann.token, body: { color: '#ff0000' } })).status, 403);
+    assert.equal((await call('POST', '/me/accent', { token: boss.token, body: { color: 'red' } })).status, 400);
+    assert.equal((await call('POST', '/me/accent', { token: boss.token, body: { color: '#FF0000' } })).body.accentColor, '#ff0000');
+    assert.equal((await call('GET', '/me', { token: boss.token })).body.plan.accentColor, '#ff0000');
+    assert.equal((await call('POST', '/me/accent', { token: boss.token, body: { color: null } })).body.accentColor, null);
+    assert.equal((await call('GET', '/me', { token: boss.token })).body.plan.accentColor, null);
+  });
+});

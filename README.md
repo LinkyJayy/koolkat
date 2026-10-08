@@ -55,6 +55,7 @@ KoolKat is completely free, and so is **KoolKat Unlimited**. Unlimited isn't sol
 | Custom badge picture (with *Reset Badge to Default*) | – | ✓ |
 | BFFs 💙: heart friends to pin them to the top of your friends and chats | – | ✓ |
 | Chat themes: background (presets, any colour, or your own picture) and bubble colour | – | ✓ |
+| Accent colour: any colour instead of KoolKat blue (colour picker or a hex code) | – | ✓ |
 | Activity Bubbles 🫧: show friends what you're up to | – | ✓ |
 | Kat Map 🗺: see where your friends are | – | ✓ |
 | QR friending, Nearby, KatCam, Calls and FaceTime | ✓ | ✓ |
@@ -65,6 +66,7 @@ Storage counts the Klicks you've sent that still exist. Deleting a sent Klick (i
 
 - **App icon.** Pick *Crown* or *Glow*, or *Upload a picture from your gallery* (cropped to a square). The browser tab icon changes straight away, and installing KoolKat uses your icon. Browsers don't let a website change an icon that's already on the home screen, so to switch there, remove KoolKat and install it again. (Chrome on Android may also update it by itself after a while.)
 - **Kool badge.** *Choose from gallery* replaces the crown next to your name with your own picture, for everyone who sees your name. *Reset Badge to Default* brings the crown back. Uploaded badge and icon pictures are served from unguessable links so browsers can show them.
+- **Accent colour.** In *Profile → Edit profile*, pick a preset, use the colour picker, or paste a hex code (like `#FF0000`, `ff0000` or `#f00`) and tap *Apply*. It replaces KoolKat blue on buttons, tabs and highlights everywhere in the app, on all your devices; text on top switches to dark for light colours so it stays readable. The blue circle goes back to the default.
 - **Chat themes.** Pick a background (Midnight, Sunset, Ocean, Forest, Candy, any colour, or a picture from your gallery) and the colour of your own message bubbles. The text colour adjusts automatically so it stays readable. Themes change how chats look for you; your background picture is only ever sent to you.
 - **Activity Bubbles.** Choose an emoji, write what you're doing (up to 40 characters), and show it until you clear it or for 1, 4, 8 or 24 hours. Your friends see it in their friends list, on your friend card, and at the top of your chat; you see it on your profile. People who aren't your friends never see it.
 - **Kat Map.** *Friends → 🗺* shows you and your friends on a map (OpenStreetMap). Sharing is **off (👻 Ghost)** until you pick **💙 BFFs** (only friends you've made BFFs) or **👥 Friends**. Tap a friend in the list to fly to them, or their pin to open their card. KoolKat sends your location while it's open on your screen (every 30 seconds, or sooner when you move); friends see your last spot with how long ago it was, and spots older than 24 hours disappear. Going back to Ghost deletes your location from the server. Both people need Unlimited. **Background:** websites and installed web apps can't get your location while they're in the background or closed (browsers block it), so your friends see where you were when you last had KoolKat open. Live background tracking would need a native app from the app stores.
@@ -326,6 +328,7 @@ All endpoints are under `/api` and take and return JSON. Authenticated endpoints
 | POST | `/reels/:id/view` | Count a view (once per person) |
 | GET / POST | `/reels/:id/comments` | Comments / comment |
 | DELETE | `/reels/comments/:id` | Delete a comment (its author, the Reel's author or an admin) |
+| POST | `/me/accent` | Unlimited: set your accent colour (`color: '#rrggbb'`, or `null` for KoolKat blue) |
 | POST | `/me/socials` | Save social links (`youtube, instagram, tiktok, facebook, x, linktree`; a username or link, `''` removes it) |
 | POST / DELETE | `/me/birthday` | `month, day, timeZone` (or `skip`) / remove your birthday |
 | POST / DELETE | `/me/avatar` | `image` (square JPEG, base64): set / remove your profile picture |

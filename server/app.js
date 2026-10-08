@@ -299,6 +299,7 @@ export function createApp({
       customBadge: Boolean(u.badge_id),
       activity: activityOf(u, now, () => unlimited),
       chatTheme: unlimited ? chatThemeOf(u) : null,
+      accentColor: unlimited ? u.accent_color ?? null : null,
       mapMode: unlimited ? u.map_mode || 'off' : 'off',
     };
   };
@@ -435,6 +436,26 @@ export function createApp({
         privateKeyIv: user.private_key_iv,
         plan: planFor(user),
       };
+    })
+  );
+
+  // Accent colour (KoolKat Unlimited): the colour used instead of KoolKat blue.
+  // { color: '#ff0000' } sets it, { color: null } goes back to blue.
+  api.post(
+    '/me/accent',
+    auth,
+    wrap((req) => {
+      const user = q.userById.get(req.user.id);
+      const value = req.body?.color;
+      if (value === null || value === '') {
+        db.prepare('UPDATE users SET accent_color = NULL WHERE id = ?').run(user.id);
+        return { accentColor: null };
+      }
+      if (!hasUnlimitedUser(user)) fail(403, 'Accent colours are part of KoolKat Unlimited');
+      const color = String(value ?? '').trim().toLowerCase();
+      if (!/^#[0-9a-f]{6}$/.test(color)) fail(400, 'Use a hex colour like #ff0000');
+      db.prepare('UPDATE users SET accent_color = ? WHERE id = ?').run(color, user.id);
+      return { accentColor: color };
     })
   );
 
