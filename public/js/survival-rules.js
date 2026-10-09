@@ -4,6 +4,9 @@
 // At night it's cold away from a burning campfire, and the bears come out
 // hunting. Cows and pigs don't hurt anyone; they're food when you get them.
 //
+// Ready early? Everyone still standing can say so, and the night starts
+// straight away (Solo: just you).
+//
 // The game is plain data, so it's easy to test and to send over the network.
 // The trees and rocks come from the seed, so only how much is left of each
 // needs sending.
@@ -26,7 +29,7 @@ export const COLD_HP = 1; // lost each second at night, away from a burning camp
 export const ANIMALS = {
   cow: { hp: 30, food: 3, speed: 38, flee: 120, radius: 16 },
   pig: { hp: 20, food: 2, speed: 42, flee: 130, radius: 13 },
-  bear: { hp: 60, food: 4, speed: 85, chase: 128, radius: 18, damage: [3, 5], hitEvery: 1000, sight: 220, nightSight: 1000, reach: 32 },
+  bear: { hp: 60, food: 4, speed: 35, chase: 128, radius: 18, damage: [3, 5], hitEvery: 1000, sight: 220, nightSight: 1000, reach: 32 },
 };
 export const NODES = {
   tree: { hp: 50, gives: 'wood', each: 2, radius: 18 },
@@ -97,6 +100,7 @@ export function createGame(seed, players) {
     t: 0,
     phase: 'day',
     nextId: 1000,
+    skipped: 0, // daytime skipped by being ready early (ms)
     seq: 0,
     events: [],
     nodes: worldNodes(seed),
@@ -117,6 +121,7 @@ export function createGame(seed, players) {
       swingAt: -1e9,
       diedAt: null,
       movedAt: 0,
+      ready: false, // ready for the night (skip the rest of the day)
     })),
     over: false,
     results: null,
@@ -279,6 +284,14 @@ export function act(game, id, action, rand = Math.random) {
       pushEvent(game, event);
       return event;
     }
+    case 'ready': {
+      if (isNight(game)) return { error: "It's already night" };
+      p.ready = action.ready == null ? !p.ready : Boolean(action.ready);
+      const event = { type: 'ready', by: p.id, ready: p.ready };
+      pushEvent(game, event);
+      skipIfReady(game);
+      return event;
+    }
     default:
       return { error: "That's not something you can do" };
   }
@@ -333,9 +346,23 @@ function stepAnimals(game, dt, rand) {
   }
 }
 
+/** Everyone still standing is ready: no need to wait, the night starts now. */
+function skipIfReady(game) {
+  const alive = living(game);
+  if (isNight(game) || !alive.length || !alive.every((p) => p.ready)) return false;
+  const to = PREP_MS - 1; // the next step crosses into the night
+  if (game.t < to) {
+    game.skipped += to - game.t;
+    game.t = to;
+  }
+  pushEvent(game, { type: 'skip' });
+  return true;
+}
+
 /** The world moves on by `dt` ms. */
 export function step(game, dt, rand = Math.random) {
   if (game.over) return;
+  if (!isNight(game)) skipIfReady(game); // (someone who wasn't ready left, or got knocked out)
   const wasNight = isNight(game);
   game.t += dt;
   const dtS = dt / 1000;
@@ -391,9 +418,10 @@ export function snapshot(game) {
   const round = (v) => Math.round(v * 10) / 10;
   return {
     t: Math.round(game.t),
+    skipped: game.skipped,
     phase: game.phase,
     over: game.over,
-    players: game.players.map((p) => ({ id: p.id, name: p.name, team: p.team, x: round(p.x), y: round(p.y), angle: round(p.angle), hp: Math.ceil(p.hp), hunger: Math.ceil(p.hunger), alive: p.alive, gone: p.gone, inv: p.inv, kills: p.kills, swingAt: p.swingAt })),
+    players: game.players.map((p) => ({ id: p.id, name: p.name, team: p.team, x: round(p.x), y: round(p.y), angle: round(p.angle), hp: Math.ceil(p.hp), hunger: Math.ceil(p.hunger), alive: p.alive, gone: p.gone, inv: p.inv, kills: p.kills, swingAt: p.swingAt, ready: p.ready })),
     animals: game.animals.map((a) => ({ id: a.id, kind: a.kind, x: round(a.x), y: round(a.y), hp: a.hp, face: a.face })),
     fires: game.fires.map((f) => ({ id: f.id, x: round(f.x), y: round(f.y), fuel: round(f.fuel) })),
     nodes: game.nodes.filter((n) => n.hp < NODES[n.kind].hp).map((n) => [n.id, n.hp]),

@@ -2828,3 +2828,6 @@ img.pixel { image-rendering: pixelated; }
 /* Out of the way of the buttons and your Kat. */
 .ks-stage .kart-now-playing { top: calc(112px + var(--safe-top)); bottom: auto; }
 .ks-stage .kart-alert { top: calc(150px + var(--safe-top)); }
+.ks-ready { pointer-events: auto; padding: 4px 12px; border: 2px solid rgba(0, 0, 0, 0.5); border-radius: 999px; background: rgba(20, 24, 70, 0.85); color: #fff; font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; }
+.ks-ready.on { background: #2f8f46; }
+.ks-ready[hidden] { display: none; }

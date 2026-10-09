@@ -7,7 +7,8 @@ import { MAX_PLAYERS, act, createGame, finish, movePlayer, snapshot, step, survi
 
 // Kat Survival online: 2 to 5 people, one team colour each, survive the night
 // together. The server runs the world (animals, campfires, trees, the clock)
-// in steps of 100 ms, catching up whenever someone checks in; each phone sends
+// in steps of 100 ms, catching up whenever someone checks in (once
+// everyone's ready for the night, the rest of the day is skipped); each phone sends
 // where its Kat is and what it did about 10 times a second and gets the world
 // back. Games live in memory (a restart ends them).
 
@@ -16,7 +17,7 @@ const COUNTDOWN = 4000;
 const STEP_MS = 100;
 const GONE_AFTER = 15 * 1000;
 const ROOM_MAX_AGE = 2 * 60 * 60 * 1000;
-const ACTIONS = ['swing', 'eat', 'place', 'fuel', 'craft'];
+const ACTIONS = ['swing', 'eat', 'place', 'fuel', 'craft', 'ready'];
 
 export function registerSurvivalRoutes({ api, auth, wrap, clock, publicUser, db, bolts, gems, shop }) {
   const rooms = new Map();
@@ -54,7 +55,7 @@ export function registerSurvivalRoutes({ api, auth, wrap, clock, publicUser, db,
   function advance(room, now) {
     if (room.state !== 'running' || now < room.startAt) return;
     const game = room.game;
-    const target = now - room.startAt;
+    const target = now - room.startAt + game.skipped; // (minus the daytime everyone skipped)
     for (let n = 0; game.t + STEP_MS <= target && !game.over && n < 1200; n++) step(game, STEP_MS, rand);
     if (!game.over && !game.players.some((p) => p.alive && !p.gone)) finish(game);
     if (game.over && room.state === 'running') {
@@ -223,7 +224,7 @@ export function registerSurvivalRoutes({ api, auth, wrap, clock, publicUser, db,
         movePlayer(room.game, me.id, Number(b.x), Number(b.y), Number(b.angle));
         for (const a of Array.isArray(b.actions) ? b.actions.slice(0, 6) : []) {
           if (!ACTIONS.includes(a?.type)) continue;
-          const out = act(room.game, me.id, { type: a.type, amount: a.amount }, rand);
+          const out = act(room.game, me.id, { type: a.type, amount: a.amount, ready: a.ready }, rand);
           outcomes.push({ type: a.type, error: out.error ?? null });
         }
         advance(room, now);

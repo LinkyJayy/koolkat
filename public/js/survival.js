@@ -252,6 +252,11 @@ export function createKatSurvival(els) {
       if (e.type === 'craft' && mine) float(e.x, e.y - 30, '+1 campfire', '#ffb347');
       if (e.type === 'eat' && mine) float(e.x, e.y - 30, '+food', '#9cff8a');
       if (e.type === 'night') alert('🌙 Night has fallen! Stay by a campfire and watch out for bears!');
+      if (e.type === 'ready' && e.ready && e.by !== run.meId && run.online) {
+        const p = run.view.players.find((q) => q.id === e.by);
+        const alive = run.view.players.filter((q) => q.alive && !q.gone);
+        if (p) alert(`🌙 ${p.name} is ready for the night (${alive.filter((q) => q.ready).length}/${alive.length})`);
+      }
       if (e.type === 'died' && e.who === run.meId) {
         const why = { bear: 'A bear got you!', cold: 'You froze in the dark!', hunger: 'You starved!' }[e.by] ?? 'You were knocked out!';
         alert(`💀 ${why}${run.online ? ' Watching the others…' : ''}`);
@@ -292,6 +297,31 @@ export function createKatSurvival(els) {
   onPress(els.place, () => doAction('place'));
   onPress(els.fuel, () => doAction('fuel'));
   onPress(els.craft, () => doAction('craft'));
+  onPress(els.ready, readyForNight);
+
+  /**
+   * Ready for the night: skip the rest of the day. Solo, tap twice (so it's
+   * not by accident); online it's a vote: the night starts when everyone
+   * still standing is ready.
+   */
+  let armedUntil = 0;
+  function readyForNight() {
+    if (!run || run.over || performance.now() < run.startAt || gameTime() >= PREP_MS) return;
+    const me = run.view.players.find((p) => p.id === run.meId);
+    if (!me?.alive) return;
+    if (run.online) {
+      doAction('ready', { ready: !me.ready });
+      me.ready = !me.ready; // shown straight away; the server confirms it
+      return;
+    }
+    if (performance.now() > armedUntil) {
+      armedUntil = performance.now() + 3000;
+      alert('🌙 Tap again to skip the rest of the day and start the night');
+      return;
+    }
+    armedUntil = 0;
+    doAction('ready', { ready: true });
+  }
 
   // Hold the swing button (or Space) to keep swinging.
   let holdSwing = false;
@@ -349,6 +379,11 @@ export function createKatSurvival(els) {
       return;
     }
     if (!down || e.repeat) return;
+    if (k === 'r') {
+      readyForNight();
+      e.preventDefault();
+      return;
+    }
     const action = { e: 'eat', f: 'fuel', q: 'place', p: 'place', c: 'craft' }[k];
     if (action) {
       doAction(action);
@@ -700,6 +735,14 @@ export function createKatSurvival(els) {
     els.place.disabled = !(inv.campfire > 0);
     els.craft.disabled = !(inv.wood >= CAMPFIRE_RECIPE.wood && inv.stone >= CAMPFIRE_RECIPE.stone);
     els.eat.disabled = !(inv.food > 0);
+    // Ready for the night? (Online: how many are.)
+    els.ready.hidden = night || !me.alive || run.over;
+    if (!els.ready.hidden) {
+      const alive = v.players.filter((p) => p.alive && !p.gone);
+      const count = run.online ? ` (${alive.filter((p) => p.ready).length}/${alive.length})` : '';
+      els.ready.textContent = me.ready ? `✅ Ready for night${count}` : `🌙 Ready for night${count}`;
+      els.ready.classList.toggle('on', Boolean(me.ready));
+    }
     const cold = night && me.alive && !isWarm({ t, fires: v.fires }, run.me);
     els.cold.hidden = !cold;
   }

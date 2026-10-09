@@ -7017,6 +7017,7 @@ const katSurvival = createKatSurvival({
   fuel: $('btn-ks-fuel'),
   place: $('btn-ks-place'),
   craft: $('btn-ks-craft'),
+  ready: $('btn-ks-ready'),
   cold: $('ks-cold'),
   alert: $('ks-alert'),
   countdown: $('ks-countdown'),

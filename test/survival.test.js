@@ -110,6 +110,26 @@ describe('Kat Survival rules', () => {
     assert.ok(warmHp - p.hp > 9, 'cold away from it');
   });
 
+  test('ready early? Skip the rest of the day (everyone still standing has to be ready)', () => {
+    const g = createGame(3, [{ id: 1, name: 'ann', team: 'blue' }, { id: 2, name: 'ben', team: 'red' }]);
+    g.animals = [];
+    run(g, 60_000);
+    assert.equal(act(g, 1, { type: 'ready' }).ready, true);
+    step(g, 100);
+    assert.equal(g.phase, 'day', 'ben is not ready yet');
+    act(g, 2, { type: 'ready', ready: true });
+    step(g, 100);
+    assert.equal(g.phase, 'night', 'both ready: here comes the night');
+    assert.ok(g.skipped > 200_000, 'the rest of the day was skipped');
+    assert.match(act(g, 1, { type: 'ready' }).error, /already night/);
+    // Someone who isn't ready drops out: the rest don't wait for them.
+    const h = createGame(3, [{ id: 1, name: 'ann', team: 'blue' }, { id: 2, name: 'ben', team: 'red' }]);
+    act(h, 1, { type: 'ready' });
+    h.players[1].gone = true;
+    step(h, 100);
+    assert.equal(h.phase, 'night');
+  });
+
   test('survive until morning to win; running too fast is not allowed', () => {
     const g = solo();
     const p = g.players[0];
@@ -158,6 +178,34 @@ async function register(username) {
 }
 
 describe('Kat Survival online', () => {
+  test('online: the night starts once everyone is ready', async () => {
+    const [cat, dan] = [await register('cat'), await register('dan')];
+    const code = (await call('POST', '/survival/rooms', cat.token)).body.room.code;
+    await call('POST', `/survival/rooms/${code}/join`, dan.token);
+    await call('POST', `/survival/rooms/${code}/start`, cat.token);
+    now += 4500;
+    for (let i = 0; i < 3; i++) {
+      now += 10_000;
+      for (const u of [cat, dan]) await call('POST', `/survival/rooms/${code}/state`, u.token, { x: 1200, y: 1200, angle: 0 });
+    }
+    let res = await call('POST', `/survival/rooms/${code}/state`, cat.token, { x: 1200, y: 1200, angle: 0, actions: [{ type: 'ready', ready: true }] });
+    assert.equal(res.body.game.phase, 'day');
+    assert.equal(res.body.game.players.find((p) => p.id === cat.id).ready, true);
+    now += 1000;
+    res = await call('POST', `/survival/rooms/${code}/state`, dan.token, { x: 1200, y: 1260, angle: 0, actions: [{ type: 'ready', ready: true }] });
+    now += 500;
+    res = await call('POST', `/survival/rooms/${code}/state`, dan.token, { x: 1200, y: 1260, angle: 0 });
+    assert.equal(res.body.game.phase, 'night');
+    const t = res.body.game.t;
+    assert.ok(t >= 300_000 && t < 302_000, `night has just started (t=${t})`);
+    // The night goes on in real time from here: 3 minutes and it's morning.
+    now += 60_000;
+    res = await call('POST', `/survival/rooms/${code}/state`, dan.token, { x: 1200, y: 1260, angle: 0 });
+    assert.ok(Math.abs(res.body.game.t - (t + 60_000)) <= 200 || res.body.room.state === 'done');
+    await call('POST', `/survival/rooms/${code}/leave`, cat.token);
+    await call('POST', `/survival/rooms/${code}/leave`, dan.token);
+  });
+
   test('lobby, start, play together, and the survivors get bolts', async () => {
     const [ann, ben] = [await register('ann'), await register('ben')];
     const code = (await call('POST', '/survival/rooms', ann.token)).body.room.code;
