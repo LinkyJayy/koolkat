@@ -35,6 +35,7 @@ const PRECACHE = [
   'sounds/kat-kart-music.mp3',
   'sounds/crystal-cavern.mp3',
   'sounds/kingdom-dominance.mp3',
+  'sounds/gold-mine.mp3',
   'js/qr.js',
   'js/katcam.js',
   'js/theme.js',

@@ -11,7 +11,7 @@ import { KART_MAP_IDS, KART_MAP_SIZE } from '../public/js/kart-maps.js';
 
 export const MAX_RACERS = 8;
 /** The Kat Kart OST: the host picks one (or Random, picked when the race starts). */
-export const KART_SONGS = ['natho-town', 'crystal-cavern', 'kingdom-dominance'];
+export const KART_SONGS = ['natho-town', 'crystal-cavern', 'kingdom-dominance', 'gold-mine'];
 /** Power-ups a racer can use on everyone else (speed boosts only affect yourself). */
 export const ATTACKS = ['mouse', 'food', 'thunder'];
 const EVENT_ID_RE = /^[A-Za-z0-9-]{3,40}$/;
