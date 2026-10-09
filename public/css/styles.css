@@ -2710,3 +2710,56 @@ img.pixel { image-rendering: pixelated; }
 .shop-swap-amount { display: flex; align-items: center; gap: 8px; font-weight: 800; }
 .shop-swap-amount input { width: 7em; }
 .shop-swap .row { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Bolt Shop / Gem Shop tabs */
+.shop-tabs, .feedback-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 12px; }
+.shop-tab, .feedback-tab { padding: 10px; border: 2px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); font: inherit; font-weight: 800; cursor: pointer; }
+.shop-tab[aria-selected="true"], .feedback-tab[aria-selected="true"] { border-color: var(--brand); background: var(--brand-soft); }
+.feedback-tab[hidden] { display: none; }
+.feedback-tabs:has(.feedback-tab[hidden]) { grid-template-columns: 1fr; }
+.gem-badge { image-rendering: pixelated; }
+
+/* Suggestions & Bug reports */
+.feedback-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 12px; }
+.feedback-dialog { width: min(94vw, 480px); }
+.feedback-dialog h2 { margin: 0 0 4px; }
+.field { display: flex; flex-direction: column; gap: 4px; margin: 10px 0; font-weight: 700; font-size: 14px; }
+.field input, .field select, .field textarea { font: inherit; font-weight: 400; }
+.field textarea { resize: vertical; min-height: 80px; }
+#screen-feedback .feedback-tabs, #screen-feedback .feedback-filters, #screen-feedback .feedback-note { margin-left: 16px; margin-right: 16px; }
+.feedback-open { margin: 0 16px 12px; width: calc(100% - 32px); }
+.feedback-filters { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px; }
+.feedback-filters[hidden] { display: none; }
+.feedback-filters input { grid-column: 1 / -1; }
+.feedback-filters input, .feedback-filters select { font: inherit; min-width: 0; }
+.feedback-list { margin: 0; }
+.feedback-item { display: flex; align-items: flex-start; gap: 10px; }
+.feedback-item.done { opacity: 0.85; }
+.feedback-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.feedback-body strong { overflow-wrap: anywhere; }
+.feedback-does { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); font-size: 14px; }
+.feedback-chip { align-self: flex-start; padding: 1px 8px; border-radius: 999px; background: var(--brand-soft); color: var(--brand); font-size: 12px; font-weight: 800; }
+.feedback-item .btn { flex: none; }
+
+/* Circle Chaos on small phones: teams wrap into rows (names stay readable), smaller header. */
+@media (max-width: 420px) {
+  .cc-teams { grid-template-columns: repeat(min(var(--cc-cols, 5), 3), minmax(0, 1fr)); }
+  .cc-team { padding: 6px 4px; }
+  .cc-team > img { width: 32px; }
+  .cc-team .cc-count { font-size: 17px; }
+  .cc-team .cc-left { font-size: 10px; }
+  .cc-turn strong { font-size: 16px; }
+  .cc-top { gap: 6px; padding-left: 8px; padding-right: 8px; }
+  .cc-team-pick { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .cc-actions, .cc-reveal, .cc-log { margin-left: 8px; margin-right: 8px; }
+  .cc-table { margin: 6px 8px; }
+}
+/* The name, count and turns stack under the cat. */
+.cc-team-text { display: flex; flex-direction: column; align-items: center; min-width: 0; max-width: 100%; }
+/* Nothing on the Circle Chaos screen gets squashed: it scrolls instead (the table used to shrink flat on small phones). */
+.circles-screen > * { flex-shrink: 0; }
+/* The Deck counter sits in the top corner, out of the pile's way. */
+.cc-deck-count { top: 6px; bottom: auto; }
+#screen-feedback .feedback-list { margin: 0 16px 16px; padding: 0; list-style: none; }
+.feedback-list .feedback-item { padding: 12px 0; border-bottom: 1px solid var(--border); }
+.feedback-dialog .feedback-list { text-align: left; padding: 0; list-style: none; }

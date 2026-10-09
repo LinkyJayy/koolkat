@@ -202,7 +202,7 @@
     <div class="bolts-bar">
       <span class="bolts-balance"><img src="icons/powerups/thunder.png" alt="" class="pixel"><strong id="bolts-balance">0</strong> bolts</span>
       <span class="bolts-balance gems-balance"><img src="icons/gem.png" alt="" class="pixel"><strong id="gems-balance">0</strong> gems</span>
-      <button type="button" class="btn small shop-open" id="btn-shop">🛒 Bolt Shop</button>
+      <button type="button" class="btn small shop-open" id="btn-shop">🛒 Shop</button>
       <span class="fineprint">Win any game: +100 ⚡ · KatEscape: keep every ⚡ you collect · Finish any game: 1 to 10 💎, the better you did</span>
     </div>
     <div class="playables-grid">
@@ -324,6 +324,33 @@
         </div>
       </div>
     </div>
+  </section>
+
+  <!-- Suggestions & Bug reports (owner and admins) -->
+  <section id="screen-feedback" class="screen panel" hidden>
+    <header class="panel-header">
+      <button type="button" class="icon-btn plain" id="btn-feedback-back" aria-label="Back to Admin tools">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12Z"/></svg>
+      </button>
+      <h2>Feedback</h2>
+      <span></span>
+    </header>
+    <div class="feedback-tabs" role="tablist">
+      <button type="button" class="feedback-tab" role="tab" data-kind="suggestions" id="tab-suggestions">💡 Suggestions</button>
+      <button type="button" class="feedback-tab" role="tab" data-kind="bugs" id="tab-bugs">🐞 Bug reports</button>
+    </div>
+    <div class="feedback-filters" id="feedback-filters">
+      <input type="search" id="feedback-search" placeholder="Search…" aria-label="Search" enterkeyhint="search">
+      <select id="feedback-category" aria-label="Category"></select>
+      <select id="feedback-status" aria-label="Status"></select>
+      <select id="feedback-sort" aria-label="Sort">
+        <option value="new">Newest first</option>
+        <option value="old">Oldest first</option>
+      </select>
+    </div>
+    <p class="fineprint feedback-note" id="feedback-note"></p>
+    <ul class="list feedback-list" id="feedback-list"></ul>
+    <p class="home-empty" id="feedback-empty" hidden>Nothing here yet.</p>
   </section>
 
   <!-- Kat Invaders -->
@@ -1011,15 +1038,60 @@
     </div>
   </dialog>
 
+  <dialog id="dialog-suggest" class="feedback-dialog">
+    <form id="suggest-form" novalidate>
+      <h2>💡 Make a suggestion</h2>
+      <p class="fineprint">The KoolKat owner reads every one.</p>
+      <label class="field">Category
+        <select id="suggest-category" required></select>
+      </label>
+      <label class="field">Your suggestion
+        <input id="suggest-idea" maxlength="300" placeholder="e.g. Kat Golf: a new Playable" required>
+      </label>
+      <label class="field">What could it do?
+        <textarea id="suggest-does" maxlength="1000" rows="4" placeholder="How it works, what it adds…" required></textarea>
+      </label>
+      <div class="row">
+        <button type="button" class="btn" id="btn-suggest-close">Close</button>
+        <button type="submit" class="btn primary" id="btn-suggest-send">Send</button>
+      </div>
+      <h3 class="section-title">Your suggestions</h3>
+      <ul class="list feedback-list" id="my-suggestions"></ul>
+    </form>
+  </dialog>
+
+  <dialog id="dialog-bug" class="feedback-dialog">
+    <form id="bug-form" novalidate>
+      <h2>🐞 Report a bug</h2>
+      <p class="fineprint">Tell us what went wrong, and where.</p>
+      <label class="field">Category
+        <select id="bug-category" required></select>
+      </label>
+      <label class="field">What's the bug?
+        <textarea id="bug-description" maxlength="2000" rows="5" placeholder="e.g. In Circle Chaos the leaderboard doesn't change after I take a circle" required></textarea>
+      </label>
+      <div class="row">
+        <button type="button" class="btn" id="btn-bug-close">Close</button>
+        <button type="submit" class="btn primary" id="btn-bug-send">Send</button>
+      </div>
+      <h3 class="section-title">Your bug reports</h3>
+      <ul class="list feedback-list" id="my-bugs"></ul>
+    </form>
+  </dialog>
+
   <dialog id="dialog-shop" class="shop-dialog">
+    <div class="shop-tabs" role="tablist">
+      <button type="button" class="shop-tab" role="tab" data-currency="bolts" id="tab-bolt-shop">⚡ Bolt Shop</button>
+      <button type="button" class="shop-tab" role="tab" data-currency="gems" id="tab-gem-shop">💎 Gem Shop</button>
+    </div>
     <div class="shop-head">
-      <h2>⚡ Bolt Shop</h2>
+      <h2 id="shop-title">⚡ Bolt Shop</h2>
       <span class="shop-wallet">
         <span class="bolts-balance"><img src="icons/powerups/thunder.png" alt="" class="pixel"><strong id="shop-balance">0</strong></span>
         <span class="bolts-balance gems-balance"><img src="icons/gem.png" alt="" class="pixel"><strong id="shop-gems">0</strong></span>
       </span>
     </div>
-    <p class="fineprint">Changed your mind? Sell anything back for every bolt you paid.</p>
+    <p class="fineprint" id="shop-note">Changed your mind? Sell anything back for everything you paid.</p>
     <h3 class="shop-section">Team colours <span class="fineprint">for Circle Chaos and Kat Invaders</span></h3>
     <div class="shop-grid" id="shop-teams"></div>
     <h3 class="shop-section">Extras</h3>
@@ -1174,6 +1246,8 @@
       <span></span>
     </header>
 
+    <button type="button" class="btn wide feedback-open" id="btn-open-feedback">💡 Suggestions &amp; 🐞 Bug reports</button>
+
     <div id="admins-section" hidden>
       <h3 class="section-title">Admins (only you can change these)</h3>
       <ul class="list" id="admins-list"></ul>
@@ -1317,6 +1391,10 @@
           </div>
         </div>
         <div id="unlimited-extras" hidden>
+          <div class="feedback-buttons">
+            <button type="button" class="btn small" id="btn-suggest">💡 Make a suggestion</button>
+            <button type="button" class="btn small" id="btn-report-bug">🐞 Report a bug</button>
+          </div>
           <p class="fineprint extras-title">App icon</p>
           <div class="icon-picker" role="radiogroup" aria-label="App icon" id="icon-picker">
             <button type="button" class="icon-choice" data-icon="default" role="radio"><img src="icons/icon-192.png" alt=""><span>Classic</span></button>

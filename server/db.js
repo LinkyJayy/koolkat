@@ -331,6 +331,31 @@ CREATE TABLE IF NOT EXISTS bolt_rewards (
 CREATE INDEX IF NOT EXISTS bolt_rewards_user ON bolt_rewards(user_id, created_at);
 CREATE UNIQUE INDEX IF NOT EXISTS bolt_rewards_ref ON bolt_rewards(user_id, ref) WHERE ref IS NOT NULL;
 
+-- Suggestions from KoolKat Unlimited users; the owner approves them.
+CREATE TABLE IF NOT EXISTS suggestions (
+  id           INTEGER PRIMARY KEY,
+  user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  category     TEXT NOT NULL,
+  idea         TEXT NOT NULL,
+  does         TEXT NOT NULL,
+  approved_at  INTEGER,
+  approved_by  INTEGER,
+  created_at   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS suggestions_created ON suggestions(created_at);
+
+-- Bug reports from KoolKat Unlimited users; admins verify them ("this is a real bug").
+CREATE TABLE IF NOT EXISTS bug_reports (
+  id           INTEGER PRIMARY KEY,
+  user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  category     TEXT NOT NULL,
+  description  TEXT NOT NULL,
+  verified_at  INTEGER,
+  verified_by  INTEGER,
+  created_at   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS bug_reports_created ON bug_reports(created_at);
+
 -- Gems 💎: earned after every Playable (1 to 10, the better you did), or
 -- swapped for bolts (1 gem = 100 bolts). Like bolt_rewards: one row per change.
 CREATE TABLE IF NOT EXISTS gem_rewards (
@@ -368,6 +393,9 @@ const MIGRATIONS = [
   ['users', 'bolt_badge', 'INTEGER'],
   // The 30-day KoolKat Unlimited trial from the Bolt Shop: when it ends.
   ['users', 'bolt_trial_until', 'INTEGER'],
+  // The Gem Badge (from the Gem Shop), and which currency each shop item was bought with.
+  ['users', 'gem_badge', 'INTEGER'],
+  ['shop_items', 'currency', "TEXT NOT NULL DEFAULT 'bolts'"],
   ['friendships', 'streak_reminded_day', 'INTEGER'],
   // KoolKat Unlimited end time (gifts, codes, approved requests).
   ['users', 'plan_until', 'INTEGER'],

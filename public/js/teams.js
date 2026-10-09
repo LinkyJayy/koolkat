@@ -14,3 +14,6 @@ export const TEAM_COLORS = {
   red: '#ff0000', yellow: '#ffe400', green: '#37ff00', blue: '#004cff', purple: '#9d00ff',
   orange: '#ff8a00', pink: '#ff5fb0', teal: '#00b3a4', white: '#ffffff', gray: '#8a8a8a', black: '#333333', brown: '#8b4a1c',
 };
+
+/** The colour for a team's highlight border: White and Black get a visible grey, so they show on light and dark. */
+export const teamEdge = (team) => ({ white: '#aab2bf', black: '#6e6e6e' })[team] ?? TEAM_COLORS[team];

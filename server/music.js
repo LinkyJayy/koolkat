@@ -47,7 +47,7 @@ export function sniffAudio(bytes) {
 }
 
 const ARTIST_COLUMNS =
-  'u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz, u.verified_at, u.accent_color, u.bolt_unlimited, u.bolt_badge, u.bolt_trial_until';
+  'u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz, u.verified_at, u.accent_color, u.bolt_unlimited, u.bolt_badge, u.bolt_trial_until, u.gem_badge';
 
 export function registerMusicRoutes({ api, db, clock, auth, wrap, publicUser, hasUnlimitedUser, isAdminUser, pusher, mediaDir, rateLimiter }) {
   const dir = path.join(mediaDir, 'music');

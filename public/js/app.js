@@ -28,10 +28,12 @@ import { playNotification, setSoundsOn, soundsOn } from './sounds.js';
 import { createKatWordle } from './wordle.js';
 import { focusFirst, initInput } from './input.js';
 import { createKatEscape } from './escape.js';
+import { teamEdge } from './teams.js';
+import { BUG_CATEGORIES, SUGGESTION_CATEGORIES, categoryLabel } from './feedback-categories.js';
 import { BOLTS_PER_GEM, chaseGems, escapeGems, invaderGems, placeGems, wordleGems } from './rewards.js';
 import { DIFFICULTIES as KI_DIFFICULTIES, LIVES as KI_LIVES, createKatInvaders } from './invaders.js';
 import { choose as ccChoose, draw as ccDraw, newDeck as ccNewDeck, ranked as ccRanked } from './circle-rules.js';
-import { BASE_TEAMS, TEAMS as CC_TEAMS, TEAM_COLORS as CC_TEAM_COLORS, TEAM_NAMES as CC_TEAM_NAMES, TURNS as CC_TURNS, circleIcon as ccCircleIcon, createCircleTable, describeEvent as ccDescribe, teamIcon as ccTeamIcon } from './circles.js';
+import { BASE_TEAMS, TEAMS as CC_TEAMS, TEAM_NAMES as CC_TEAM_NAMES, TURNS as CC_TURNS, circleIcon as ccCircleIcon, createCircleTable, describeEvent as ccDescribe, teamIcon as ccTeamIcon } from './circles.js';
 import { RACE_SONGS, RACERS as KART_RACERS, createKatKart, createRaceMusic, formatRaceTime, showNowPlaying } from './kart.js';
 
 const $ = (id) => document.getElementById(id);
@@ -113,6 +115,7 @@ const badgeImg = (user) => {
     user?.verified && el('img', { src: 'icons/social/verified.png', alt: 'Verified', title: 'Verified', class: 'verified-badge' }),
     user?.badge && el('img', { src: badgeSrc(user), alt: 'KoolKat Unlimited', title: 'KoolKat Unlimited', class: 'kool-badge' }),
     user?.boltBadge && el('img', { src: 'icons/bolt-badge.png', alt: 'Bolt Badge', title: 'Bolt Badge', class: 'bolt-badge' }),
+    user?.gemBadge && el('img', { src: 'icons/gem.png', alt: 'Gem Badge', title: 'Gem Badge', class: 'bolt-badge gem-badge' }),
     user?.birthday && el('span', { class: 'birthday-pop', title: "It's their birthday!", 'aria-label': "It's their birthday", text: '🎉' })
   );
   if (parts.length < 2) return parts[0] ?? null;
@@ -418,6 +421,8 @@ function openView(view) {
   else if (view === 'reels') openReels();
   else if (view === 'music') openMusic();
   else if (view === 'playables') openPlayables();
+  // A new suggestion or bug report (the owner's notifications).
+  else if (view === 'feedback') openFeedback();
   else if (view === 'camera') show('camera');
   else if (state.screen !== 'home') openHome();
 }
@@ -2447,6 +2452,7 @@ async function refreshMe() {
     displayName: me.user.displayName,
     badge: me.user.badge,
     boltBadge: me.user.boltBadge,
+    gemBadge: me.user.gemBadge,
     badgeUrl: me.user.badgeUrl,
     flair: me.user.flair,
     accent: me.user.accent,
@@ -2557,6 +2563,162 @@ for (const [input, button] of [
       $(button).click();
     }
   });
+}
+
+// ---------- Suggestions & Bug reports ----------
+// KoolKat Unlimited users send them from their profile. The owner goes
+// through suggestions (search, sort, filter, approve); every admin can verify
+// bug reports, and the owner can search, sort and filter them too.
+const fillCategories = (select, list, first) =>
+  select.replaceChildren(...(first ? [el('option', { value: '', text: first })] : []), ...list.map(([id, label]) => el('option', { value: id, text: label })));
+fillCategories($('suggest-category'), SUGGESTION_CATEGORIES, 'Pick a category…');
+fillCategories($('bug-category'), BUG_CATEGORIES, 'Pick a category…');
+const feedbackDate = (ms) => new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+
+/** Your own suggestions or bug reports, with how they're doing. */
+function myFeedbackItem(item, kind) {
+  const done = kind === 'suggestions' ? item.approved : item.verified;
+  return el(
+    'li',
+    { class: 'feedback-item' },
+    el('div', { class: 'feedback-body' },
+      el('span', { class: 'feedback-chip', text: categoryLabel(kind === 'suggestions' ? SUGGESTION_CATEGORIES : BUG_CATEGORIES, item.category) }),
+      el('strong', { text: kind === 'suggestions' ? item.idea : item.description }),
+      el('span', { class: 'fineprint', text: `${feedbackDate(item.createdAt)} · ${done ? (kind === 'suggestions' ? '✅ Approved' : '☑️ Verified: a real bug') : kind === 'suggestions' ? 'Waiting for the owner' : 'Waiting for an admin'}` })
+    )
+  );
+}
+async function loadMine(kind) {
+  const list = kind === 'suggestions' ? $('my-suggestions') : $('my-bugs');
+  try {
+    const data = await api('GET', kind === 'suggestions' ? '/suggestions/mine' : '/bugs/mine');
+    const items = data[kind];
+    list.replaceChildren(...(items.length ? items.map((i) => myFeedbackItem(i, kind)) : [el('li', { class: 'fineprint', text: 'Nothing yet.' })]));
+  } catch {
+    list.replaceChildren();
+  }
+}
+$('btn-suggest').addEventListener('click', () => {
+  $('dialog-profile').close();
+  $('dialog-suggest').showModal();
+  loadMine('suggestions');
+});
+$('btn-report-bug').addEventListener('click', () => {
+  $('dialog-profile').close();
+  $('dialog-bug').showModal();
+  loadMine('bugs');
+});
+$('btn-suggest-close').addEventListener('click', () => $('dialog-suggest').close());
+$('btn-bug-close').addEventListener('click', () => $('dialog-bug').close());
+$('suggest-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  withBusy($('btn-suggest-send'), async () => {
+    if (!$('suggest-category').value) throw new Error('Pick a category');
+    if (!$('suggest-idea').value.trim()) throw new Error("What's your suggestion?");
+    if (!$('suggest-does').value.trim()) throw new Error('Say what it could do');
+    await api('POST', '/suggestions', { category: $('suggest-category').value, idea: $('suggest-idea').value, does: $('suggest-does').value });
+    $('suggest-form').reset();
+    toast('💡 Thanks! Your suggestion was sent');
+    loadMine('suggestions');
+  });
+});
+$('bug-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  withBusy($('btn-bug-send'), async () => {
+    if (!$('bug-category').value) throw new Error('Pick a category');
+    if (!$('bug-description').value.trim()) throw new Error("Describe what's going wrong");
+    await api('POST', '/bugs', { category: $('bug-category').value, description: $('bug-description').value });
+    $('bug-form').reset();
+    toast('🐞 Thanks! Your bug report was sent');
+    loadMine('bugs');
+  });
+});
+
+// The owner's (and admins') screen.
+const feedback = { kind: 'suggestions', timer: null };
+function openFeedback(kind) {
+  const owner = Boolean(state.plan?.isOwner);
+  if (!state.plan?.isAdmin) return;
+  // Suggestions are the owner's alone.
+  feedback.kind = owner ? kind ?? feedback.kind : 'bugs';
+  $('tab-suggestions').hidden = !owner;
+  show('feedback');
+  setFeedbackKind(feedback.kind);
+}
+function setFeedbackKind(kind) {
+  feedback.kind = kind;
+  // A fresh start on each tab (the categories are different anyway).
+  $('feedback-search').value = '';
+  for (const tab of document.querySelectorAll('.feedback-tab')) tab.setAttribute('aria-selected', String(tab.dataset.kind === kind));
+  const suggestions = kind === 'suggestions';
+  fillCategories($('feedback-category'), suggestions ? SUGGESTION_CATEGORIES : BUG_CATEGORIES, 'All categories');
+  $('feedback-status').replaceChildren(
+    el('option', { value: '', text: 'All' }),
+    el('option', { value: 'open', text: suggestions ? 'Not approved yet' : 'Not verified yet' }),
+    el('option', { value: 'done', text: suggestions ? '✅ Approved' : '☑️ Verified' })
+  );
+  loadFeedback();
+}
+for (const tab of document.querySelectorAll('.feedback-tab')) tab.addEventListener('click', () => setFeedbackKind(tab.dataset.kind));
+$('btn-open-feedback').addEventListener('click', () => openFeedback('suggestions'));
+$('btn-feedback-back').addEventListener('click', () => $('btn-admin').click());
+for (const id of ['feedback-category', 'feedback-status', 'feedback-sort']) $(id).addEventListener('change', () => loadFeedback());
+$('feedback-search').addEventListener('input', () => {
+  clearTimeout(feedback.timer);
+  feedback.timer = setTimeout(loadFeedback, 250);
+});
+
+async function loadFeedback() {
+  const kind = feedback.kind;
+  const params = new URLSearchParams();
+  for (const [key, id] of [['q', 'feedback-search'], ['category', 'feedback-category'], ['status', 'feedback-status'], ['sort', 'feedback-sort']]) {
+    if ($(id).value) params.set(key, $(id).value);
+  }
+  try {
+    const data = await api('GET', `/admin/${kind === 'suggestions' ? 'suggestions' : 'bugs'}?${params}`);
+    if (feedback.kind !== kind) return;
+    const items = data[kind];
+    // Only the owner can search, sort and filter.
+    const canSearch = kind === 'suggestions' || data.canSearch;
+    $('feedback-filters').hidden = !canSearch;
+    const counts = data.counts ? Object.values(data.counts).reduce((a, c) => ({ total: a.total + c.total, done: a.done + c.done }), { total: 0, done: 0 }) : null;
+    $('feedback-note').textContent = counts
+      ? `${counts.total} in all · ${counts.done} ${kind === 'suggestions' ? 'approved' : 'verified'}`
+      : 'Verify the ones that are real bugs. Only the owner can search and sort them.';
+    $('feedback-list').replaceChildren(...items.map((item) => feedbackItem(item, kind)));
+    $('feedback-empty').hidden = items.length > 0;
+  } catch (err) {
+    toast(err.message, { error: true });
+  }
+}
+
+function feedbackItem(item, kind) {
+  const suggestions = kind === 'suggestions';
+  const done = suggestions ? item.approved : item.verified;
+  const li = el(
+    'li',
+    { class: `feedback-item${done ? ' done' : ''}` },
+    el('div', { class: 'feedback-body' },
+      el('span', { class: 'feedback-chip', text: categoryLabel(suggestions ? SUGGESTION_CATEGORIES : BUG_CATEGORIES, item.category) }),
+      el('strong', {}, suggestions ? item.idea : item.description, done && !suggestions ? el('img', { src: 'icons/social/verified.png', alt: 'Verified', title: 'Verified: a real bug', class: 'verified-badge' }) : null),
+      suggestions ? el('p', { class: 'feedback-does', text: item.does }) : null,
+      el('span', { class: 'fineprint feedback-by' }, `${feedbackDate(item.createdAt)} · `, item.author ? el('span', {}, item.author.displayName, badgeImg(item.author), ` @${item.author.username}`) : null)
+    ),
+    el('button', {
+      type: 'button',
+      class: `btn small${done ? '' : ' primary'}`,
+      text: suggestions ? (done ? '✅ Approved' : 'Approve') : done ? '☑️ Verified' : 'Verify',
+      title: done ? 'Tap to undo' : null,
+      onclick: (e) =>
+        withBusy(e.currentTarget, async () => {
+          const path = suggestions ? `/admin/suggestions/${item.id}/approve` : `/admin/bugs/${item.id}/verify`;
+          const body = suggestions ? { approved: !done } : { verified: !done };
+          await api('POST', path, body);
+          await loadFeedback(); // and the counts
+        }),
+    })
+  );
+  return li;
 }
 
 // ---------- admin ----------
@@ -5364,13 +5526,23 @@ async function earnRewards(game, { win = false, runBolts = 0, gems = 0 } = {}) {
 }
 
 // ---------- The Bolt Shop: team colours, Unlimited and the Bolt Badge ----------
-const SHOP_ART = { 'bolt-badge': 'icons/bolt-badge.png', unlimited: 'icons/kool-badge.png', 'unlimited-trial': 'icons/kool-badge.png' };
+const SHOP_ART = { 'bolt-badge': 'icons/bolt-badge.png', 'gem-badge': 'icons/gem.png', unlimited: 'icons/kool-badge.png', 'unlimited-trial': 'icons/kool-badge.png' };
 const SHOP_INFO = {
   'bolt-badge': 'A ⚡ next to your name, for everyone to see.',
+  'gem-badge': 'A 💎 next to your name, for everyone to see.',
   'unlimited-trial': 'Try everything in KoolKat Unlimited for 30 days (all the team colours too).',
   unlimited: 'Everything in KoolKat Unlimited, for as long as you keep it (all the team colours too).',
 };
 let shopState = null;
+// Which shop: the Bolt Shop (prices in bolts) or the Gem Shop (in gems; 1 gem = 100 bolts).
+let shopCurrency = 'bolts';
+const money = (n, currency) => `${n.toLocaleString()} ${currency === 'gems' ? '💎' : '⚡'}`;
+for (const tab of document.querySelectorAll('.shop-tab')) {
+  tab.addEventListener('click', () => {
+    shopCurrency = tab.dataset.currency;
+    renderShop();
+  });
+}
 function applyShop(shop) {
   shopState = shop;
   usableTeams = new Set(shop.teams);
@@ -5397,22 +5569,25 @@ $('btn-shop-close').addEventListener('click', () => $('dialog-shop').close());
 
 function shopCard(item) {
   const team = item.kind === 'team' ? item.team : null;
+  const price = shopCurrency === 'gems' ? item.gemPrice : item.price;
+  const have = shopCurrency === 'gems' ? shopState.gems ?? 0 : shopState.bolts;
   const card = el(
     'div',
     { class: `shop-item${item.owned || item.included ? ' owned' : ''}` },
     el('img', { src: team ? ccTeamIcon(team) : SHOP_ART[item.id], alt: '' })
   );
-  if (team) card.style.setProperty('--shop-color', CC_TEAM_COLORS[team]);
+  if (team) card.style.setProperty('--shop-color', teamEdge(team));
   const ends = item.kind === 'trial' && item.owned && shopState.trialUntil ? ` Ends ${new Date(shopState.trialUntil).toLocaleDateString()}.` : '';
-  const text = el('div', {}, el('strong', { text: item.name }), el('span', { class: 'fineprint', text: item.kind === 'team' ? `${item.price.toLocaleString()} ⚡` : `${SHOP_INFO[item.id]}${ends} ${item.price.toLocaleString()} ⚡` }));
+  const text = el('div', {}, el('strong', { text: item.name }), el('span', { class: 'fineprint', text: item.kind === 'team' ? money(price, shopCurrency) : `${SHOP_INFO[item.id]}${ends} ${money(price, shopCurrency)}` }));
   let action;
-  if (item.owned) action = el('button', { type: 'button', class: 'btn small', text: `Sell · +${item.paid.toLocaleString()} ⚡`, onclick: () => shopTrade('sell', item) });
+  // Selling gives back what you paid, in what you paid with (whichever shop you're in).
+  if (item.owned) action = el('button', { type: 'button', class: 'btn small', text: `Sell · +${money(item.paid, item.paidIn)}`, onclick: () => shopTrade('sell', item) });
   else if (item.included) action = el('button', { type: 'button', class: 'btn small', text: item.kind === 'team' ? '✓ With Unlimited' : '✓ You have Unlimited', disabled: true });
   else {
-    const short = item.price - shopState.bolts;
-    action = el('button', { type: 'button', class: `btn small${short > 0 ? '' : ' primary'}`, text: short > 0 ? `Need ${short.toLocaleString()} more` : `Buy · ${item.price.toLocaleString()} ⚡`, onclick: () => shopTrade('buy', item) });
+    const short = price - have;
+    action = el('button', { type: 'button', class: `btn small${short > 0 ? '' : ' primary'}`, text: short > 0 ? `Need ${short.toLocaleString()} more` : `Buy · ${money(price, shopCurrency)}`, onclick: () => shopTrade('buy', item) });
   }
-  if (team) card.append(el('strong', { text: CC_TEAM_NAMES[team] }), el('span', { class: 'fineprint', text: item.owned ? 'Yours' : item.included ? 'With Unlimited' : `${item.price.toLocaleString()} ⚡` }), action);
+  if (team) card.append(el('strong', { text: CC_TEAM_NAMES[team] }), el('span', { class: 'fineprint', text: item.owned ? 'Yours' : item.included ? 'With Unlimited' : money(price, shopCurrency) }), action);
   else card.append(text, action);
   return card;
 }
@@ -5420,20 +5595,28 @@ function renderShop() {
   $('shop-balance').textContent = shopState.bolts.toLocaleString();
   $('shop-gems').textContent = (shopState.gems ?? 0).toLocaleString();
   updateSwap();
-  $('shop-teams').replaceChildren(...shopState.items.filter((i) => i.kind === 'team').map(shopCard));
-  $('shop-extras').replaceChildren(...shopState.items.filter((i) => i.kind !== 'team').map(shopCard));
+  const gemShop = shopCurrency === 'gems';
+  $('shop-title').textContent = gemShop ? '💎 Gem Shop' : '⚡ Bolt Shop';
+  for (const tab of document.querySelectorAll('.shop-tab')) tab.setAttribute('aria-selected', String(tab.dataset.currency === shopCurrency));
+  // Each shop has what's priced in its currency (the Bolt Badge is bolts only; the Gem Badge gems only).
+  const here = shopState.items.filter((i) => (gemShop ? i.gemPrice : i.price) != null);
+  $('shop-teams').replaceChildren(...here.filter((i) => i.kind === 'team').map(shopCard));
+  $('shop-extras').replaceChildren(...here.filter((i) => i.kind !== 'team').map(shopCard));
 }
 async function shopTrade(action, item) {
+  const currency = shopCurrency;
+  const price = currency === 'gems' ? item.gemPrice : item.price;
+  const unit = (c) => (c === 'gems' ? 'gems' : 'bolts');
   const ask =
     action === 'buy'
-      ? `Buy ${item.name} for ${item.price.toLocaleString()} bolts?`
-      : `Sell ${item.name}? You'll get all ${item.paid.toLocaleString()} bolts back${item.kind === 'unlimited' ? ', and lose KoolKat Unlimited' : ''}.`;
+      ? `Buy ${item.name} for ${price.toLocaleString()} ${unit(currency)}?`
+      : `Sell ${item.name}? You'll get all ${item.paid.toLocaleString()} ${unit(item.paidIn)} back${['unlimited', 'trial'].includes(item.kind) ? ', and lose that KoolKat Unlimited' : ''}.`;
   if (!(await askConfirm(ask, { ok: action === 'buy' ? 'Buy' : 'Sell', danger: action === 'sell' }))) return;
   try {
-    const { shop } = await api('POST', `/shop/${action}`, { item: item.id });
+    const { shop } = await api('POST', `/shop/${action}`, { item: item.id, currency });
     applyShop(shop);
     renderShop();
-    toast(action === 'buy' ? `${item.name} is yours! ⚡` : `Sold. +${item.paid.toLocaleString()} ⚡`);
+    toast(action === 'buy' ? `${item.name} is yours! ${currency === 'gems' ? '💎' : '⚡'}` : `Sold. +${money(item.paid, item.paidIn)}`);
     // Unlimited and the badge change what you (and everyone else) see.
     if (item.kind !== 'team') refreshMe().catch(() => {});
   } catch (err) {
@@ -5871,7 +6054,7 @@ function teamPicker(box, { chosen, taken = new Map(), onPick, icon = ccTeamIcon 
         el('img', { src: icon(team), alt: '', class: 'pixel' }),
         el('span', { text: locked ? '🔒' : who ?? CC_TEAM_NAMES[team] })
       );
-      b.style.setProperty('--cc-team', CC_TEAM_COLORS[team]);
+      b.style.setProperty('--cc-team', teamEdge(team));
       b.disabled = Boolean(who);
       return b;
     })
@@ -6071,7 +6254,7 @@ ccPractice.bots = Math.max(1, Math.min(4, Number(ccPractice.bots) || 3));
 function renderPracticePicks() {
   if (!canUseTeam(ccPractice.team)) ccPractice.team = 'red'; // sold it
   teamPicker($('cc-practice-team'), { chosen: ccPractice.team, onPick: (team) => setPractice({ team }) });
-  for (const b of document.querySelectorAll('.cc-bot-btn')) b.setAttribute('aria-checked', String(Number(b.dataset.bots) === ccPractice.bots));
+  for (const b of document.querySelectorAll('#dialog-circles .cc-bot-btn')) b.setAttribute('aria-checked', String(Number(b.dataset.bots) === ccPractice.bots));
 }
 function setPractice(change) {
   Object.assign(ccPractice, change);
@@ -6082,7 +6265,7 @@ function setPractice(change) {
   }
   renderPracticePicks();
 }
-for (const b of document.querySelectorAll('.cc-bot-btn')) b.addEventListener('click', () => setPractice({ bots: Number(b.dataset.bots) }));
+for (const b of document.querySelectorAll('#dialog-circles .cc-bot-btn')) b.addEventListener('click', () => setPractice({ bots: Number(b.dataset.bots) }));
 $('btn-cc-practice').addEventListener('click', () => {
   $('dialog-circles').close();
   startCirclesPractice();
@@ -6205,11 +6388,16 @@ function renderCircles(room) {
         'li',
         { class: `cc-team${p.id === room.turnId ? ' turn' : ''}${p.id === meId ? ' me' : ''}${p.gone ? ' gone' : ''}`, 'data-id': String(p.id) },
         el('img', { src: ccTeamIcon(p.team), alt: '' }),
-        el('span', { class: 'cc-name', text: p.name }),
-        el('span', { class: 'cc-count', 'aria-label': `${p.circles} circles` }, el('img', { src: ccCircleIcon(p.team), alt: '' }), String(p.circles)),
-        el('span', { class: 'cc-left', text: p.gone ? 'left' : `${Math.max(0, CC_TURNS - p.turns)} turns left` })
+        // (A column next to the cat on small phones; otherwise the same as before.)
+        el(
+          'span',
+          { class: 'cc-team-text' },
+          el('span', { class: 'cc-name', text: p.name }),
+          el('span', { class: 'cc-count', 'aria-label': `${p.circles} circles` }, el('img', { src: ccCircleIcon(p.team), alt: '' }), String(p.circles)),
+          el('span', { class: 'cc-left', text: p.gone ? 'left' : `${Math.max(0, CC_TURNS - p.turns)} turns left` })
+        )
       );
-      li.style.setProperty('--cc-team', CC_TEAM_COLORS[p.team]);
+      li.style.setProperty('--cc-team', teamEdge(p.team));
       return li;
     })
   );
@@ -6269,7 +6457,7 @@ function renderCircles(room) {
               el('img', { src: ccTeamIcon(p.team), alt: '' }),
               `${CC_TEAM_NAMES[p.team]} · ${p.name} (${p.circles})`
             );
-            b.style.setProperty('--cc-team', CC_TEAM_COLORS[p.team]);
+            b.style.setProperty('--cc-team', teamEdge(p.team));
             return b;
           })
       );

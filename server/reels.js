@@ -20,7 +20,7 @@ const UPLOAD_TTL = 24 * 60 * 60 * 1000;
 const FILE_ID_RE = /^[A-Za-z0-9_-]{22}$/;
 
 const AUTHOR_COLUMNS =
-  'u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz, u.verified_at, u.accent_color, u.bolt_unlimited, u.bolt_badge, u.bolt_trial_until';
+  'u.username, u.display_name, u.plan_until, u.flair, u.badge_id, u.avatar_id, u.birth_month, u.birth_day, u.birth_tz, u.verified_at, u.accent_color, u.bolt_unlimited, u.bolt_badge, u.bolt_trial_until, u.gem_badge';
 
 export function registerReelRoutes({ api, db, clock, auth, wrap, publicUser, hasUnlimitedUser, isAdminUser, pusher, mediaDir, rateLimiter }) {
   const dir = path.join(mediaDir, 'reels');
