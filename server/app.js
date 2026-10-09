@@ -40,6 +40,7 @@ import { registerChatRoutes } from './chats.js';
 import { registerNewsRoutes } from './news.js';
 import { registerReelRoutes } from './reels.js';
 import { registerMusicRoutes } from './music.js';
+import { registerBookRoutes } from './books.js';
 import { registerKartRoutes } from './kartrooms.js';
 import { registerEscapeRoutes } from './escaperooms.js';
 import { registerCircleRoutes } from './circlerooms.js';
@@ -1326,10 +1327,13 @@ export function createApp({
 
   // ---------- KoolKat Music ----------
   const music = registerMusicRoutes({ api, db, clock, auth, wrap, publicUser, hasUnlimitedUser, isAdminUser, pusher, mediaDir, rateLimiter });
+  // ---------- KoolKat Books ----------
+  const books = registerBookRoutes({ api, db, clock, auth, wrap, publicUser, hasUnlimitedUser, isAdminUser, pusher, mediaDir, rateLimiter });
   app.locals.cleanupNewsUploads = (now) => {
     news.cleanupUploads(now);
     reels.cleanupUploads(now);
     music.cleanupUploads(now);
+    books.cleanupUploads(now);
   };
 
   // The KoolKat icon in an accent colour (public, like the other icons).

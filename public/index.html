@@ -100,6 +100,7 @@
       <button type="button" role="tab" class="chip" data-chip="music">Music</button>
       <button type="button" role="tab" class="chip" data-chip="news">News</button>
       <button type="button" class="chip" id="chip-playables">🎮 Playables</button>
+      <button type="button" class="chip" id="chip-books">📚 Books</button>
       <button type="button" role="tab" class="chip" data-chip="friends">Friends</button>
       <button type="button" class="chip" id="chip-favorites">⭐ Favorites</button>
     </div>
@@ -334,6 +335,59 @@
   </section>
 
   <!-- Suggestions & Bug reports (owner and admins) -->
+  <!-- KoolKat Books -->
+  <section id="screen-books" class="screen panel books-screen" hidden>
+    <header class="panel-header">
+      <button type="button" class="icon-btn plain" id="btn-books-back" aria-label="Back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12Z"/></svg></button>
+      <h2>📚 KoolKat Books</h2>
+      <button type="button" class="icon-btn plain" id="btn-book-new" aria-label="Write a book">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6Z"/></svg>
+      </button>
+    </header>
+    <div class="books-body">
+      <label class="books-search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 3a7 7 0 0 1 5.6 11.2l5.1 5.1-1.4 1.4-5.1-5.1A7 7 0 1 1 10 3Zm0 2a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z"/></svg>
+        <input type="search" id="books-search" placeholder="Search books and writers" autocomplete="off" enterkeyhint="search">
+      </label>
+      <div class="books-grid" id="books-grid"></div>
+      <p class="home-empty" id="books-empty" hidden>No books yet.</p>
+      <button type="button" class="btn small" id="btn-books-more" hidden>More books</button>
+    </div>
+  </section>
+
+  <section id="screen-book" class="screen panel book-screen" hidden>
+    <header class="panel-header">
+      <button type="button" class="icon-btn plain" id="btn-book-back" aria-label="Back to KoolKat Books"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12Z"/></svg></button>
+      <h2 id="book-title">Book</h2>
+      <span></span>
+    </header>
+    <div class="book-body">
+      <div class="book-info" id="book-info"></div>
+      <div class="book-audio-box" id="book-audio-box" hidden>
+        <p class="book-audio-head">🎧 Audiobook <span class="fineprint" id="book-audio-length"></span></p>
+        <audio id="book-audio" controls preload="metadata"></audio>
+      </div>
+      <article class="book-page" id="book-page" aria-live="polite"></article>
+      <div class="book-nav">
+        <button type="button" class="btn small" id="btn-book-prev" aria-label="Previous page">‹ Back</button>
+        <span id="book-page-number">Page 1 of 1</span>
+        <button type="button" class="btn small" id="btn-book-next" aria-label="Next page">Next ›</button>
+      </div>
+      <div class="book-actions">
+        <button type="button" class="btn small" id="btn-book-like" aria-pressed="false">♡ 0</button>
+        <button type="button" class="btn small" id="btn-book-comments">💬 0</button>
+      </div>
+      <div class="book-actions" id="book-owner-actions" hidden>
+        <button type="button" class="btn small" id="btn-book-edit">✏️ Edit</button>
+        <button type="button" class="btn small" id="btn-book-audiobook">🎧 Add an audiobook</button>
+        <button type="button" class="btn small" id="btn-book-audio-remove">Remove the audiobook</button>
+        <button type="button" class="btn small danger" id="btn-book-delete">🗑️ Delete</button>
+      </div>
+      <div class="upload-progress book-progress" id="book-audio-progress" hidden></div>
+      <input type="file" accept="audio/*,.mp3,.m4a,.wav,.ogg,.flac,.aac" id="book-audio-file-later" hidden>
+    </div>
+  </section>
+
   <section id="screen-feedback" class="screen panel" hidden>
     <header class="panel-header">
       <button type="button" class="icon-btn plain" id="btn-feedback-back" aria-label="Back to Admin tools">
@@ -1027,6 +1081,38 @@
       <input type="file" accept="audio/*,.mp3,.m4a,.wav,.ogg,.flac,.aac" id="song-audio-file" hidden>
       <input type="file" accept="video/*" id="song-video-file" hidden>
       <input type="file" accept="image/*" id="song-cover-file" hidden>
+    </form>
+  </dialog>
+
+  <dialog id="dialog-book-edit" class="book-edit-dialog">
+    <form id="book-form" novalidate>
+      <h2 id="book-edit-heading">Write a book</h2>
+      <div class="book-edit-top">
+        <div class="book-edit-cover">
+          <button type="button" class="book-cover-pick" id="btn-book-cover" aria-label="Choose a cover"><span>＋<br>Cover</span></button>
+          <button type="button" class="link-btn" id="btn-book-cover-remove" hidden>Remove cover</button>
+        </div>
+        <div class="book-edit-fields">
+          <label>Title<input name="title" maxlength="100" required placeholder="Your book's title"></label>
+          <label>About it <span class="fineprint">(optional)</span><textarea name="description" maxlength="500" rows="3" placeholder="What's it about?"></textarea></label>
+        </div>
+      </div>
+      <p class="kart-menu-or">Pages <span class="fineprint">(text, a picture, or both)</span></p>
+      <ol class="book-pages-edit" id="book-pages-edit"></ol>
+      <button type="button" class="btn small" id="btn-book-page-add">＋ Add a page</button>
+      <p class="kart-menu-or">Audiobook <span class="fineprint">(optional)</span></p>
+      <button type="button" class="btn small wide-ish" id="btn-book-audio">🎧 Add an audiobook (optional)</button>
+      <p class="fineprint song-file" id="book-audio-name"></p>
+      <button type="button" class="link-btn" id="btn-book-audio-clear" hidden>Remove the audiobook</button>
+      <p class="fineprint">Books are public to everyone on KoolKat. Only post writing, pictures and recordings you made or have the rights to.</p>
+      <div class="upload-progress book-progress" id="book-upload-progress" hidden></div>
+      <p class="fineprint" id="book-upload-step" hidden></p>
+      <div class="row">
+        <button type="button" class="btn" id="btn-book-cancel">Cancel</button>
+        <button type="submit" class="btn primary" id="btn-book-save">Publish</button>
+      </div>
+      <input type="file" accept="image/*" id="book-image-file" hidden>
+      <input type="file" accept="audio/*,.mp3,.m4a,.wav,.ogg,.flac,.aac" id="book-audio-file" hidden>
     </form>
   </dialog>
 

@@ -317,6 +317,55 @@ CREATE TABLE IF NOT EXISTS music_uploads (
   created_at  INTEGER NOT NULL
 );
 
+-- KoolKat Books: books made of pages (text, a picture, or both), with an optional
+-- audiobook. Making them is part of KoolKat Unlimited; everyone can read.
+CREATE TABLE IF NOT EXISTS books (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  author_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title         TEXT NOT NULL,
+  description   TEXT,
+  cover_id      TEXT,
+  cover_type    TEXT,
+  audio_id      TEXT,
+  audio_type    TEXT,
+  audio_size    INTEGER,
+  audio_duration REAL,
+  created_at    INTEGER NOT NULL,
+  updated_at    INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_books_author ON books(author_id, created_at);
+CREATE TABLE IF NOT EXISTS book_pages (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  book_id     INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+  idx         INTEGER NOT NULL,
+  body        TEXT,
+  image_id    TEXT,
+  image_type  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_book_pages ON book_pages(book_id, idx);
+CREATE TABLE IF NOT EXISTS book_likes (
+  book_id     INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at  INTEGER NOT NULL,
+  PRIMARY KEY (book_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS book_comments (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  book_id     INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body        TEXT NOT NULL,
+  created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_book_comments ON book_comments(book_id, created_at);
+CREATE TABLE IF NOT EXISTS book_uploads (
+  id          TEXT PRIMARY KEY,
+  kind        TEXT NOT NULL,              -- 'image' | 'cover' | 'audio'
+  mime        TEXT NOT NULL,
+  size        INTEGER NOT NULL,
+  created_by  INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  created_at  INTEGER NOT NULL
+);
+
 -- Bolts, the Playables currency: one row per reward (your balance is the sum).
 -- ref is set for online games, so each game pays out once.
 CREATE TABLE IF NOT EXISTS bolt_rewards (

@@ -46,6 +46,7 @@ const PRECACHE = [
   'js/kart-maps.js',
   'icons/kart/cheerleader.png',
   'js/survival.js',
+  'js/books.js',
   'js/survival-rules.js',
   'js/input.js',
   'js/escape.js',

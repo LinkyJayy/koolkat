@@ -33,6 +33,7 @@ import { BUG_CATEGORIES, SUGGESTION_CATEGORIES, categoryLabel } from './feedback
 import { BOLTS_PER_GEM, chaseGems, escapeGems, invaderGems, placeGems, wordleGems } from './rewards.js';
 import { DIFFICULTIES as KI_DIFFICULTIES, LIVES as KI_LIVES, createKatInvaders } from './invaders.js';
 import { createKatSurvival } from './survival.js';
+import { createBooks } from './books.js';
 import { choicesFor as ccChoicesFor, choose as ccChoose, deckCounts as ccDeckCounts, draw as ccDraw, newDeck as ccNewDeck, ranked as ccRanked } from './circle-rules.js';
 import { BASE_TEAMS, TEAMS as CC_TEAMS, TEAM_NAMES as CC_TEAM_NAMES, TURNS as CC_TURNS, circleIcon as ccCircleIcon, createCircleTable, describeEvent as ccDescribe, teamIcon as ccTeamIcon } from './circles.js';
 import { KART_MAPS, RACE_SONGS, RACERS as KART_RACERS, createKatKart, createRaceMusic, formatRaceTime, showNowPlaying } from './kart.js';
@@ -195,6 +196,7 @@ function show(name) {
     katEscape.stop();
     leaveEscapeRoom();
   }
+  if (state.screen === 'book' && name !== 'book') books.stop();
   if (state.screen === 'survival' && name !== 'survival') {
     katSurvival.stop();
     leaveSurvivalRoom();
@@ -425,6 +427,7 @@ function openView(view) {
   else if (view === 'news') openNews();
   else if (view === 'reels') openReels();
   else if (view === 'music') openMusic();
+  else if (view === 'books') books.open();
   else if (view === 'playables') openPlayables();
   // A new suggestion or bug report (the owner's notifications).
   else if (view === 'feedback') openFeedback();
@@ -7236,6 +7239,10 @@ function leaveSurvivalRoom() {
   ks.code = null;
 }
 
+// ---------- KoolKat Books ----------
+const books = createBooks({ $, el, api, toast, withBusy, avatar, badgeImg, openUserProfile, openComments, show, askConfirm, timeAgo, formatTime, API_BASE, getToken, goHome: () => openHome() });
+$('chip-books').addEventListener('click', () => books.open());
+
 // Kat Wordle
 const katWordle = createKatWordle({ board: $('kw-board'), keyboard: $('kw-keyboard'), message: $('kw-message'), result: $('kw-result'), hints: $('kw-hints'), onFinish: ({ won, guesses }) => earnRewards('wordle', { win: won, gems: wordleGems(won, guesses) }) });
 function openWordle() {
@@ -7583,6 +7590,7 @@ document.addEventListener('keydown', (e) => {
   else if (state.screen === 'escape' && katEscape.running) katEscape.keyDown(e);
   else if (state.screen === 'invaders' && katInvaders.running) katInvaders.keyDown(e);
   else if (state.screen === 'survival' && katSurvival.running) katSurvival.keyDown(e);
+  else if (state.screen === 'book') books.keyDown(e);
   else if (state.screen === 'circles' && !$('cc-picks').hidden && /^[1-4 ]$/.test(e.key) && !e.target.closest?.('button, input, select, textarea')) {
     // 1-4 picks that circle; Space takes the first one you can.
     e.preventDefault();
