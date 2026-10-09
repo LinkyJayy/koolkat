@@ -57,7 +57,7 @@ describe('KatEscape online', () => {
     const started = (await call('POST', `/escape/rooms/${code}/start`, ann.token)).body.room;
     assert.equal(started.state, 'running');
     assert.ok(Number.isInteger(started.seed), 'everyone gets the same course');
-    assert.ok(['natho-town', 'crystal-cavern', 'kingdom-dominance', 'gold-mine'].includes(started.song));
+    assert.ok(['natho-town', 'crystal-cavern', 'kingdom-dominance', 'gold-mine', 'rainbow-wonderland'].includes(started.song));
     now += 5000;
     await call('POST', `/escape/rooms/${code}/state`, ann.token, st(100));
     await call('POST', `/escape/rooms/${code}/state`, ben.token, st(90));

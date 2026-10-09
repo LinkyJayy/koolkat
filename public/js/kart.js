@@ -15,6 +15,8 @@ const STEP = 1000 / 60;
 const KART_SIZE = 11; // world units across
 const CAM_BACK = 34;
 const CAM_HEIGHT = 15;
+const FAR = 1100; // how far you can see
+const DEPTH_ROWS = 64; // how finely we remember how far away the ground on each part of the screen is (for hiding karts behind hills)
 
 /** Every racer's colour is fixed for the race, and they're all easy to tell apart. */
 export const RACERS = [
@@ -113,8 +115,48 @@ function seeded(seed) {
   };
 }
 
+/** A gem with rainbow facets, `s` across, centred on (x, y). */
+function rainbowGem(ctx, x, y, s, hue = 0) {
+  const grad = ctx.createLinearGradient(x - s / 2, y - s / 2, x + s / 2, y + s / 2);
+  for (let k = 0; k <= 6; k++) grad.addColorStop(k / 6, `hsl(${(hue + k * 60) % 360} 95% 60%)`);
+  ctx.fillStyle = grad;
+  ctx.strokeStyle = 'rgba(40,20,80,0.8)';
+  ctx.lineWidth = Math.max(1, s / 12);
+  ctx.beginPath();
+  ctx.moveTo(x - s * 0.5, y - s * 0.15);
+  ctx.lineTo(x - s * 0.25, y - s * 0.45);
+  ctx.lineTo(x + s * 0.25, y - s * 0.45);
+  ctx.lineTo(x + s * 0.5, y - s * 0.15);
+  ctx.lineTo(x, y + s * 0.5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.beginPath();
+  ctx.moveTo(x - s * 0.25, y - s * 0.45);
+  ctx.lineTo(x, y - s * 0.15);
+  ctx.lineTo(x - s * 0.5, y - s * 0.15);
+  ctx.closePath();
+  ctx.fill();
+}
+
 /** Scenery on the ground away from the road (the road is drawn over it). */
 const GROUND_DECOR = {
+  'rainbow-wonderland'(ctx, rand) {
+    // Rainbow ground: bands of colour sweeping across the map, with a light checker for speed.
+    const grad = ctx.createLinearGradient(0, 0, MAP, MAP);
+    for (let k = 0; k <= 18; k++) grad.addColorStop(k / 18, `hsl(${(k * 60) % 360} 85% 62%)`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, MAP, MAP);
+    ctx.fillStyle = 'rgba(255,255,255,0.14)';
+    for (let y = 0; y < MAP; y += 32) for (let x = (y / 32) % 2 ? 32 : 0; x < MAP; x += 64) ctx.fillRect(x, y, 32, 32);
+    // Rainbow gems everywhere, and sparkles.
+    for (let i = 0; i < 520; i++) rainbowGem(ctx, rand() * MAP, rand() * MAP, 8 + rand() * 14, rand() * 360);
+    for (let i = 0; i < 900; i++) {
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.fillRect(rand() * MAP, rand() * MAP, 2, 2);
+    }
+  },
   nighttime(ctx, rand) {
     // City blocks with lit windows.
     for (let i = 0; i < 140; i++) {
@@ -249,6 +291,26 @@ function offsetPath(ctx, line, off) {
 
 /** Extras on top of the road. */
 const ROAD_DECOR = {
+  'rainbow-wonderland'(ctx, line) {
+    // A rainbow road: its colour changes all the way round (three rainbows a lap),
+    // with rainbow-striped curbs.
+    const n = line.length;
+    const seg = (i, width, color) => {
+      const [x0, y0] = line[i];
+      const [x1, y1] = line[(i + 1) % n];
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.stroke();
+    };
+    ctx.lineCap = 'round';
+    for (let i = 0; i < n; i++) if (Math.floor(i / 4) % 2) seg(i, ROAD_HALF * 2 + 10, `hsl(${(i / n) * 1080 + 180} 95% 60%)`);
+    for (let i = 0; i < n; i++) seg(i, ROAD_HALF * 2, `hsl(${(i / n) * 1080} 75% 50%)`);
+    // A shine down the middle.
+    for (let i = 0; i < n; i++) seg(i, ROAD_HALF * 0.7, `hsl(${(i / n) * 1080 + 20} 85% 62%)`);
+  },
   nighttime(ctx, line) {
     // Streetlights along both sides, glowing.
     for (let i = 0; i < line.length; i += 24) {
@@ -379,6 +441,177 @@ function buildTrack(line, boosts, map) {
   return { texture, road, preview: canvas };
 }
 
+// ---------- height: every map has hills ----------
+// The ground's height comes from a heightmap, HM × HM cells of HCELL world
+// units. Big, smooth hills run under everything (the road rides over them, so
+// it stays flat from side to side); away from the road there are bumpier
+// hills on top.
+const HM = 512;
+const HCELL = MAP / HM;
+const INV_HCELL = 1 / HCELL;
+
+/** Build the heightmap from the road mask, and shade the track picture so the hills show. */
+function buildHeight(map, road, texture) {
+  const { amp = 24, bumps = 46, seed = 1 } = map.hills ?? {};
+  const rand = seeded(seed * 7907 + map.id.length);
+  const ph = Array.from({ length: 8 }, () => rand() * Math.PI * 2);
+  const k = (wavelength) => (Math.PI * 2) / wavelength;
+  const smooth = (x, y) =>
+    amp * (0.55 * Math.sin(x * k(900) + ph[0]) * Math.cos(y * k(760) + ph[1]) + 0.3 * Math.sin((x + y) * k(620) + ph[2]) + 0.15 * Math.sin((x - y) * k(1300) + ph[3]));
+  const bumpy = (x, y) => bumps * Math.max(0, 0.5 + 0.5 * Math.sin(x * k(260) + ph[4]) * Math.sin(y * k(300) + ph[5]) + 0.25 * Math.sin((x + 2 * y) * k(410) + ph[6]) - 0.2);
+  // How far each cell is from the road (a two-pass chamfer distance, in cells).
+  const far = new Float32Array(HM * HM);
+  for (let cy = 0; cy < HM; cy++) for (let cx = 0; cx < HM; cx++) {
+    const x = (cx * HCELL + HCELL / 2) | 0;
+    const y = (cy * HCELL + HCELL / 2) | 0;
+    far[cy * HM + cx] = road[y * MAP + x] ? 0 : 1e9;
+  }
+  const D1 = 1;
+  const D2 = Math.SQRT2;
+  for (let cy = 0; cy < HM; cy++) for (let cx = 0; cx < HM; cx++) {
+    const i = cy * HM + cx;
+    let v = far[i];
+    if (cx > 0) v = Math.min(v, far[i - 1] + D1);
+    if (cy > 0) {
+      v = Math.min(v, far[i - HM] + D1);
+      if (cx > 0) v = Math.min(v, far[i - HM - 1] + D2);
+      if (cx < HM - 1) v = Math.min(v, far[i - HM + 1] + D2);
+    }
+    far[i] = v;
+  }
+  for (let cy = HM - 1; cy >= 0; cy--) for (let cx = HM - 1; cx >= 0; cx--) {
+    const i = cy * HM + cx;
+    let v = far[i];
+    if (cx < HM - 1) v = Math.min(v, far[i + 1] + D1);
+    if (cy < HM - 1) {
+      v = Math.min(v, far[i + HM] + D1);
+      if (cx < HM - 1) v = Math.min(v, far[i + HM + 1] + D2);
+      if (cx > 0) v = Math.min(v, far[i + HM - 1] + D2);
+    }
+    far[i] = v;
+  }
+  const height = new Float32Array(HM * HM);
+  for (let cy = 0; cy < HM; cy++) for (let cx = 0; cx < HM; cx++) {
+    const i = cy * HM + cx;
+    const x = cx * HCELL;
+    const y = cy * HCELL;
+    // 0 by the road, rising to 1 about 100 units away.
+    const t = Math.max(0, Math.min(1, (far[i] * HCELL - 24) / 100));
+    const w = t * t * (3 - 2 * t);
+    height[i] = smooth(x, y) + bumpy(x, y) * w;
+  }
+  // Light from the top left: slopes facing it are brighter.
+  const shade = new Float32Array(HM * HM);
+  for (let cy = 0; cy < HM; cy++) for (let cx = 0; cx < HM; cx++) {
+    const hx = height[cy * HM + Math.min(HM - 1, cx + 1)] - height[cy * HM + Math.max(0, cx - 1)];
+    const hy = height[Math.min(HM - 1, cy + 1) * HM + cx] - height[Math.max(0, cy - 1) * HM + cx];
+    shade[cy * HM + cx] = Math.max(0.72, Math.min(1.22, 1 - (hx + hy) * 0.045));
+  }
+  for (let y = 0; y < MAP; y++) {
+    const cy = Math.min(HM - 1, (y / HCELL) | 0);
+    for (let x = 0; x < MAP; x++) {
+      const s = shade[cy * HM + Math.min(HM - 1, (x / HCELL) | 0)];
+      if (s === 1) continue;
+      const i = y * MAP + x;
+      const c = texture[i];
+      const r = Math.min(255, (c & 255) * s);
+      const g = Math.min(255, ((c >> 8) & 255) * s);
+      const b = Math.min(255, ((c >> 16) & 255) * s);
+      texture[i] = (c & 0xff000000) | (b << 16) | (g << 8) | r;
+    }
+  }
+  return height;
+}
+
+/** The ground's height at (x, y): smoothly between the heightmap's cells. */
+function heightAt(height, x, y) {
+  let gx = x / HCELL - 0.5;
+  let gy = y / HCELL - 0.5;
+  gx = gx < 0 ? 0 : gx > HM - 1.001 ? HM - 1.001 : gx;
+  gy = gy < 0 ? 0 : gy > HM - 1.001 ? HM - 1.001 : gy;
+  const x0 = gx | 0;
+  const y0 = gy | 0;
+  const fx = gx - x0;
+  const fy = gy - y0;
+  const i = y0 * HM + x0;
+  const a = height[i] + (height[i + 1] - height[i]) * fx;
+  const b = height[i + HM] + (height[i + HM + 1] - height[i + HM]) * fx;
+  return a + (b - a) * fy;
+}
+
+/** A colour from its hue (0-360), fully bright: [r, g, b]. */
+function hueRgb(hue, light = 0.5) {
+  const c = (1 - Math.abs(2 * light - 1));
+  const hp = (((hue % 360) + 360) % 360) / 60;
+  const x = c * (1 - Math.abs((hp % 2) - 1));
+  const [r, g, b] = hp < 1 ? [c, x, 0] : hp < 2 ? [x, c, 0] : hp < 3 ? [0, c, x] : hp < 4 ? [0, x, c] : hp < 5 ? [x, 0, c] : [c, 0, x];
+  const m = light - c / 2;
+  return [r + m, g + m, b + m].map((v) => Math.round(v * 255));
+}
+
+/** A picture with its blue parts (a shirt, pom-poms) turned to another hue. */
+function hueShifted(image, hue) {
+  const canvas = document.createElement('canvas');
+  canvas.width = image.width;
+  canvas.height = image.height;
+  const g = canvas.getContext('2d');
+  g.drawImage(image, 0, 0);
+  const data = g.getImageData(0, 0, canvas.width, canvas.height);
+  const px = data.data;
+  const [cr, cg, cb] = hueRgb(hue);
+  for (let i = 0; i < px.length; i += 4) {
+    const [r, gg, b] = [px[i], px[i + 1], px[i + 2]];
+    if (b > 100 && b > r + 60 && b > gg + 50) {
+      const k = b / 255;
+      px[i] = Math.round(cr * k);
+      px[i + 1] = Math.round(cg * k);
+      px[i + 2] = Math.round(cb * k);
+    }
+  }
+  g.putImageData(data, 0, 0);
+  return canvas;
+}
+
+/**
+ * Things standing by the track (drawn like the karts, on the hills):
+ * Kool Kircuit's cheerleaders, each in their own colour; Rainbow Wonderland's gems.
+ */
+function buildScenery(map, line, images) {
+  const n = line.length;
+  const beside = (f, side, out = 0) => {
+    const i = Math.floor((((f % 1) + 1) % 1) * n);
+    const [x, y] = line[i];
+    const [x2, y2] = line[(i + 1) % n];
+    const h = Math.atan2(y2 - y, x2 - x);
+    const d = side * (ROAD_HALF + 30 + out);
+    return { x: x - Math.sin(h) * d, y: y + Math.cos(h) * d };
+  };
+  const scenery = [];
+  if (map.id === 'kool-kircuit') {
+    // A squad by the start line on both sides, and a few more round the lap.
+    const spots = [
+      [-0.012, -1], [-0.006, -1], [0, -1], [0.006, -1], [0.012, -1],
+      [-0.009, 1], [-0.003, 1], [0.003, 1], [0.009, 1],
+      [0.25, 1], [0.255, 1], [0.5, -1], [0.505, -1], [0.75, 1], [0.755, 1],
+    ];
+    spots.forEach(([f, side], i) => {
+      const hue = (225 + (i * 360) / spots.length) % 360; // everyone's colour is different (the first is the picture's blue)
+      scenery.push({ ...beside(f, side, (i % 2) * 6), sprite: hueShifted(images.cheerleader, hue), size: 17, hop: true, phase: i * 0.7 });
+    });
+  }
+  if (map.rainbow) {
+    // Big rainbow gems all around the track, floating.
+    const rand = seeded(97);
+    for (let i = 0; i < 46; i++) {
+      const c = document.createElement('canvas');
+      c.width = c.height = 32;
+      rainbowGem(c.getContext('2d'), 16, 16, 28, rand() * 360);
+      scenery.push({ ...beside(i / 46 + rand() * 0.01, i % 2 ? 1 : -1, 10 + rand() * 90), sprite: c, size: 12 + rand() * 10, hop: false, phase: rand() * 6 });
+    }
+  }
+  return scenery;
+}
+
 /** The mascot kart from the picture, with its blue body repainted in a racer's colour. */
 function kartSprite(image, color) {
   const size = 128;
@@ -423,16 +656,19 @@ async function loadAssets(mapId) {
     const image = await loadImage('icons/kat-kart.png');
     const sprites = RACERS.map((r) => kartSprite(image, r.color));
     const icons = Object.fromEntries(await Promise.all(POWERUP_KINDS.map(async (k) => [k, await loadImage(POWERUPS[k].icon)])));
-    return { sprites, icons, itemBox: itemBoxSprite() };
+    const cheerleader = await loadImage('icons/kart/cheerleader.png');
+    return { sprites, icons, itemBox: itemBoxSprite(), cheerleader };
   })().catch((err) => {
     shared = null;
     throw err;
   });
-  const { sprites, icons, itemBox } = await shared;
+  const { sprites, icons, itemBox, cheerleader } = await shared;
   if (assets?.map === map) return assets;
   const line = buildCenterline(map.points);
   const boosts = BOOST_AT.map((f) => ({ index: Math.floor(f * line.length) }));
   const track = buildTrack(line, boosts, map);
+  const height = buildHeight(map, track.road, track.texture);
+  const maxHeight = height.reduce((m, v) => (v > m ? v : m), -Infinity);
   const itemSpots = ITEM_ROWS_AT.flatMap((f) => {
     const i = Math.floor(f * line.length);
     const [x, y] = line[i];
@@ -440,7 +676,7 @@ async function loadAssets(mapId) {
     const h = Math.atan2(y2 - y, x2 - x);
     return ITEM_LANES.map((off) => ({ index: i, x: x - Math.sin(h) * off, y: y + Math.cos(h) * off }));
   });
-  assets = { map, line, boosts, ...track, sprites, icons, itemSpots, itemBox };
+  assets = { map, line, boosts, ...track, height, maxHeight, sprites, icons, itemSpots, itemBox, scenery: buildScenery(map, line, { cheerleader }) };
   return assets;
 }
 
@@ -452,6 +688,7 @@ export const RACE_SONGS = [
   { id: 'crystal-cavern', title: 'Crystal Cavern', artist: 'Zalith9', src: 'sounds/crystal-cavern.mp3' },
   { id: 'kingdom-dominance', title: 'Kingdom Dominance', artist: 'Zalith9', src: 'sounds/kingdom-dominance.mp3' },
   { id: 'gold-mine', title: 'Gold Mine', artist: 'Zalith9', src: 'sounds/gold-mine.mp3' },
+  { id: 'rainbow-wonderland', title: 'Rainbow Wonderland', artist: 'Zalith9', src: 'sounds/rainbow-wonderland.mp3' },
 ];
 
 export function createRaceMusic() {
@@ -618,6 +855,49 @@ function buildSky(width, height, mapId) {
     }
   };
 
+  if (mapId === 'rainbow-wonderland') {
+    // A pastel rainbow sky: soft colours sweeping round as you turn, lighter near the ground.
+    const across = ctx.createLinearGradient(0, 0, W, 0);
+    for (let k = 0; k <= 12; k++) across.addColorStop(k / 12, `hsl(${(k * 60) % 360} 90% 86%)`);
+    ctx.fillStyle = across;
+    ctx.fillRect(0, 0, W, height);
+    const fade = ctx.createLinearGradient(0, 0, 0, height);
+    fade.addColorStop(0, 'rgba(255,255,255,0)');
+    fade.addColorStop(1, 'rgba(255,255,255,0.55)');
+    ctx.fillStyle = fade;
+    ctx.fillRect(0, 0, W, height);
+    // A pastel rainbow arch and fluffy clouds.
+    for (let k = 0; k < 7; k++) {
+      ctx.strokeStyle = `hsl(${k * 45} 85% 80%)`;
+      ctx.lineWidth = Math.max(2, height * 0.04);
+      ctx.beginPath();
+      ctx.arc(W * 0.3, height * 1.05, height * (0.85 - k * 0.05), Math.PI, 0);
+      ctx.stroke();
+    }
+    clouds('#ffffff');
+    for (let i = 0; i < 40; i++) {
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.fillRect(Math.floor(rand() * W), Math.floor(rand() * height * 0.7), 1, 1);
+    }
+    // Rainbow hills (bright, not pastel), with gems on them.
+    const rainbowHills = (base, amp, freq, light) => {
+      const grad = ctx.createLinearGradient(0, 0, W, 0);
+      for (let k = 0; k <= 12; k++) grad.addColorStop(k / 12, `hsl(${(k * 60 + 30) % 360} 85% ${light}%)`);
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(0, height);
+      for (let x = 0; x <= W; x += 4) {
+        const t = (x / W) * Math.PI * 2;
+        ctx.lineTo(x, height - base - amp * (0.5 + 0.5 * Math.sin(t * freq) * Math.cos(t * (freq + 1))));
+      }
+      ctx.lineTo(W, height);
+      ctx.fill();
+    };
+    rainbowHills(6, height * 0.35, 3, 68);
+    rainbowHills(2, height * 0.2, 5, 55);
+    for (let i = 0; i < 14; i++) rainbowGem(ctx, rand() * W, height * (0.7 + rand() * 0.25), Math.max(4, height * 0.06), rand() * 360);
+    return canvas;
+  }
   if (mapId === 'nighttime') {
     gradient('#050820', '#26306a');
     stars(140);
@@ -853,7 +1133,19 @@ export function createKatKart(els) {
   }
   function makeView(w, h, mapId) {
     const horizon = Math.round(h * (h > w ? 0.42 : 0.36));
-    return { w, h, horizon, focal: Math.min(w, h * 1.15) * 0.95, image: ctx.createImageData(w, h), sky: buildSky(w, horizon + 1, mapId) };
+    const sky = buildSky(w, horizon + 1, mapId);
+    const skyData = sky.getContext('2d').getImageData(0, 0, sky.width, sky.height);
+    return {
+      w,
+      h,
+      horizon,
+      focal: Math.min(w, h * 1.15) * 0.95,
+      image: ctx.createImageData(w, h),
+      ybuf: new Int32Array(w),
+      depth: new Float32Array(w * DEPTH_ROWS),
+      sky,
+      skyPixels: { width: sky.width, data: new Uint32Array(skyData.data.buffer) },
+    };
   }
 
   /**
@@ -1081,6 +1373,9 @@ export function createKatKart(els) {
         if (r.slowMul === 0) r.speed = 0; // Thunder: frozen
       } else r.slowKind = null;
       if (r.finished != null && r.player) max *= 0.8;
+      // Hills: a little slower going up, a little faster coming down.
+      const slope = (heightAt(a.height, r.x + Math.cos(r.heading) * 6, r.y + Math.sin(r.heading) * 6) - heightAt(a.height, r.x, r.y)) / 6;
+      max *= Math.max(0.8, Math.min(1.15, 1 - slope * 1.2));
       r.speed += (max - r.speed) * (r.speed < max ? 0.025 : 0.08);
       r.heading += steer * 0.042 * Math.min(1, r.speed / 1.2);
       r.x = Math.max(4, Math.min(MAP - 4, r.x + Math.cos(r.heading) * r.speed));
@@ -1250,63 +1545,142 @@ export function createKatKart(els) {
     const ry = fx;
     const camX = player.x - fx * CAM_BACK;
     const camY = player.y - fy * CAM_BACK;
+    // The camera floats above the ground (over the higher of where it is and
+    // where your kart is, so it never dips into a hill), smoothly.
+    const groundZ = Math.max(heightAt(a.height, camX, camY), heightAt(a.height, player.x, player.y));
+    race.camZ = race.camZ == null ? groundZ : race.camZ + (groundZ - race.camZ) * 0.15;
+    const camZ = race.camZ + CAM_HEIGHT;
+    // The ground, column by column, near to far (like the old "voxel space"
+    // games): each step along the ray is drawn from where the last one
+    // reached up to where this one is on screen, so hills hide what's behind.
     const out = new Uint32Array(image.data.buffer);
     const tex = a.texture;
+    // The sky slides round as you turn.
+    const skyW = view.skyPixels.width;
+    const skyPx = view.skyPixels.data;
+    const skyOff = ((((ch / (Math.PI * 2)) * skyW) % skyW) + skyW) % skyW | 0;
+    const hm = a.height;
     const grass = tex[5];
-    for (let y = horizon + 1; y < h; y++) {
-      const dist = (CAM_HEIGHT * focal) / (y - horizon);
-      const half = (w / 2) * (dist / focal);
-      let wx = camX + fx * dist - rx * half;
-      let wy = camY + fy * dist - ry * half;
-      const sx = (rx * dist) / focal;
-      const sy = (ry * dist) / focal;
-      let o = y * w;
-      for (let x = 0; x < w; x++) {
-        const ix = wx | 0;
-        const iy = wy | 0;
-        out[o++] = ix >= 0 && iy >= 0 && ix < MAP && iy < MAP ? tex[iy * MAP + ix] : grass;
-        wx += sx;
-        wy += sy;
+    const ybuf = view.ybuf;
+    const depth = view.depth;
+    depth.fill(Infinity);
+    const rowsPer = h / DEPTH_ROWS;
+    // Slow phone? Draw every other column of ground (each twice as wide).
+    const stride = race.groundMs > 6 ? 2 : 1;
+    const t0 = performance.now();
+    for (let x = 0; x < w; x += stride) {
+      const off = (x - w / 2) / focal;
+      const dx = fx + rx * off;
+      const dy = fy + ry * off;
+      let top = h; // the highest row drawn so far in this column
+      let z = 4;
+      const base = x * DEPTH_ROWS;
+      while (z < FAR && top > 0) {
+        // Nothing further off can reach above what's drawn: this column's done.
+        if (top <= horizon + ((camZ - a.maxHeight) * focal) / z) break;
+        const wx = camX + dx * z;
+        const wy = camY + dy * z;
+        // The ground's height there (smooth close up, nearest cell further off).
+        let gx = wx * INV_HCELL - 0.5;
+        let gy = wy * INV_HCELL - 0.5;
+        gx = gx < 0 ? 0 : gx > HM - 1.001 ? HM - 1.001 : gx;
+        gy = gy < 0 ? 0 : gy > HM - 1.001 ? HM - 1.001 : gy;
+        const x0 = gx | 0;
+        const y0 = gy | 0;
+        const i = y0 * HM + x0;
+        let gz;
+        if (z < 120) {
+          const tx = gx - x0;
+          const ty = gy - y0;
+          const h0 = hm[i] + (hm[i + 1] - hm[i]) * tx;
+          gz = h0 + (hm[i + HM] + (hm[i + HM + 1] - hm[i + HM]) * tx - h0) * ty;
+        } else gz = hm[i];
+        let y = (horizon + ((camZ - gz) * focal) / z) | 0;
+        if (y < top) {
+          if (y < 0) y = 0;
+          const ix = wx | 0;
+          const iy = wy | 0;
+          const color = ix >= 0 && iy >= 0 && ix < MAP && iy < MAP ? tex[iy * MAP + ix] : grass;
+          for (let yy = y; yy < top; yy++) out[yy * w + x] = color;
+          if (stride === 2 && x + 1 < w) for (let yy = y; yy < top; yy++) out[yy * w + x + 1] = color;
+          // Remember how far away the ground on these rows is.
+          for (let r = (y / rowsPer) | 0, r1 = ((top - 1) / rowsPer) | 0; r <= r1; r++) if (depth[base + r] === Infinity) depth[base + r] = z;
+          top = y;
+        }
+        z += 0.45 + z * 0.018;
+      }
+      ybuf[x] = top;
+      // Above the ground: the sky (and the ground colour in any gap down to the horizon).
+      const sc = (x + skyOff) % skyW;
+      const skyRows = Math.min(top, horizon + 1);
+      for (let yy = 0; yy < skyRows; yy++) out[yy * w + x] = skyPx[yy * skyW + sc];
+      for (let yy = skyRows; yy < top; yy++) out[yy * w + x] = grass;
+      if (stride === 2 && x + 1 < w) {
+        ybuf[x + 1] = top;
+        depth.copyWithin(base + DEPTH_ROWS, base, base + DEPTH_ROWS);
+        const sc2 = (x + 1 + skyOff) % skyW;
+        for (let yy = 0; yy < skyRows; yy++) out[yy * w + x + 1] = skyPx[yy * skyW + sc2];
+        for (let yy = skyRows; yy < top; yy++) out[yy * w + x + 1] = grass;
       }
     }
-    ctx.putImageData(image, 0, 0, 0, horizon, w, h - horizon);
-    // Sky and hills, sliding as you turn.
-    const offset = (((ch / (Math.PI * 2)) * sky.width) % sky.width + sky.width) % sky.width;
-    ctx.drawImage(sky, -offset, 0);
-    ctx.drawImage(sky, sky.width - offset, 0);
-    if (offset < sky.width - w) ctx.drawImage(sky, -offset + sky.width, 0);
+    race.groundMs = (race.groundMs ?? 0) * 0.95 + (performance.now() - t0) * (stride === 2 ? 2 : 1) * 0.05;
+    ctx.putImageData(image, 0, 0);
 
     // Karts and item boxes, far ones first.
     const visible = [];
     const project = (x, y) => {
       const dx = x - camX;
       const dy = y - camY;
-      return { dz: dx * fx + dy * fy, lx: dx * rx + dy * ry };
+      // How far up the screen the ground there is (it's not flat any more).
+      return { dz: dx * fx + dy * fy, lx: dx * rx + dy * ry, lift: camZ - heightAt(hm, x, y) };
     };
     for (const r of race.racers) {
-      const { dz, lx } = project(r.x, r.y);
+      const { dz, lx, lift } = project(r.x, r.y);
       if (dz < 6) continue;
-      visible.push({ r, dz, lx });
+      visible.push({ r, dz, lx, lift });
     }
     a.itemSpots.forEach((spot, i) => {
       if ((race.boxesTakenUntil.get(i) ?? 0) > race.now) return;
-      const { dz, lx } = project(spot.x, spot.y);
+      const { dz, lx, lift } = project(spot.x, spot.y);
       if (dz < 6 || dz > 500) return;
-      visible.push({ box: true, dz, lx });
+      visible.push({ box: true, dz, lx, lift });
     });
+    // Scenery: cheerleaders, gems.
+    for (const sc of a.scenery) {
+      const { dz, lx, lift } = project(sc.x, sc.y);
+      if (dz < 8 || dz > 700 || Math.abs(lx) > dz * 1.2) continue;
+      visible.push({ sc, dz, lx, lift });
+    }
     visible.sort((p, q) => q.dz - p.dz);
     ctx.imageSmoothingEnabled = false;
-    for (const { r, box, dz, lx } of visible) {
+    // Hidden behind a hill? (The ground in that column reached higher up the screen, nearer.)
+    const hidden = (sx, sy, dz) => {
+      if (sx < 0 || sx >= w || sy < 0 || sy >= h) return false;
+      const ground = view.depth[(sx | 0) * DEPTH_ROWS + Math.min(DEPTH_ROWS - 1, ((sy - 3) / (h / DEPTH_ROWS)) | 0)];
+      return ground < dz * 0.85 - 8; // the ground just above its feet is much nearer: a hill's in the way
+    };
+    for (const { r, box, sc, dz, lx, lift } of visible) {
+      if (sc) {
+        const size = (sc.size * focal) / dz;
+        const sx = w / 2 + (lx * focal) / dz;
+        const sy = horizon + (lift * focal) / dz;
+        if (hidden(sx, sy, dz)) continue;
+        const hop = sc.hop ? Math.abs(Math.sin(race.now / 180 + sc.phase)) * size * 0.25 : Math.sin(race.now / 400 + sc.phase) * size * 0.06;
+        ctx.drawImage(sc.sprite, sx - size / 2, sy - size * 0.95 - hop, size, size);
+        continue;
+      }
       if (box) {
         const size = (6 * focal) / dz;
         const bx = w / 2 + (lx * focal) / dz;
-        const by = horizon + (CAM_HEIGHT * focal) / dz - size * (1.2 + 0.15 * Math.sin(race.now / 200 + dz));
+        const by = horizon + (lift * focal) / dz - size * (1.2 + 0.15 * Math.sin(race.now / 200 + dz));
+        if (hidden(bx, by + size, dz)) continue;
         ctx.drawImage(a.itemBox, bx - size / 2, by, size, size);
         continue;
       }
       const sizePx = (KART_SIZE * focal) / dz;
       const sx = w / 2 + (lx * focal) / dz;
-      const sy = horizon + (CAM_HEIGHT * focal) / dz;
+      const sy = horizon + (lift * focal) / dz;
+      if (hidden(sx, sy, dz)) continue;
       const bob = r.speed > 0.5 ? Math.sin(race.now / 60 + r.wobble) * sizePx * 0.015 : 0;
       ctx.drawImage(r.sprite, sx - sizePx / 2, sy - sizePx * 0.92 + bob, sizePx, sizePx);
       if ((r.boost > 0 || race.now < r.boostUntil) && dz < 200) {

@@ -57,14 +57,14 @@ describe('Kat Kart online races', () => {
     // And the map.
     assert.equal(joined.body.room.map, 'random');
     assert.equal(joined.body.room.song, 'map', "the map's own song, unless the host picks another");
-    assert.deepEqual(KART_MAP_IDS.map((id) => kartMap(id).song), ['natho-town', 'crystal-cavern', 'crystal-cavern', 'kingdom-dominance', 'gold-mine']);
+    assert.deepEqual(KART_MAP_IDS.map((id) => kartMap(id).song), ['natho-town', 'crystal-cavern', 'crystal-cavern', 'kingdom-dominance', 'gold-mine', 'rainbow-wonderland']);
     assert.equal((await call('POST', `/kart/rooms/${code}/map`, { token: ben.token, body: { map: 'kingdom' } })).status, 403);
     assert.equal((await call('POST', `/kart/rooms/${code}/map`, { token: ann.token, body: { map: 'moon-base' } })).status, 400);
     for (const map of KART_MAP_IDS) assert.equal((await call('POST', `/kart/rooms/${code}/map`, { token: ann.token, body: { map } })).body.room.map, map);
-    assert.deepEqual(KART_MAP_IDS, ['kool-kircuit', 'nighttime', 'crystal-cavern', 'kingdom', 'gold-mine']);
+    assert.deepEqual(KART_MAP_IDS, ['kool-kircuit', 'nighttime', 'crystal-cavern', 'kingdom', 'gold-mine', 'rainbow-wonderland']);
     const started = await call('POST', `/kart/rooms/${code}/start`, { token: ann.token });
     assert.equal(started.body.room.song, 'crystal-cavern');
-    assert.equal(started.body.room.map, 'gold-mine');
+    assert.equal(started.body.room.map, 'rainbow-wonderland');
     assert.equal((await call('POST', `/kart/rooms/${code}/map`, { token: ann.token, body: { map: 'kingdom' } })).status, 409, 'too late to change');
     assert.equal(started.body.room.state, 'racing');
     assert.ok(started.body.room.startAt > started.body.room.serverNow);

@@ -50,6 +50,7 @@ export const KART_MAPS = [
     id: 'kingdom',
     name: 'Kingdom',
     emoji: '🏰', // inside the castle: the throne room
+    hills: { amp: 10, bumps: 14 }, // indoors: just a gently sloping floor
     song: 'kingdom-dominance',
     points: [
       [512, 900], [720, 900], [880, 840], [940, 700], [930, 520], [860, 420], [760, 440], [700, 540],
@@ -72,6 +73,21 @@ export const KART_MAPS = [
       [260, 915], [380, 915],
     ],
     colors: { ground: ['#8a6235', '#94693a'], curbEdge: '#4a3018', curbA: '#c8914a', curbB: '#6b4422', road: '#6e4c2c', lane: 'rgba(0,0,0,0)' },
+  },
+  {
+    id: 'rainbow-wonderland',
+    name: 'Rainbow Wonderland',
+    emoji: '🌈',
+    song: 'rainbow-wonderland',
+    rainbow: true, // everything in rainbow gradients (and a pastel rainbow sky)
+    hills: { amp: 30, bumps: 60, seed: 5 },
+    points: [
+      [512, 905], [690, 900], [820, 850], [880, 760], [840, 670], [740, 640], [690, 560], [740, 470],
+      [860, 430], [920, 330], [880, 220], [770, 170], [660, 210], [590, 300], [500, 330], [420, 270],
+      [430, 170], [370, 90], [250, 90], [150, 160], [110, 280], [170, 380], [290, 420], [340, 520],
+      [270, 610], [150, 640], [90, 740], [130, 850], [260, 905], [390, 910],
+    ],
+    colors: { ground: ['#ffb3d9', '#b3e0ff'], curbEdge: '#ffffff', curbA: '#ffffff', curbB: '#ff7ac8', road: '#7a5cff', lane: 'rgba(255,255,255,0.8)' },
   },
 ];
 
