@@ -356,6 +356,17 @@ CREATE TABLE IF NOT EXISTS bug_reports (
 );
 CREATE INDEX IF NOT EXISTS bug_reports_created ON bug_reports(created_at);
 
+-- Admins' replies to suggestions and bug reports (kind: 'suggestion' or 'bug').
+CREATE TABLE IF NOT EXISTS feedback_replies (
+  id          INTEGER PRIMARY KEY,
+  kind        TEXT NOT NULL,
+  item_id     INTEGER NOT NULL,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body        TEXT NOT NULL,
+  created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS feedback_replies_item ON feedback_replies(kind, item_id, created_at);
+
 -- Gems 💎: earned after every Playable (1 to 10, the better you did), or
 -- swapped for bolts (1 gem = 100 bolts). Like bolt_rewards: one row per change.
 CREATE TABLE IF NOT EXISTS gem_rewards (

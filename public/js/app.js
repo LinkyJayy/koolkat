@@ -423,6 +423,9 @@ function openView(view) {
   else if (view === 'playables') openPlayables();
   // A new suggestion or bug report (the owner's notifications).
   else if (view === 'feedback') openFeedback();
+  // A reply to your suggestion or bug report.
+  else if (view === 'feedback-mine/suggestion') $('btn-suggest').click();
+  else if (view === 'feedback-mine/bug') $('btn-report-bug').click();
   else if (view === 'camera') show('camera');
   else if (state.screen !== 'home') openHome();
 }
@@ -2575,6 +2578,23 @@ fillCategories($('suggest-category'), SUGGESTION_CATEGORIES, 'Pick a category…
 fillCategories($('bug-category'), BUG_CATEGORIES, 'Pick a category…');
 const feedbackDate = (ms) => new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 
+/** Admins' replies to a suggestion or bug report. */
+function feedbackReplies(replies = []) {
+  if (!replies.length) return null;
+  return el(
+    'ul',
+    { class: 'feedback-replies' },
+    ...replies.map((r) =>
+      el(
+        'li',
+        {},
+        el('span', { class: 'feedback-reply-by' }, '💬 ', r.from.displayName, badgeImg(r.from), el('span', { class: 'fineprint', text: ` · ${feedbackDate(r.createdAt)}` })),
+        el('span', { class: 'feedback-reply-body', text: r.body })
+      )
+    )
+  );
+}
+
 /** Your own suggestions or bug reports, with how they're doing. */
 function myFeedbackItem(item, kind) {
   const done = kind === 'suggestions' ? item.approved : item.verified;
@@ -2584,7 +2604,8 @@ function myFeedbackItem(item, kind) {
     el('div', { class: 'feedback-body' },
       el('span', { class: 'feedback-chip', text: categoryLabel(kind === 'suggestions' ? SUGGESTION_CATEGORIES : BUG_CATEGORIES, item.category) }),
       el('strong', { text: kind === 'suggestions' ? item.idea : item.description }),
-      el('span', { class: 'fineprint', text: `${feedbackDate(item.createdAt)} · ${done ? (kind === 'suggestions' ? '✅ Approved' : '☑️ Verified: a real bug') : kind === 'suggestions' ? 'Waiting for the owner' : 'Waiting for an admin'}` })
+      el('span', { class: 'fineprint', text: `${feedbackDate(item.createdAt)} · ${done ? (kind === 'suggestions' ? '✅ Approved' : '☑️ Verified: a real bug') : kind === 'suggestions' ? 'Waiting for the owner' : 'Waiting for an admin'}` }),
+      feedbackReplies(item.replies)
     )
   );
 }
@@ -2637,11 +2658,8 @@ $('bug-form').addEventListener('submit', (e) => {
 // The owner's (and admins') screen.
 const feedback = { kind: 'suggestions', timer: null };
 function openFeedback(kind) {
-  const owner = Boolean(state.plan?.isOwner);
   if (!state.plan?.isAdmin) return;
-  // Suggestions are the owner's alone.
-  feedback.kind = owner ? kind ?? feedback.kind : 'bugs';
-  $('tab-suggestions').hidden = !owner;
+  feedback.kind = kind ?? feedback.kind;
   show('feedback');
   setFeedbackKind(feedback.kind);
 }
@@ -2679,17 +2697,38 @@ async function loadFeedback() {
     if (feedback.kind !== kind) return;
     const items = data[kind];
     // Only the owner can search, sort and filter.
-    const canSearch = kind === 'suggestions' || data.canSearch;
+    const canSearch = data.canSearch;
+    feedback.canApprove = kind === 'bugs' || data.canApprove;
     $('feedback-filters').hidden = !canSearch;
     const counts = data.counts ? Object.values(data.counts).reduce((a, c) => ({ total: a.total + c.total, done: a.done + c.done }), { total: 0, done: 0 }) : null;
     $('feedback-note').textContent = counts
       ? `${counts.total} in all · ${counts.done} ${kind === 'suggestions' ? 'approved' : 'verified'}`
-      : 'Verify the ones that are real bugs. Only the owner can search and sort them.';
+      : kind === 'suggestions'
+        ? 'Reply to any of them. Only the owner can search, sort and approve suggestions.'
+        : 'Verify the ones that are real bugs, and reply. Only the owner can search and sort them.';
     $('feedback-list').replaceChildren(...items.map((item) => feedbackItem(item, kind)));
     $('feedback-empty').hidden = items.length > 0;
   } catch (err) {
     toast(err.message, { error: true });
   }
+}
+
+/** Admins: write a reply (the person who sent it gets told). */
+function replyBox(item, kind) {
+  const input = el('textarea', { class: 'feedback-reply-input', rows: '2', maxlength: '1000', placeholder: 'Write a reply…', 'aria-label': 'Reply' });
+  const send = el('button', {
+    type: 'button',
+    class: 'btn small',
+    text: '💬 Reply',
+    onclick: (e) =>
+      withBusy(e.currentTarget, async () => {
+        if (!input.value.trim()) throw new Error('Write a reply');
+        await api('POST', `/admin/${kind === 'suggestions' ? 'suggestions' : 'bugs'}/${item.id}/replies`, { body: input.value });
+        toast('💬 Reply sent');
+        await loadFeedback();
+      }),
+  });
+  return el('div', { class: 'feedback-reply-form' }, input, send);
 }
 
 function feedbackItem(item, kind) {
@@ -2702,9 +2741,11 @@ function feedbackItem(item, kind) {
       el('span', { class: 'feedback-chip', text: categoryLabel(suggestions ? SUGGESTION_CATEGORIES : BUG_CATEGORIES, item.category) }),
       el('strong', {}, suggestions ? item.idea : item.description, done && !suggestions ? el('img', { src: 'icons/social/verified.png', alt: 'Verified', title: 'Verified: a real bug', class: 'verified-badge' }) : null),
       suggestions ? el('p', { class: 'feedback-does', text: item.does }) : null,
-      el('span', { class: 'fineprint feedback-by' }, `${feedbackDate(item.createdAt)} · `, item.author ? el('span', {}, item.author.displayName, badgeImg(item.author), ` @${item.author.username}`) : null)
+      el('span', { class: 'fineprint feedback-by' }, `${feedbackDate(item.createdAt)} · `, item.author ? el('span', {}, item.author.displayName, badgeImg(item.author), ` @${item.author.username}`) : null),
+      feedbackReplies(item.replies),
+      replyBox(item, kind)
     ),
-    el('button', {
+    (!suggestions || feedback.canApprove) && el('button', {
       type: 'button',
       class: `btn small${done ? '' : ' primary'}`,
       text: suggestions ? (done ? '✅ Approved' : 'Approve') : done ? '☑️ Verified' : 'Verify',

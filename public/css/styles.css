@@ -2763,3 +2763,9 @@ img.pixel { image-rendering: pixelated; }
 #screen-feedback .feedback-list { margin: 0 16px 16px; padding: 0; list-style: none; }
 .feedback-list .feedback-item { padding: 12px 0; border-bottom: 1px solid var(--border); }
 .feedback-dialog .feedback-list { text-align: left; padding: 0; list-style: none; }
+.feedback-replies { list-style: none; margin: 6px 0 0; padding: 0 0 0 10px; border-left: 3px solid var(--brand-soft); display: grid; gap: 6px; }
+.feedback-replies li { display: flex; flex-direction: column; gap: 1px; font-size: 14px; }
+.feedback-reply-by { font-weight: 700; }
+.feedback-reply-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+.feedback-reply-form { display: flex; gap: 6px; align-items: flex-end; margin-top: 6px; }
+.feedback-reply-input { flex: 1; min-width: 0; font: inherit; resize: vertical; }

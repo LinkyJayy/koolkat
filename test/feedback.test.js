@@ -54,8 +54,9 @@ describe('Suggestions', () => {
     assert.equal(made.status, 201);
     await call('POST', '/suggestions', kat.token, { category: 'music', idea: 'Playlists', does: 'Save songs into lists' });
     assert.equal((await call('GET', '/suggestions/mine', kat.token)).body.suggestions.length, 2);
-    // Only the owner.
-    assert.equal((await call('GET', '/admin/suggestions', helper.token)).status, 403);
+    // Other admins see them (to reply), but only the owner searches, sorts and approves.
+    const forHelper = (await call('GET', '/admin/suggestions?category=music', helper.token)).body;
+    assert.deepEqual([forHelper.canSearch, forHelper.canApprove, forHelper.suggestions.length], [false, false, 2], "admins can't filter");
     assert.equal((await call('GET', '/admin/suggestions', kat.token)).status, 403);
     let list = (await call('GET', '/admin/suggestions', boss.token)).body;
     assert.deepEqual(list.suggestions.map((s) => s.idea), ['Playlists', 'Kat Golf'], 'newest first');
@@ -96,6 +97,30 @@ describe('Bug reports', () => {
     assert.deepEqual((await call('GET', '/admin/bugs?q=leaderboard&status=done', boss.token)).body.bugs.map((b) => b.id), [bug.id]);
     assert.equal((await call('POST', `/admin/bugs/${bug.id}/verify`, boss.token, { verified: false })).body.bug.verified, false, 'and un-verify');
     assert.equal((await call('GET', '/bugs/mine', kat.token)).body.bugs.length, 2);
+  });
+});
+
+describe('Replies', () => {
+  test('admins reply to suggestions and bug reports; the sender sees it and is told', async () => {
+    const bug = (await call('POST', '/bugs', kat.token, { category: 'escape', description: 'The cop walks through trains' })).body.bug;
+    const idea = (await call('POST', '/suggestions', kat.token, { category: 'reels', idea: 'Duets', does: 'Film next to a friend' })).body.suggestion;
+    assert.deepEqual(bug.replies, []);
+    assert.equal((await call('POST', `/admin/bugs/${bug.id}/replies`, kat.token, { body: 'Hi' })).status, 403, 'admins only');
+    assert.equal((await call('POST', `/admin/bugs/${bug.id}/replies`, helper.token, { body: '   ' })).status, 400);
+    notes.length = 0;
+    let r = await call('POST', `/admin/bugs/${bug.id}/replies`, helper.token, { body: 'Thanks! Which level?' });
+    assert.equal(r.status, 201);
+    assert.deepEqual(r.body.bug.replies.map((x) => [x.from.username, x.body]), [['helper', 'Thanks! Which level?']]);
+    r = await call('POST', `/admin/suggestions/${idea.id}/replies`, boss.token, { body: 'Love it, coming soon' });
+    assert.equal(r.body.suggestion.replies[0].from.username, 'boss');
+    // The sender sees the replies, and was told.
+    assert.equal((await call('GET', '/bugs/mine', kat.token)).body.bugs.find((b) => b.id === bug.id).replies[0].body, 'Thanks! Which level?');
+    assert.equal((await call('GET', '/suggestions/mine', kat.token)).body.suggestions.find((x) => x.id === idea.id).replies[0].body, 'Love it, coming soon');
+    assert.deepEqual(notes.map((n) => n.userId), [kat.id, kat.id]);
+    assert.match(notes[0].body, /💬 helper replied to your bug report: Thanks! Which level\?/);
+    // And other admins see them in the list.
+    assert.equal((await call('GET', '/admin/bugs', boss.token)).body.bugs.find((b) => b.id === bug.id).replies.length, 1);
+    assert.equal((await call('POST', '/admin/bugs/9999/replies', helper.token, { body: 'x' })).status, 404);
   });
 });
 

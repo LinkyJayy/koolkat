@@ -4,15 +4,18 @@ import { BUG_CATEGORIES, SUGGESTION_CATEGORIES, categoryLabel } from '../public/
 
 // Suggestions and Bug reports, from KoolKat Unlimited users.
 //  - Suggestions: the idea, what it could do, and a category. Only the owner
-//    sees them all (search, sort, filter by category) and approves them.
+//    can search, sort, filter by category and approve them; other admins
+//    see the list (newest first) so they can reply.
 //  - Bug reports: what's wrong, and a category. The owner can search, sort
 //    and filter them; every admin can verify one (a blue check: "this is a
 //    real bug, please fix it").
-// Only the owner gets a notification for each new one.
+// Admins can reply to either; the person who sent it sees the replies and
+// gets a notification. Only the owner gets a notification for each new one.
 
 export const MAX_IDEA = 300;
 export const MAX_DOES = 1000;
 export const MAX_BUG = 2000;
+export const MAX_REPLY = 1000;
 const PAGE = 100;
 const SORTS = { new: 'DESC', old: 'ASC' };
 
@@ -32,6 +35,10 @@ export function registerFeedbackRoutes({ api, auth, wrap, db, clock, publicUser,
     approve: db.prepare('UPDATE suggestions SET approved_at = ?, approved_by = ? WHERE id = ?'),
     verify: db.prepare('UPDATE bug_reports SET verified_at = ?, verified_by = ? WHERE id = ?'),
     ownerIds: db.prepare('SELECT id, username FROM users'),
+    addReply: db.prepare('INSERT INTO feedback_replies (kind, item_id, user_id, body, created_at) VALUES (?, ?, ?, ?, ?)'),
+    replies: db.prepare(
+      `SELECT r.*, ${USER_COLS.map((c) => `u.${c} AS u_${c}`).join(', ')} FROM feedback_replies r JOIN users u ON u.id = r.user_id WHERE r.kind = ? AND r.item_id = ? ORDER BY r.created_at`
+    ),
     counts: {
       suggestions: db.prepare('SELECT category, COUNT(*) AS n, SUM(approved_at IS NOT NULL) AS done FROM suggestions GROUP BY category'),
       bugs: db.prepare('SELECT category, COUNT(*) AS n, SUM(verified_at IS NOT NULL) AS done FROM bug_reports GROUP BY category'),
@@ -44,13 +51,13 @@ export function registerFeedbackRoutes({ api, auth, wrap, db, clock, publicUser,
   };
   const submitLimiter = rateLimiter({ limit: 10, windowMs: 60 * 60 * 1000, clock });
 
-  const describeSuggestion = (r) => ({ id: r.id, category: r.category, idea: r.idea, does: r.does, approved: Boolean(r.approved_at), approvedAt: r.approved_at ?? null, createdAt: r.created_at, author: r.u_id ? author(r) : undefined });
-  const describeBug = (r) => ({ id: r.id, category: r.category, description: r.description, verified: Boolean(r.verified_at), verifiedAt: r.verified_at ?? null, createdAt: r.created_at, author: r.u_id ? author(r) : undefined });
+  const repliesTo = (kind, id) => q.replies.all(kind, id).map((r) => ({ id: r.id, body: r.body, createdAt: r.created_at, from: author(r) }));
+  const describeSuggestion = (r) => ({ id: r.id, category: r.category, idea: r.idea, does: r.does, approved: Boolean(r.approved_at), approvedAt: r.approved_at ?? null, createdAt: r.created_at, author: r.u_id ? author(r) : undefined, replies: repliesTo('suggestion', r.id) });
+  const describeBug = (r) => ({ id: r.id, category: r.category, description: r.description, verified: Boolean(r.verified_at), verifiedAt: r.verified_at ?? null, createdAt: r.created_at, author: r.u_id ? author(r) : undefined, replies: repliesTo('bug', r.id) });
 
   const unlimitedOnly = (req) => {
     const user = q.user.get(req.user.id);
     if (!hasUnlimitedUser(user)) fail(403, 'Suggestions and bug reports are part of KoolKat Unlimited');
-    if (!submitLimiter(req.user.id)) fail(429, "That's a lot for one hour. Try again later.");
     return user;
   };
   const ownerOnly = (req) => {
@@ -77,6 +84,7 @@ export function registerFeedbackRoutes({ api, auth, wrap, db, clock, publicUser,
       const does = cleanText(req.body?.does, MAX_DOES, { multiline: true });
       if (!idea) fail(400, "What's your suggestion?");
       if (!does) fail(400, 'Say what it could do');
+      if (!submitLimiter(user.id)) fail(429, "That's a lot for one hour. Try again later.");
       const id = Number(q.addSuggestion.run(user.id, category, idea, does, clock()).lastInsertRowid);
       tellOwner(`💡 ${user.display_name} suggested (${categoryLabel(SUGGESTION_CATEGORIES, category)}): ${idea}`, `suggestion-${id}`);
       res.status(201);
@@ -98,6 +106,7 @@ export function registerFeedbackRoutes({ api, auth, wrap, db, clock, publicUser,
       if (!BUG_CATEGORIES.some(([c]) => c === category)) fail(400, 'Pick a category');
       const description = cleanText(req.body?.description, MAX_BUG, { multiline: true });
       if (!description) fail(400, "Describe what's going wrong");
+      if (!submitLimiter(user.id)) fail(429, "That's a lot for one hour. Try again later.");
       const id = Number(q.addBug.run(user.id, category, description, clock()).lastInsertRowid);
       tellOwner(`🐞 ${user.display_name} reported a bug (${categoryLabel(BUG_CATEGORIES, category)}): ${description.slice(0, 120)}`, `bug-${id}`);
       res.status(201);
@@ -134,13 +143,15 @@ export function registerFeedbackRoutes({ api, auth, wrap, db, clock, publicUser,
   }
   const counts = (rows) => Object.fromEntries(rows.map((r) => [r.category, { total: r.n, done: Number(r.done ?? 0) }]));
 
-  // Suggestions: the owner only.
+  // Suggestions: every admin sees them (to reply); only the owner can search, sort, filter and approve.
   api.get(
     '/admin/suggestions',
     auth,
     wrap((req) => {
-      ownerOnly(req);
-      return { suggestions: search('suggestions', ['idea', 'does'], 'approved_at', req.query).map(describeSuggestion), counts: counts(q.counts.suggestions.all()) };
+      adminOnly(req);
+      const owner = isOwner(req.user.username);
+      const rows = search('suggestions', ['idea', 'does'], 'approved_at', owner ? req.query : {});
+      return { suggestions: rows.map(describeSuggestion), counts: owner ? counts(q.counts.suggestions.all()) : null, canSearch: owner, canApprove: owner };
     })
   );
   api.post(
@@ -167,6 +178,32 @@ export function registerFeedbackRoutes({ api, auth, wrap, db, clock, publicUser,
       return { bugs: rows.map(describeBug), counts: owner ? counts(q.counts.bugs.all()) : null, canSearch: owner };
     })
   );
+  // Reply (any admin). The person who sent it is told.
+  for (const [kind, path, get, full2, what] of [
+    ['suggestion', 'suggestions', q.suggestion, 'suggestion', 'suggestion'],
+    ['bug', 'bugs', q.bug, 'bug', 'bug report'],
+  ]) {
+    api.post(
+      `/admin/${path}/:id/replies`,
+      auth,
+      wrap((req, res) => {
+        adminOnly(req);
+        const item = get.get(Number(req.params.id));
+        if (!item) fail(404, `That ${what} is gone`);
+        const body = cleanText(req.body?.body, MAX_REPLY, { multiline: true });
+        if (!body) fail(400, 'Write a reply');
+        q.addReply.run(kind, item.id, req.user.id, body, clock());
+        if (item.user_id !== req.user.id) {
+          const admin = q.user.get(req.user.id);
+          pusher?.notify(item.user_id, { title: 'KoolKat', body: `💬 ${admin.display_name} replied to your ${what}: ${body.slice(0, 120)}`, tag: `${kind}-reply-${item.id}`, view: `feedback-mine/${kind}` });
+        }
+        res.status(201);
+        const row = full[full2].get(item.id);
+        return { [full2]: kind === 'bug' ? describeBug(row) : describeSuggestion(row) };
+      })
+    );
+  }
+
   api.post(
     '/admin/bugs/:id/verify',
     auth,
