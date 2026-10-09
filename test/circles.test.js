@@ -22,13 +22,12 @@ const luckyIs = (g, outcome) => (n) => {
 const circles = (g) => g.players.map((p) => p.circles);
 
 describe('Circle Chaos rules', () => {
-  test('the bag: 14 of each team colour plus the rainbow circles', () => {
+  test('the bag: 14 of each team colour plus 8 each of the rainbow circles', () => {
     const deck = newDeck(['red', 'blue']);
     assert.equal(deck.filter((c) => c === 'red').length, 14);
     assert.equal(deck.filter((c) => c === 'green').length, 0, 'only the teams that are playing');
-    assert.equal(deck.filter((c) => c === 'lose2').length, 4);
-    assert.equal(deck.filter((c) => c === 'lose4').length, 2);
-    assert.equal(deck.filter((c) => c === 'lucky').length, 4);
+    for (const kind of ['lose2', 'lose4', 'lucky']) assert.equal(deck.filter((c) => c === kind).length, 8, `always 8 ${kind}`);
+    for (const kind of ['lose2', 'lose4', 'lucky']) assert.equal(newDeck(['red', 'blue', 'green', 'yellow', 'purple']).filter((c) => c === kind).length, 8, 'with 5 teams too');
   });
 
   test("each team only takes its own colour and the rainbow circles", () => {
@@ -177,14 +176,14 @@ describe('Circle Chaos online', () => {
     room = (await call('POST', `/circles/rooms/${code}/start`, ann.token)).body.room;
     assert.equal(room.state, 'dealing');
     assert.deepEqual(room.players.map((p) => p.team), ['red', 'yellow', 'purple'], 'seats in team order');
-    assert.equal(room.deck, 3 * 14 + 3 * 5);
+    assert.equal(room.deck, 3 * 14 + 3 * 8);
     assert.equal((await call('POST', `/circles/rooms/${code}/play`, ann.token)).status, 409, 'still dealing');
     now += 3500;
     const tokens = { [ann.id]: ann.token, [ben.id]: ben.token, [cat.id]: cat.token };
     assert.equal((await call('POST', `/circles/rooms/${code}/play`, ben.token)).status, 409, 'not your turn');
     // Everyone can see what's left in the Deck, and picks from it.
     room = (await call('GET', `/circles/rooms/${code}`, ann.token)).body.room;
-    assert.deepEqual([room.counts.red, room.counts.lose4], [14, 3]);
+    assert.deepEqual([room.counts.red, room.counts.lose2, room.counts.lose4, room.counts.lucky], [14, 8, 8, 8]);
     assert.equal((await call('POST', `/circles/rooms/${code}/play`, ann.token, { circle: 'purple' })).status, 400, "not Red's colour");
     assert.equal((await call('POST', `/circles/rooms/${code}/play`, ann.token, { circle: 'nope' })).status, 400);
     let picked = (await call('POST', `/circles/rooms/${code}/play`, ann.token, { circle: 'red' })).body.room;

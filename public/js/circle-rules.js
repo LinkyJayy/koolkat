@@ -42,12 +42,14 @@ function shuffle(deck, rand) {
   return deck;
 }
 
-/** The bag of circles, spilled into a random pile. */
+/** How many of each rainbow circle are in the bag, however many teams are playing. */
+export const RAINBOW_EACH = 8;
+
+/** The bag of circles, spilled into a random pile: 14 of each team's colour, and 8 each of Lose 2, Lose 4 and Lucky. */
 export function newDeck(teams, rand = randomInt) {
   const deck = [];
   for (const team of teams) for (let i = 0; i < 14; i++) deck.push(team);
-  for (let i = 0; i < teams.length * 2; i++) deck.push('lose2', 'lucky');
-  for (let i = 0; i < teams.length; i++) deck.push('lose4');
+  for (let i = 0; i < RAINBOW_EACH; i++) deck.push(...RAINBOW);
   return shuffle(deck, rand);
 }
 
