@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { fail } from './http.js';
+import { WIN_BOLTS } from './bolts.js';
 import { KART_SONGS } from './kartrooms.js';
 import { TEAMS, canPlay, choose, draw, newDeck, nextAfter, ranked } from '../public/js/circle-rules.js';
 
@@ -72,7 +73,7 @@ export function registerCircleRoutes({ api, auth, wrap, clock, publicUser, db, b
     room.pending = null;
     room.turnId = null;
     room.results = ranked(room.players);
-    for (const r of room.results) if (r.place === 1 && !r.gone) bolts?.award(r.id, 'circles', 'win', 5, `circles:${room.code}:${room.startAt}`);
+    for (const r of room.results) if (r.place === 1 && !r.gone) bolts?.award(r.id, 'circles', 'win', WIN_BOLTS, `circles:${room.code}:${room.startAt}`);
     pushEvent(room, { type: 'done' }, now);
   }
 

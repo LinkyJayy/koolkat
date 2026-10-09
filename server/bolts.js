@@ -1,23 +1,21 @@
 import { fail } from './http.js';
 
 // Bolts ⚡: the currency for all Playables.
-//  - Win any game: +5 bolts.
-//  - KatEscape: the further you run, the more you get, up to 15 a run
-//    (1 for every 200 m).
+//  - Win any game: +100 bolts.
+//  - KatEscape: when your run's over, every bolt you collected is yours.
 // Online games pay out from the server when the game ends (it knows who
 // won). Solo and Practice games are on your phone, so it tells us; those
-// are limited (one reward per game every 20 seconds, 400 bolts a day).
+// are limited (one reward per game every 20 seconds, and a daily cap).
 
-export const WIN_BOLTS = 5;
-export const RUN_METRES_PER_BOLT = 200;
-export const MAX_RUN_BOLTS = 15;
+export const WIN_BOLTS = 100;
+export const MAX_RUN_BOLTS = 10000; // more than anyone collects in one run
 export const BOLT_GAMES = ['kart', 'wordle', 'escape', 'circles', 'invaders'];
 const CLAIM_GAP = 20 * 1000;
-const DAILY_CAP = 400;
+const DAILY_CAP = 25000;
 const DAY = 24 * 60 * 60 * 1000;
 
-/** How many bolts a KatEscape run of this many metres is worth. */
-export const runBolts = (metres) => Math.max(0, Math.min(MAX_RUN_BOLTS, Math.floor((Number(metres) || 0) / RUN_METRES_PER_BOLT)));
+/** The bolts collected in a KatEscape run (a whole number, within reason). */
+export const runBolts = (collected) => Math.max(0, Math.min(MAX_RUN_BOLTS, Math.floor(Number(collected) || 0)));
 
 export function createBolts({ db, clock }) {
   const q = {
@@ -54,7 +52,7 @@ export function registerBoltRoutes({ api, auth, wrap, bolts }) {
     wrap((req) => ({ bolts: bolts.balance(req.user.id) }))
   );
 
-  // A Solo or Practice game finished: { game, reason: 'win' } or, for KatEscape, { game: 'escape', reason: 'run', distance }.
+  // A Solo or Practice game finished: { game, reason: 'win' } or, for KatEscape, { game: 'escape', reason: 'run', bolts } (the bolts collected).
   api.post(
     '/bolts/earn',
     auth,
@@ -64,8 +62,8 @@ export function registerBoltRoutes({ api, auth, wrap, bolts }) {
       if (!BOLT_GAMES.includes(game)) fail(400, 'Unknown game');
       let amount;
       if (reason === 'win') amount = WIN_BOLTS;
-      else if (reason === 'run' && game === 'escape') amount = runBolts(req.body?.distance);
-      else fail(400, 'Bolts are for winning (or running far in KatEscape)');
+      else if (reason === 'run' && game === 'escape') amount = runBolts(req.body?.bolts);
+      else fail(400, 'Bolts are for winning (or collecting them in KatEscape)');
       const earned = amount > 0 ? bolts.claim(req.user.id, game, reason, amount) : 0;
       return { earned, bolts: bolts.balance(req.user.id) };
     })

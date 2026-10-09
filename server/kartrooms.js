@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { fail } from './http.js';
+import { WIN_BOLTS } from './bolts.js';
 
 // Kat Kart online: race your friends. One person makes a race and shares its
 // 4-letter code; up to 8 people join, and the host starts it. While racing,
@@ -70,7 +71,7 @@ export function registerKartRoutes({ api, auth, wrap, clock, publicUser, db, bol
         room.state = 'done';
         room.results = results(room);
         // The winner gets bolts.
-        for (const r of room.results) if (r.place === 1 && r.time != null) bolts?.award(r.id, 'kart', 'win', 5, `kart:${room.code}:${room.createdAt}`);
+        for (const r of room.results) if (r.place === 1 && r.time != null) bolts?.award(r.id, 'kart', 'win', WIN_BOLTS, `kart:${room.code}:${room.createdAt}`);
       }
     }
   }

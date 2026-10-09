@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { fail } from './http.js';
+import { WIN_BOLTS } from './bolts.js';
 import { KART_SONGS } from './kartrooms.js';
 
 // KatEscape online. One person makes a game and shares its 4-letter code.
@@ -100,13 +101,13 @@ export function registerEscapeRoutes({ api, auth, wrap, clock, publicUser, db, b
       if (!winner) return;
       room.state = 'done';
       room.results = { winner, reason, chaserId: room.chaserId, copId: room.copId, players: ranked(room) };
-      bolts?.award(winner === 'chaser' ? room.chaserId : room.copId, 'escape', 'win', 5, `escape:${room.code}:${room.startAt}`);
+      bolts?.award(winner === 'chaser' ? room.chaserId : room.copId, 'escape', 'win', WIN_BOLTS, `escape:${room.code}:${room.startAt}`);
       return;
     }
     if (present(room).every((p) => p.status === 'out')) {
       room.state = 'done';
       room.results = { players: ranked(room) };
-      for (const p of room.results.players) if (p.place === 1 && !p.gone) bolts?.award(p.id, 'escape', 'win', 5, `escape:${room.code}:${room.startAt}`);
+      for (const p of room.results.players) if (p.place === 1 && !p.gone) bolts?.award(p.id, 'escape', 'win', WIN_BOLTS, `escape:${room.code}:${room.startAt}`);
     }
   }
 

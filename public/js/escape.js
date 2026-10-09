@@ -624,7 +624,7 @@ export function createKatEscape(els) {
     const players = [{ slot: g.mySlot, name: 'You', me: true, score: score(), dist: Math.floor(g.dist) }, ...[...g.others.entries()].map(([slot, b]) => ({ slot, name: b.name, score: botScore(b), dist: Math.floor(b.dist) }))]
       .sort((a, b) => b.score - a.score)
       .map((p, i, list) => ({ ...p, place: list.findIndex((q) => q.score === p.score) + 1 }));
-    els.onResults({ mode: 'practice', players, distance: Math.floor(g.dist) });
+    els.onResults({ mode: 'practice', players, distance: Math.floor(g.dist), bolts: g.bolts });
   }
 
   function chaseOver(winner, reason) {
@@ -633,7 +633,7 @@ export function createKatEscape(els) {
     g.finished = true;
     g.state = 'out';
     music.pause();
-    els.onResults({ mode: 'chase', winner, reason, role: g.role, time: Math.min(g.time, CHASE_SECONDS), score: score(), distance: Math.max(0, Math.floor(g.dist)) });
+    els.onResults({ mode: 'chase', winner, reason, role: g.role, time: Math.min(g.time, CHASE_SECONDS), score: score(), distance: Math.max(0, Math.floor(g.dist)), bolts: g.bolts });
   }
 
   // ---------- practice bots ----------
@@ -743,7 +743,7 @@ export function createKatEscape(els) {
       g.finished = true;
       g.state = 'out';
       music.pause();
-      els.onResults({ mode: 'all', players: room.results.players.map((p) => ({ ...p, me: p.slot === g.mySlot })), distance: Math.floor(g.dist) });
+      els.onResults({ mode: 'all', players: room.results.players.map((p) => ({ ...p, me: p.slot === g.mySlot })), distance: Math.floor(g.dist), bolts: g.bolts });
       return;
     }
     afterOthersChange();

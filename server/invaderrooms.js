@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { fail } from './http.js';
+import { WIN_BOLTS } from './bolts.js';
 import { KART_SONGS } from './kartrooms.js';
 
 // Kat Invaders online: 2 to 5 people, one team colour each. Everyone gets the
@@ -67,7 +68,7 @@ export function registerInvaderRoutes({ api, auth, wrap, clock, publicUser, db, 
     room.results = [...room.players.values()]
       .sort((a, b) => (b.st?.score ?? 0) - (a.st?.score ?? 0))
       .map((p, i, all) => ({ place: all.findIndex((q) => (q.st?.score ?? 0) === (p.st?.score ?? 0)) + 1, id: p.id, name: p.name, team: p.team, score: p.st?.score ?? 0, gone: p.gone }));
-    for (const r of room.results) if (r.place === 1 && !r.gone && r.score > 0) bolts?.award(r.id, 'invaders', 'win', 5, `invaders:${room.code}:${room.startAt}`);
+    for (const r of room.results) if (r.place === 1 && !r.gone && r.score > 0) bolts?.award(r.id, 'invaders', 'win', WIN_BOLTS, `invaders:${room.code}:${room.startAt}`);
   }
 
   const describe = (room, now, withStates = false) => ({

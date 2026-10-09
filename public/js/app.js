@@ -5315,7 +5315,7 @@ const readJson = (key) => {
 };
 
 // ---------- Bolts ⚡: the Playables currency ----------
-// Win any game: +5. KatEscape: up to +15 the further you run. Online games
+// Win any game: +100. KatEscape: keep every bolt you collect. Online games
 // pay out on the server; Solo and Practice games tell it here.
 let boltBalance = null;
 function showBolts(n) {
@@ -5336,7 +5336,7 @@ async function earnBolts(game, reason, extra = {}) {
   try {
     const { earned, bolts } = await api('POST', '/bolts/earn', { game, reason, ...extra });
     showBolts(bolts);
-    if (earned) toast(`+${earned} ⚡ bolts${reason === 'win' ? ' for winning!' : ' for running so far!'}`);
+    if (earned) toast(`+${earned.toLocaleString()} ⚡ bolts${reason === 'win' ? ' for winning!' : ' from your run!'}`);
   } catch {
     // Bolts are a bonus; the game still counts.
   }
@@ -5344,7 +5344,7 @@ async function earnBolts(game, reason, extra = {}) {
 /** An online game ended: the server paid any winners, so check for new bolts. */
 async function checkBolts() {
   const got = await refreshBolts();
-  if (got > 0) toast(`+${got} ⚡ bolts for winning!`);
+  if (got > 0) toast(`+${got.toLocaleString()} ⚡ bolts for winning!`);
 }
 
 function openPlayables() {
@@ -5449,8 +5449,8 @@ const katEscape = createKatEscape({
       final: `${score.toLocaleString()} points`,
       detail: `${distance.toLocaleString()} m · ⚡ ${bolts.toLocaleString()} bolts · ${newBest ? '🏆 New best!' : `Best: ${best.toLocaleString()}`}`,
     });
-    // The further you ran, the more bolts (up to 15).
-    earnBolts('escape', 'run', { distance });
+    // Every bolt you collected is yours.
+    earnBolts('escape', 'run', { bolts });
   },
   // Caught: one revive a game.
   onDown: ({ reason, score, online, mode }) => {
@@ -5484,7 +5484,7 @@ const katEscape = createKatEscape({
   },
   onWaiting: () => showEscapeOver({ title: "🚓 You're out!", detail: 'Waiting for the results…' }),
   onResults: (r) => {
-    earnBolts('escape', 'run', { distance: r.distance ?? 0 });
+    earnBolts('escape', 'run', { bolts: r.bolts ?? 0 });
     if (r.mode === 'practice' && r.players.find((p) => p.me)?.place === 1) setTimeout(() => earnBolts('escape', 'win'), 400);
     else if (r.mode !== 'practice') setTimeout(checkBolts, 1200);
     if (r.mode === 'chase') {

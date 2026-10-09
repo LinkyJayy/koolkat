@@ -35,29 +35,29 @@ async function register(username) {
 }
 
 describe('Bolts', () => {
-  test('KatEscape: 1 bolt per 200 m, up to 15', () => {
-    assert.deepEqual([runBolts(0), runBolts(199), runBolts(200), runBolts(1450), runBolts(3000), runBolts(99999)], [0, 0, 1, 7, 15, 15]);
+  test('KatEscape: you keep the bolts you collected', () => {
+    assert.deepEqual([runBolts(0), runBolts(37), runBolts(2600.7), runBolts(-5), runBolts('x'), runBolts(1e9)], [0, 37, 2600, 0, 0, 10000]);
   });
 
-  test('earning: wins are 5, runs depend on distance, with limits', async () => {
+  test('earning: wins are 100, runs pay the bolts collected, with limits', async () => {
     const u = await register('bolty');
     assert.equal((await call('GET', '/bolts', u.token)).body.bolts, 0);
     let r = await call('POST', '/bolts/earn', u.token, { game: 'kart', reason: 'win' });
-    assert.deepEqual(r.body, { earned: 5, bolts: 5 });
+    assert.deepEqual(r.body, { earned: 100, bolts: 100 });
     r = await call('POST', '/bolts/earn', u.token, { game: 'kart', reason: 'win' });
     assert.equal(r.body.earned, 0, 'not two wins in 20 seconds');
-    r = await call('POST', '/bolts/earn', u.token, { game: 'escape', reason: 'run', distance: 1000 });
-    assert.deepEqual(r.body, { earned: 5, bolts: 10 });
-    assert.equal((await call('POST', '/bolts/earn', u.token, { game: 'wordle', reason: 'run', distance: 9000 })).status, 400, 'only KatEscape pays for running');
+    r = await call('POST', '/bolts/earn', u.token, { game: 'escape', reason: 'run', bolts: 412 });
+    assert.deepEqual(r.body, { earned: 412, bolts: 512 });
+    assert.equal((await call('POST', '/bolts/earn', u.token, { game: 'wordle', reason: 'run', bolts: 9000 })).status, 400, 'only KatEscape pays for collecting');
     assert.equal((await call('POST', '/bolts/earn', u.token, { game: 'chess', reason: 'win' })).status, 400);
     // A daily cap.
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 3; i++) {
       now += 21_000;
-      await call('POST', '/bolts/earn', u.token, { game: 'wordle', reason: 'win' });
+      await call('POST', '/bolts/earn', u.token, { game: 'escape', reason: 'run', bolts: 10000 });
     }
-    assert.equal((await call('GET', '/bolts', u.token)).body.bolts, 400);
+    assert.equal((await call('GET', '/bolts', u.token)).body.bolts, 25000);
     now += 25 * 60 * 60 * 1000;
-    assert.equal((await call('POST', '/bolts/earn', u.token, { game: 'wordle', reason: 'win' })).body.earned, 5, 'a new day');
+    assert.equal((await call('POST', '/bolts/earn', u.token, { game: 'wordle', reason: 'win' })).body.earned, 100, 'a new day');
   });
 });
 
@@ -97,7 +97,7 @@ describe('Kat Invaders', () => {
     room = (await call('POST', `/invaders/rooms/${code}/state`, ann.token, { x: 0.5, score: 250, lives: 2, status: 'out' })).body.room;
     assert.equal(room.state, 'done');
     assert.deepEqual(room.results.map((r) => [r.name, r.place, r.score]), [['kib', 1, 300], ['kia', 2, 250]]);
-    assert.equal((await call('GET', '/bolts', ben.token)).body.bolts, 5, 'the winner got 5 bolts');
+    assert.equal((await call('GET', '/bolts', ben.token)).body.bolts, 100, 'the winner got 100 bolts');
     assert.equal((await call('GET', '/bolts', ann.token)).body.bolts, 0);
   });
 });
