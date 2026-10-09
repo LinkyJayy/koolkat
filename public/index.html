@@ -127,6 +127,7 @@
           <button type="button" class="playable-card kart-card" data-play="kart"><img src="icons/kat-kart.png" alt=""><span class="playable-name">Kat Kart</span><span class="playable-sub">Race friends or bots</span></button>
           <button type="button" class="playable-card escape-card" data-play="escape"><img src="icons/escape-cat.png" alt="" class="pixel"><span class="playable-name">KatEscape</span><span class="playable-sub">Run from the cop</span></button>
           <button type="button" class="playable-card invaders-card" data-play="invaders"><img src="icons/invaders/team-red.png" alt="" class="pixel"><span class="playable-name">Kat Invaders</span><span class="playable-sub">Shoot the mice</span></button>
+          <button type="button" class="playable-card survival-card" data-play="survival"><img src="icons/survival/card.png" alt="" class="pixel"><span class="playable-name">Kat Survival</span><span class="playable-sub">Survive the night</span></button>
           <button type="button" class="playable-card circles-card" data-play="circles"><img src="icons/circles/bag.png" alt="" class="pixel"><span class="playable-name">Circle Chaos</span><span class="playable-sub">Grab circles, cause chaos</span></button>
           <button type="button" class="playable-card wordle-card" data-play="wordle"><span class="wordle-art" aria-hidden="true"><b class="c">K</b><b class="p">A</b><b class="a">T</b><b class="c">S</b><b class="a">!</b></span><span class="playable-name">Kat Wordle</span><span class="playable-sub">Guess the word in 6 tries</span></button>
         </div>
@@ -223,6 +224,12 @@
         <span class="playable-name">Kat Invaders</span>
         <span class="playable-sub">Mice are coming! Shoot as many as you can in 2 minutes (10 to 50 points each), but don't let them get close. Solo, Practice vs bots, or with friends.</span>
         <span class="playable-best" id="invaders-best"></span>
+      </button>
+      <button type="button" class="playable-card big survival-card" data-play="survival">
+        <img src="icons/survival/card.png" alt="" class="pixel">
+        <span class="playable-name">Kat Survival</span>
+        <span class="playable-sub">Get wood and stone, keep your campfire burning, and survive the night with the bears about. Solo or with friends.</span>
+        <span class="playable-best" id="survival-best"></span>
       </button>
       <button type="button" class="playable-card big circles-card" data-play="circles">
         <img src="icons/circles/bag.png" alt="" class="pixel">
@@ -383,6 +390,56 @@
         <div class="row">
           <button type="button" class="btn" id="btn-ki-exit">Back to Playables</button>
           <button type="button" class="btn primary" id="btn-ki-again">Play again</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Kat Survival -->
+  <section id="screen-survival" class="screen survival-screen" hidden>
+    <div class="ks-stage">
+      <canvas id="ks-canvas" aria-label="Kat Survival"></canvas>
+      <div class="ks-hud">
+        <button type="button" class="icon-btn" id="btn-ks-quit" aria-label="Quit">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12Z"/></svg>
+        </button>
+        <div class="ks-status">
+          <span class="ks-clock" id="ks-clock">☀️ 5:00 until night</span>
+          <div class="ks-bars">
+            <span class="ks-bar hp" id="ks-hp" aria-label="Health">❤️ <b id="ks-hp-text">100</b></span>
+            <span class="ks-bar hunger" id="ks-hunger" aria-label="Hunger">🍖 <b id="ks-hunger-text">100</b></span>
+          </div>
+        </div>
+        <canvas id="ks-minimap" width="96" height="96" aria-label="Map"></canvas>
+      </div>
+      <div class="ks-cold" id="ks-cold" hidden>🥶 Cold! Get to a burning campfire</div>
+      <div class="ks-bottom">
+        <div class="ks-inv" aria-label="What you have">
+          <span><img src="icons/survival/food.png" alt="Food" class="pixel"><b id="ks-food">0</b></span>
+          <span><img src="icons/survival/wood.png" alt="Wood" class="pixel"><b id="ks-wood">0</b></span>
+          <span><img src="icons/survival/stone.png" alt="Stone" class="pixel"><b id="ks-stone">0</b></span>
+          <span><img src="icons/survival/fire-1.png" alt="Campfires" class="pixel"><b id="ks-campfires">0</b></span>
+        </div>
+        <div class="ks-actions">
+          <button type="button" class="ks-btn" id="btn-ks-eat" title="Eat (E)"><img src="icons/survival/food.png" alt="" class="pixel"><span>Eat</span></button>
+          <button type="button" class="ks-btn" id="btn-ks-fuel" title="Add wood to the fire (F)"><img src="icons/survival/wood.png" alt="" class="pixel"><span>Add wood</span></button>
+          <button type="button" class="ks-btn" id="btn-ks-place" title="Put down a campfire (Q)"><img src="icons/survival/fire-out.png" alt="" class="pixel"><span>Put down</span></button>
+          <button type="button" class="ks-btn" id="btn-ks-craft" title="Make a campfire: 10 wood, 5 stone (C)"><img src="icons/survival/fire-1.png" alt="" class="pixel"><span>Make fire</span></button>
+          <button type="button" class="ks-btn ks-swing" id="btn-ks-swing" title="Swing your sword (Space)"><img src="icons/survival/sword.png" alt="" class="pixel"><span>Swing</span></button>
+        </div>
+      </div>
+      <div class="kart-alert" id="ks-alert" hidden></div>
+      <div class="kart-countdown" id="ks-countdown" hidden>3</div>
+      <div class="kart-now-playing" id="ks-now-playing" hidden></div>
+      <div class="escape-over" id="ks-over" data-modal hidden>
+        <img src="icons/survival/card.png" alt="" class="pixel" id="ks-over-img">
+        <h2 id="ks-over-title">You survived!</h2>
+        <p class="escape-final" id="ks-final"></p>
+        <p class="fineprint" id="ks-over-detail"></p>
+        <ol class="escape-results" id="ks-results" hidden></ol>
+        <div class="row">
+          <button type="button" class="btn" id="btn-ks-exit">Back to Playables</button>
+          <button type="button" class="btn primary" id="btn-ks-again">Play again</button>
         </div>
       </div>
     </div>
@@ -1163,6 +1220,48 @@
       <div class="row">
         <button type="button" class="btn" id="btn-ki-leave">Leave</button>
         <button type="button" class="btn primary" id="btn-ki-start">Start</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="dialog-survival" class="kart-menu">
+    <div id="ks-menu-main">
+      <img src="icons/survival/card.png" alt="" class="kart-menu-art pixel">
+      <h2>Kat Survival</h2>
+      <ul class="ks-rules">
+        <li>☀️ 5 minutes of daylight: hit trees for wood and rocks for stone, and get food from cows and pigs.</li>
+        <li>🔥 Put down your campfire and fill it with wood (10 wood + 5 stone makes another).</li>
+        <li>🌙 Then 3 minutes of night: it's freezing away from a burning fire, and the bears come hunting (3 to 5 damage a hit).</li>
+        <li>🎒 You start with food, a sword (10 damage), 15 wood and a campfire.</li>
+      </ul>
+      <p class="kart-menu-or">Your team</p>
+      <div class="cc-team-pick" id="ks-team-pick" role="radiogroup" aria-label="Your team"></div>
+      <label class="kart-song-pick">🎵 Music
+        <select id="ks-song" aria-label="Music"></select>
+      </label>
+      <button type="button" class="btn primary wide" id="btn-ks-solo">🏕️ Solo</button>
+      <p class="kart-menu-or">Survive with friends</p>
+      <button type="button" class="btn wide" id="btn-ks-create">👥 Make a game</button>
+      <div class="inline-form kart-join">
+        <input id="ks-code" maxlength="4" placeholder="Game code" autocapitalize="characters" autocomplete="off" spellcheck="false" aria-label="Game code" enterkeyhint="go">
+        <button type="button" class="btn small primary" id="btn-ks-join">Join</button>
+      </div>
+      <button type="button" class="btn wide" id="btn-ks-close">Close</button>
+    </div>
+    <div id="ks-lobby" hidden>
+      <p class="fineprint">Game code</p>
+      <p class="kart-code-big" id="ks-lobby-code"></p>
+      <button type="button" class="btn small" id="btn-ks-share">Share the code</button>
+      <p class="kart-menu-or">Your team</p>
+      <div class="cc-team-pick" id="ks-lobby-team" role="radiogroup" aria-label="Your team"></div>
+      <ul class="kart-lobby-players" id="ks-lobby-players"></ul>
+      <label class="kart-song-pick">🎵 Music <span class="fineprint" id="ks-song-note"></span>
+        <select id="ks-song-online" aria-label="Music"></select>
+      </label>
+      <p class="fineprint" id="ks-lobby-status"></p>
+      <div class="row">
+        <button type="button" class="btn" id="btn-ks-leave">Leave</button>
+        <button type="button" class="btn primary" id="btn-ks-start">Start</button>
       </div>
     </div>
   </dialog>

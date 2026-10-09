@@ -32,6 +32,7 @@ import { teamEdge } from './teams.js';
 import { BUG_CATEGORIES, SUGGESTION_CATEGORIES, categoryLabel } from './feedback-categories.js';
 import { BOLTS_PER_GEM, chaseGems, escapeGems, invaderGems, placeGems, wordleGems } from './rewards.js';
 import { DIFFICULTIES as KI_DIFFICULTIES, LIVES as KI_LIVES, createKatInvaders } from './invaders.js';
+import { createKatSurvival } from './survival.js';
 import { choicesFor as ccChoicesFor, choose as ccChoose, deckCounts as ccDeckCounts, draw as ccDraw, newDeck as ccNewDeck, ranked as ccRanked } from './circle-rules.js';
 import { BASE_TEAMS, TEAMS as CC_TEAMS, TEAM_NAMES as CC_TEAM_NAMES, TURNS as CC_TURNS, circleIcon as ccCircleIcon, createCircleTable, describeEvent as ccDescribe, teamIcon as ccTeamIcon } from './circles.js';
 import { KART_MAPS, RACE_SONGS, RACERS as KART_RACERS, createKatKart, createRaceMusic, formatRaceTime, showNowPlaying } from './kart.js';
@@ -193,6 +194,10 @@ function show(name) {
   if (state.screen === 'escape' && name !== 'escape') {
     katEscape.stop();
     leaveEscapeRoom();
+  }
+  if (state.screen === 'survival' && name !== 'survival') {
+    katSurvival.stop();
+    leaveSurvivalRoom();
   }
   if (state.screen === 'invaders' && name !== 'invaders') {
     katInvaders.stop();
@@ -5706,6 +5711,8 @@ function openPlayables() {
   $('escape-best').textContent = escapeBest ? `🏃 Best: ${escapeBest.toLocaleString()} points` : '';
   const circles = readJson(CC_STATS);
   $('circles-best').textContent = circles?.played ? `🏆 ${circles.wins} won of ${circles.played}` : '';
+  const survivalStats = readJson('koolkat.katSurvival.stats');
+  $('survival-best').textContent = survivalStats?.played ? `🏕️ Survived ${survivalStats.survived} of ${survivalStats.played} nights` : '';
   const invadersBest = katInvaders.best();
   $('invaders-best').textContent = invadersBest ? `🐭 Best: ${invadersBest.toLocaleString()} points` : '';
   $('wordle-best').textContent = stats?.played ? `🔥 Streak ${stats.streak} · ${stats.wins}/${stats.played} won` : '';
@@ -5718,6 +5725,7 @@ document.addEventListener('click', (e) => {
   else if (card.dataset.play === 'escape') openEscape();
   else if (card.dataset.play === 'circles') openCirclesMenu();
   else if (card.dataset.play === 'invaders') openInvadersMenu();
+  else if (card.dataset.play === 'survival') openSurvivalMenu();
   else openWordle();
 });
 
@@ -6943,6 +6951,290 @@ function leaveInvadersRoom() {
   ki.code = null;
 }
 
+// ---------- Kat Survival: Solo, or survive the night with friends ----------
+const KS_SETTINGS = 'koolkat.katSurvival';
+const KS_STATS = 'koolkat.katSurvival.stats';
+const ks = { code: null, room: null, timer: null, playing: false, sent: 0, applied: 0, mode: 'solo', team: 'blue', song: 'random' };
+try {
+  Object.assign(ks, JSON.parse(localStorage.getItem(KS_SETTINGS) || '{}'), { code: null, room: null, timer: null, playing: false });
+} catch {
+  // The defaults it is.
+}
+if (!CC_TEAMS.includes(ks.team)) ks.team = 'blue';
+const saveKs = () => {
+  try {
+    localStorage.setItem(KS_SETTINGS, JSON.stringify({ team: ks.team, song: ks.song }));
+  } catch {
+    // Remembering it is only a convenience.
+  }
+};
+// The team picker shows each team's Kat (its shirt in the team colour).
+const ksTeamIcon = (team) => `icons/circles/team-${team}.png`;
+$('ks-song').replaceChildren(...songOptions());
+$('ks-song-online').replaceChildren(...songOptions());
+$('ks-song').value = RACE_SONGS.some((s) => s.id === ks.song) ? ks.song : 'random';
+$('ks-song').addEventListener('change', (e) => {
+  ks.song = e.target.value;
+  saveKs();
+});
+function renderKsMenu() {
+  if (!canUseTeam(ks.team)) ks.team = 'blue'; // sold it
+  teamPicker($('ks-team-pick'), {
+    chosen: ks.team,
+    icon: ksTeamIcon,
+    onPick: (team) => {
+      ks.team = team;
+      saveKs();
+      renderKsMenu();
+    },
+  });
+}
+function openSurvivalMenu() {
+  katSurvival.unlockAudio(); // this tap lets the music play later
+  renderKsMenu();
+  loadShop().then(() => renderKsMenu());
+  $('ks-menu-main').hidden = false;
+  $('ks-lobby').hidden = true;
+  $('ks-code').value = '';
+  $('dialog-survival').showModal();
+}
+$('btn-ks-close').addEventListener('click', () => $('dialog-survival').close());
+
+const katSurvival = createKatSurvival({
+  canvas: $('ks-canvas'),
+  minimap: $('ks-minimap'),
+  clock: $('ks-clock'),
+  hp: $('ks-hp'),
+  hpText: $('ks-hp-text'),
+  hunger: $('ks-hunger'),
+  hungerText: $('ks-hunger-text'),
+  food: $('ks-food'),
+  wood: $('ks-wood'),
+  stone: $('ks-stone'),
+  campfires: $('ks-campfires'),
+  swing: $('btn-ks-swing'),
+  eat: $('btn-ks-eat'),
+  fuel: $('btn-ks-fuel'),
+  place: $('btn-ks-place'),
+  craft: $('btn-ks-craft'),
+  cold: $('ks-cold'),
+  alert: $('ks-alert'),
+  countdown: $('ks-countdown'),
+  nowPlaying: $('ks-now-playing'),
+  over: $('ks-over'),
+  onOver: ({ mode, results, me, gems }) => {
+    const survived = Boolean(me?.survived);
+    const lasted = formatRaceTime(me?.time ?? 0).replace(/\.\d+$/, '');
+    $('ks-over-title').textContent = survived ? '🏕️ You survived the night!' : '💀 You didn’t make it to morning';
+    $('ks-final').textContent = survived ? '☀️ The sun is up!' : `Lasted ${lasted}`;
+    $('ks-over-detail').textContent = `${me?.kills ?? 0} animal${me?.kills === 1 ? '' : 's'} hunted`;
+    $('ks-over-img').src = survived ? 'icons/survival/card.png' : 'icons/survival/bear.png';
+    const list = $('ks-results');
+    list.hidden = mode !== 'online';
+    if (mode === 'online') {
+      list.replaceChildren(
+        ...results.map((r) =>
+          el(
+            'li',
+            { class: r.id === state.me.userId ? 'me' : null },
+            el('span', { class: 'place', text: r.survived ? '🏕️' : '💀' }),
+            el('img', { src: ksTeamIcon(r.team), alt: '', class: 'ki-mini' }),
+            el('span', { class: 'name', text: `${r.id === state.me.userId ? `${r.name} (you)` : r.name}${r.gone ? ' (left)' : ''}` }),
+            el('span', { class: 'pts', text: r.survived ? 'Survived' : formatRaceTime(r.time).replace(/\.\d+$/, '') })
+          )
+        )
+      );
+    }
+    $('btn-ks-again').textContent = 'Play again';
+    $('ks-over').hidden = false;
+    const stats = readJson(KS_STATS) ?? { played: 0, survived: 0 };
+    stats.played += 1;
+    if (survived) stats.survived += 1;
+    try {
+      localStorage.setItem(KS_STATS, JSON.stringify(stats));
+    } catch {
+      // Just for fun.
+    }
+    // Online, the server hands out the bolts and gems.
+    if (mode === 'solo') earnRewards('survival', { win: survived, gems });
+    else {
+      clearInterval(ks.timer);
+      checkBolts();
+    }
+    focusFirst();
+  },
+});
+
+function startSurvival(opts) {
+  if (!audioEl.paused) audioEl.pause();
+  ks.mode = opts.mode;
+  katSurvival.unlockAudio();
+  show('survival');
+  katSurvival.start({ team: ks.team, name: state.me.displayName, song: ks.song, ...opts }).catch((err) => toast(err.message, { error: true }));
+}
+$('btn-ks-solo').addEventListener('click', () => {
+  $('dialog-survival').close();
+  startSurvival({ mode: 'solo' });
+});
+const leaveSurvival = () => {
+  leaveSurvivalRoom();
+  openPlayables();
+};
+$('btn-ks-quit').addEventListener('click', async () => {
+  if (!katSurvival.running || (await askConfirm(ks.playing ? 'Leave the game? The others keep going without you.' : 'Stop playing?', { ok: ks.playing ? 'Leave' : 'Stop' }))) leaveSurvival();
+});
+$('btn-ks-exit').addEventListener('click', leaveSurvival);
+$('btn-ks-again').addEventListener('click', () => {
+  katSurvival.unlockAudio();
+  if (ks.mode === 'solo') startSurvival({ mode: 'solo' });
+  else {
+    leaveSurvival();
+    openSurvivalMenu();
+  }
+});
+
+// Online: lobby, teams and the host's music.
+$('btn-ks-create').addEventListener('click', (e) =>
+  withBusy(e.currentTarget, async () => {
+    const { room } = await api('POST', '/survival/rooms');
+    enterKsLobby(room);
+    if (canUseTeam(ks.team) && room.players.find((p) => p.id === state.me.userId)?.team !== ks.team) ksLobbyPost('team', { team: ks.team }, true);
+  })
+);
+const joinKs = () =>
+  withBusy($('btn-ks-join'), async () => {
+    const code = $('ks-code').value.trim().toUpperCase();
+    if (!/^[A-Z]{4}$/.test(code)) throw new Error('Game codes are 4 letters');
+    const { room } = await api('POST', `/survival/rooms/${code}/join`);
+    enterKsLobby(room);
+  });
+$('btn-ks-join').addEventListener('click', joinKs);
+$('ks-code').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    joinKs();
+  }
+});
+
+function enterKsLobby(room) {
+  ks.code = room.code;
+  $('ks-menu-main').hidden = true;
+  $('ks-lobby').hidden = false;
+  renderKsLobby(room);
+  focusFirst();
+  clearInterval(ks.timer);
+  ks.timer = setInterval(async () => {
+    if (!ks.code) return;
+    const n = ++ks.sent;
+    try {
+      const { room: r } = await api('GET', `/survival/rooms/${ks.code}`, undefined, { timeout: 5000 });
+      if (n > ks.applied) {
+        ks.applied = n;
+        renderKsLobby(r);
+      }
+    } catch (err) {
+      if (err.status === 404 || err.status === 403) {
+        clearInterval(ks.timer);
+        toast(err.message, { error: true });
+        $('dialog-survival').close();
+      }
+    }
+  }, 1000);
+}
+async function ksLobbyPost(path, body, quiet = false) {
+  try {
+    const { room } = await api('POST', `/survival/rooms/${ks.code}/${path}`, body);
+    ks.applied = ++ks.sent;
+    renderKsLobby(room);
+  } catch (err) {
+    if (!quiet) toast(err.message, { error: true });
+  }
+}
+function renderKsLobby(room) {
+  if (ks.playing) return;
+  ks.room = room;
+  $('ks-lobby-code').textContent = room.code;
+  const players = room.players.filter((p) => !p.gone);
+  const me = players.find((p) => p.id === state.me.userId);
+  const host = room.hostId === state.me.userId;
+  teamPicker($('ks-lobby-team'), {
+    chosen: me?.team,
+    icon: ksTeamIcon,
+    taken: new Map(players.filter((p) => p.id !== me?.id).map((p) => [p.team, p.name])),
+    onPick: (team) => {
+      ks.team = team;
+      saveKs();
+      ksLobbyPost('team', { team });
+    },
+  });
+  $('ks-lobby-players').replaceChildren(
+    ...players.map((p) =>
+      el(
+        'li',
+        {},
+        el('img', { src: ksTeamIcon(p.team), alt: CC_TEAM_NAMES[p.team], class: 'cc-mini' }),
+        avatar(p.user, 'small'),
+        el('span', { text: p.id === state.me.userId ? `${p.name} (you)` : p.name }),
+        p.id === room.hostId ? el('span', { class: 'fineprint', text: ' · host' }) : null
+      )
+    )
+  );
+  const songSelect = $('ks-song-online');
+  songSelect.disabled = !host;
+  if (document.activeElement !== songSelect) songSelect.value = room.song ?? 'random';
+  $('ks-song-note').textContent = host ? '(you pick)' : '(the host picks)';
+  $('btn-ks-start').hidden = !host;
+  $('btn-ks-start').disabled = players.length < 2;
+  $('ks-lobby-status').textContent =
+    players.length < 2 ? 'Waiting for friends to join with the code… (2 to 5 Kats)' : host ? `${players.length} Kats ready. Start when everyone's in!` : 'Waiting for the host to start…';
+  if (room.state === 'running') startOnlineSurvival(room);
+}
+$('ks-song-online').addEventListener('change', (e) => ksLobbyPost('song', { song: e.target.value }));
+$('btn-ks-start').addEventListener('click', (e) => withBusy(e.currentTarget, () => ksLobbyPost('start')));
+$('btn-ks-leave').addEventListener('click', () => {
+  leaveSurvivalRoom();
+  $('dialog-survival').close();
+});
+$('btn-ks-share').addEventListener('click', async () => {
+  const text = `Survive the night with me in Kat Survival on KoolKat! Open Playables → Kat Survival and join with code ${ks.code}`;
+  try {
+    if (navigator.share) await navigator.share({ title: 'Kat Survival', text, url: `${location.origin}/#playables` });
+    else {
+      await navigator.clipboard.writeText(text);
+      toast('Copied');
+    }
+  } catch {
+    // Share sheet closed.
+  }
+});
+$('dialog-survival').addEventListener('close', () => {
+  if (!ks.playing) leaveSurvivalRoom();
+});
+
+function startOnlineSurvival(room) {
+  clearInterval(ks.timer);
+  ks.playing = true;
+  $('dialog-survival').close();
+  const code = room.code;
+  startSurvival({
+    mode: 'online',
+    me: state.me.userId,
+    seed: room.seed,
+    song: room.song,
+    startAt: performance.now() + (room.startAt - room.serverNow),
+    players: room.players.filter((p) => !p.gone).map((p) => ({ id: p.id, name: p.name, team: p.team })),
+    sync: (st) => api('POST', `/survival/rooms/${code}/state`, st, { timeout: 4000 }),
+  });
+}
+
+function leaveSurvivalRoom() {
+  clearInterval(ks.timer);
+  ks.playing = false;
+  if (!ks.code) return;
+  api('POST', `/survival/rooms/${ks.code}/leave`).catch(() => {});
+  ks.code = null;
+}
+
 // Kat Wordle
 const katWordle = createKatWordle({ board: $('kw-board'), keyboard: $('kw-keyboard'), message: $('kw-message'), result: $('kw-result'), hints: $('kw-hints'), onFinish: ({ won, guesses }) => earnRewards('wordle', { win: won, gems: wordleGems(won, guesses) }) });
 function openWordle() {
@@ -7275,7 +7567,7 @@ function showPodium(results, info = {}) {
 
 // Keyboard and controller navigation in every menu (see input.js). While a
 // Kat Kart race is on, the arrows / D-pad steer instead.
-initInput({ busy: () => !document.querySelector('dialog[open]') && ((state.screen === 'kart' && katKart.running && $('kart-podium').hidden) || (state.screen === 'escape' && katEscape.running) || (state.screen === 'invaders' && katInvaders.running)) });
+initInput({ busy: () => !document.querySelector('dialog[open]') && ((state.screen === 'kart' && katKart.running && $('kart-podium').hidden) || (state.screen === 'escape' && katEscape.running) || (state.screen === 'invaders' && katInvaders.running) || (state.screen === 'survival' && katSurvival.running)) });
 
 // Keyboards: typing in Kat Wordle, arrow keys in Kat Kart, Space for a photo.
 document.addEventListener('keydown', (e) => {
@@ -7289,6 +7581,7 @@ document.addEventListener('keydown', (e) => {
   else if (state.screen === 'kart') katKart.keyDown(e);
   else if (state.screen === 'escape' && katEscape.running) katEscape.keyDown(e);
   else if (state.screen === 'invaders' && katInvaders.running) katInvaders.keyDown(e);
+  else if (state.screen === 'survival' && katSurvival.running) katSurvival.keyDown(e);
   else if (state.screen === 'circles' && !$('cc-picks').hidden && /^[1-4 ]$/.test(e.key) && !e.target.closest?.('button, input, select, textarea')) {
     // 1-4 picks that circle; Space takes the first one you can.
     e.preventDefault();
@@ -7299,6 +7592,7 @@ document.addEventListener('keydown', (e) => {
 document.addEventListener('keyup', (e) => {
   if (state.screen === 'kart') katKart.keyUp(e);
   if (state.screen === 'invaders') katInvaders.keyUp(e);
+  if (state.screen === 'survival') katSurvival.keyUp(e);
 });
 
 // ---------- social media links ----------

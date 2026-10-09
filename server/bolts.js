@@ -11,7 +11,7 @@ import { BOLTS_PER_GEM, MAX_GEMS, MIN_GEMS } from '../public/js/rewards.js';
 
 export const WIN_BOLTS = 100;
 export const MAX_RUN_BOLTS = 10000; // more than anyone collects in one run
-export const BOLT_GAMES = ['kart', 'wordle', 'escape', 'circles', 'invaders'];
+export const BOLT_GAMES = ['kart', 'wordle', 'escape', 'circles', 'invaders', 'survival'];
 const CLAIM_GAP = 20 * 1000;
 const DAILY_CAP = 25000;
 const DAY = 24 * 60 * 60 * 1000;

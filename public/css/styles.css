@@ -2785,3 +2785,46 @@ img.pixel { image-rendering: pixelated; }
 .feedback-reply-input { flex: 1; min-width: 0; font: inherit; resize: vertical; }
 /* Multi-touch games: holding a finger still shouldn't open the phone's long-press menu. */
 .kart-stage, .escape-stage, .ki-stage { -webkit-touch-callout: none; }
+
+/* ---------- Kat Survival ---------- */
+.survival-card { background: linear-gradient(160deg, #2f6b34, #0e2412); }
+.survival-card img { object-fit: contain; padding: 6%; image-rendering: pixelated; }
+.survival-screen { background: #0e2412; color: #fff; }
+@media (min-width: 760px) { .survival-screen { left: 0 !important; right: 0 !important; } }
+.ks-stage { position: relative; flex: 1; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; background: #1d4d22; }
+#ks-canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
+.ks-hud { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: flex-start; gap: 8px; padding: calc(8px + var(--safe-top)) 8px 0; pointer-events: none; }
+.ks-hud > * { pointer-events: auto; }
+.ks-status { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; pointer-events: none; }
+.ks-clock { padding: 3px 10px; border-radius: 10px; background: rgba(0, 0, 0, 0.55); font-weight: 900; font-size: 15px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ks-clock.night { background: rgba(20, 24, 70, 0.8); }
+.ks-bars { display: flex; gap: 6px; width: min(100%, 260px); }
+.ks-bar { --fill: 100%; flex: 1; position: relative; padding: 2px 8px; border-radius: 10px; overflow: hidden; background: rgba(0, 0, 0, 0.55); font-size: 13px; font-weight: 800; white-space: nowrap; }
+.ks-bar::before { content: ""; position: absolute; inset: 0; width: var(--fill); background: var(--bar); opacity: 0.75; transition: width 0.2s; }
+.ks-bar > * { position: relative; }
+.ks-bar { isolation: isolate; }
+.ks-bar::before { z-index: -1; }
+.ks-bar.hp { --bar: #d7263d; }
+.ks-bar.hunger { --bar: #c77a2b; }
+#ks-minimap { width: 76px; height: 76px; border: 2px solid rgba(0, 0, 0, 0.6); border-radius: 8px; image-rendering: pixelated; }
+.ks-cold { position: absolute; top: calc(78px + var(--safe-top)); left: 50%; transform: translateX(-50%); padding: 6px 12px; border-radius: 12px; background: rgba(60, 130, 220, 0.9); font-weight: 900; white-space: nowrap; pointer-events: none; animation: ks-pulse 1s ease-in-out infinite alternate; }
+.ks-cold[hidden] { display: none; }
+@keyframes ks-pulse { to { opacity: 0.6; } }
+.ks-bottom { position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; padding: 0 8px calc(8px + var(--safe-bottom, 0px)); pointer-events: none; }
+.ks-inv { display: flex; gap: 6px; align-self: flex-start; padding: 4px 8px; border-radius: 12px; background: rgba(0, 0, 0, 0.55); font-weight: 900; pointer-events: none; }
+.ks-inv span { display: inline-flex; align-items: center; gap: 2px; }
+.ks-inv img { width: 22px; height: 22px; image-rendering: pixelated; }
+.ks-actions { display: grid; grid-template-columns: repeat(2, 64px) 84px; grid-template-rows: 64px 64px; gap: 6px; pointer-events: auto; }
+.ks-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; padding: 2px; border: 2px solid rgba(0, 0, 0, 0.6); border-radius: 14px; background: rgba(255, 255, 255, 0.85); color: #0f172a; font: inherit; font-size: 11px; font-weight: 800; cursor: pointer; touch-action: none; }
+.ks-btn img { width: 30px; height: 30px; image-rendering: pixelated; }
+.ks-btn:disabled { opacity: 0.45; }
+.ks-btn:active:not(:disabled) { transform: scale(0.94); }
+.ks-swing { grid-column: 3; grid-row: 1 / span 2; border-radius: 50%; align-self: center; height: 84px; background: #ffd23f; }
+.ks-swing img { width: 40px; height: 40px; }
+.ks-stage .kart-alert { white-space: normal; width: max-content; max-width: 86%; text-align: center; }
+.ks-rules { margin: 0 0 8px; padding-left: 0; list-style: none; font-size: 13px; text-align: left; }
+.ks-rules li { margin: 4px 0; }
+#dialog-survival .pixel, #screen-survival .pixel { image-rendering: pixelated; }
+/* Out of the way of the buttons and your Kat. */
+.ks-stage .kart-now-playing { top: calc(112px + var(--safe-top)); bottom: auto; }
+.ks-stage .kart-alert { top: calc(150px + var(--safe-top)); }

@@ -47,6 +47,7 @@ import { createBolts, createGems, registerBoltRoutes } from './bolts.js';
 import { createShop, registerShopRoutes } from './shop.js';
 import { registerFeedbackRoutes } from './feedback.js';
 import { registerInvaderRoutes } from './invaderrooms.js';
+import { registerSurvivalRoutes } from './survivalrooms.js';
 import { accentIconHandler, manifestHandler, registerCustomizeRoutes } from './customize.js';
 import { activityOf, chatThemeOf, cleanupFriendCodes, registerSocialRoutes } from './social.js';
 import { registerKatMapRoutes } from './katmap.js';
@@ -1319,6 +1320,7 @@ export function createApp({
   registerEscapeRoutes({ api, auth, wrap, clock, publicUser, db, bolts });
   registerCircleRoutes({ api, auth, wrap, clock, publicUser, db, bolts, gems, shop });
   registerInvaderRoutes({ api, auth, wrap, clock, publicUser, db, bolts, gems, shop });
+  registerSurvivalRoutes({ api, auth, wrap, clock, publicUser, db, bolts, gems, shop });
   // Suggestions and Bug reports (KoolKat Unlimited); the owner and admins go through them.
   registerFeedbackRoutes({ api, auth, wrap, db, clock, publicUser, hasUnlimitedUser, isAdminUser, isOwner, owners, pusher, rateLimiter });
 
