@@ -1,5 +1,6 @@
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
+import { KART_MAP_IDS } from '../public/js/kart-maps.js';
 import { openDatabase } from '../server/db.js';
 import { createApp } from '../server/app.js';
 import { createIdentity, deriveKeysFromPassword } from '../public/js/crypto.js';
@@ -53,8 +54,16 @@ describe('Kat Kart online races', () => {
     assert.equal((await call('POST', `/kart/rooms/${code}/song`, { token: ben.token, body: { song: 'crystal-cavern' } })).status, 403);
     assert.equal((await call('POST', `/kart/rooms/${code}/song`, { token: ann.token, body: { song: 'not-a-song' } })).status, 400);
     assert.equal((await call('POST', `/kart/rooms/${code}/song`, { token: ann.token, body: { song: 'crystal-cavern' } })).body.room.song, 'crystal-cavern');
+    // And the map.
+    assert.equal(joined.body.room.map, 'random');
+    assert.equal((await call('POST', `/kart/rooms/${code}/map`, { token: ben.token, body: { map: 'kingdom' } })).status, 403);
+    assert.equal((await call('POST', `/kart/rooms/${code}/map`, { token: ann.token, body: { map: 'moon-base' } })).status, 400);
+    for (const map of KART_MAP_IDS) assert.equal((await call('POST', `/kart/rooms/${code}/map`, { token: ann.token, body: { map } })).body.room.map, map);
+    assert.deepEqual(KART_MAP_IDS, ['kool-kircuit', 'nighttime', 'crystal-cavern', 'kingdom', 'gold-mine']);
     const started = await call('POST', `/kart/rooms/${code}/start`, { token: ann.token });
     assert.equal(started.body.room.song, 'crystal-cavern');
+    assert.equal(started.body.room.map, 'gold-mine');
+    assert.equal((await call('POST', `/kart/rooms/${code}/map`, { token: ann.token, body: { map: 'kingdom' } })).status, 409, 'too late to change');
     assert.equal(started.body.room.state, 'racing');
     assert.ok(started.body.room.startAt > started.body.room.serverNow);
     assert.equal((await call('POST', `/kart/rooms/${code}/join`, { token: cat.token })).status, 409, 'too late to join');
@@ -83,12 +92,16 @@ describe('Kat Kart online races', () => {
     const [a, b] = [await reg('ann'), await reg('ben')];
     const code = (await c2('POST', '/kart/rooms', a)).body.room.code;
     await c2('POST', `/kart/rooms/${code}/join`, b);
-    await c2('POST', `/kart/rooms/${code}/start`, a);
+    const picked = (await c2('POST', `/kart/rooms/${code}/start`, a)).body.room.map;
+    assert.ok(KART_MAP_IDS.includes(picked), 'Random picks a map when the race starts');
     now += 5000;
     await c2('POST', `/kart/rooms/${code}/state`, a, { x: 100, y: 200, h: 1, v: 2, progress: 50, lap: 0, finished: null });
     const seen = (await c2('POST', `/kart/rooms/${code}/state`, b, { x: 120, y: 210, h: 1, v: 2, progress: 40, lap: 0 })).body.room;
     assert.deepEqual(seen.players.find((p) => p.name === 'ann').st, { x: 100, y: 200, h: 1, v: 2, progress: 50, lap: 0 });
     assert.equal(seen.players.find((p) => p.name === 'ann').finished, null, 'not finished just by racing');
+    // The maps are bigger now: the far side is still on the map.
+    const far = (await c2('POST', `/kart/rooms/${code}/state`, b, { x: 2000, y: 1900, h: 1, v: 2, progress: 40, lap: 0 })).body.room;
+    assert.deepEqual([far.players[1].st.x, far.players[1].st.y], [2000, 1900]);
     // Power-ups: attacks are passed on to everyone; speed boosts and junk aren't.
     await c2('POST', `/kart/rooms/${code}/state`, a, { x: 100, y: 200, h: 1, v: 2, progress: 60, lap: 0, uses: [{ id: 'a-1', kind: 'thunder' }, { id: 'a-2', kind: 'double' }] });
     const ev = (await c2('POST', `/kart/rooms/${code}/state`, b, { x: 120, y: 210, h: 1, v: 2, progress: 41, lap: 0 })).body.room.events;

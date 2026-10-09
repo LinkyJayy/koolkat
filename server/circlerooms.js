@@ -4,7 +4,7 @@ import { WIN_BOLTS } from './bolts.js';
 import { placeGems } from '../public/js/rewards.js';
 import { KART_SONGS } from './kartrooms.js';
 import { BASE_TEAMS, TEAM_NAMES } from '../public/js/teams.js';
-import { TEAMS, canPlay, choose, draw, newDeck, nextAfter, ranked } from '../public/js/circle-rules.js';
+import { TEAMS, canPlay, choose, deckCounts, draw, newDeck, nextAfter, ranked } from '../public/js/circle-rules.js';
 
 export * from '../public/js/circle-rules.js';
 
@@ -107,7 +107,7 @@ export function registerCircleRoutes({ api, auth, wrap, clock, publicUser, db, b
     return t[randomInt(t.length)].id;
   };
 
-  function act(room, userId, { target } = {}, now, auto = false) {
+  function act(room, userId, { target, circle } = {}, now, auto = false) {
     if (room.state !== 'playing') fail(409, room.state === 'dealing' ? 'The bot is still spilling the bag' : 'The game is over');
     if (room.turnId !== userId) fail(409, "It's not your turn");
     let event;
@@ -115,7 +115,10 @@ export function registerCircleRoutes({ api, auth, wrap, clock, publicUser, db, b
       if (target == null) fail(409, 'Pick who loses the circles first');
       event = choose(room, room.players.find((p) => String(p.id) === String(target))?.id);
       if (!event) fail(400, 'Pick an opponent');
-    } else event = draw(room, randomInt);
+    } else {
+      event = draw(room, randomInt, circle == null ? null : String(circle));
+      if (!event) fail(400, 'Pick your own colour or a rainbow circle that is still in the Deck');
+    }
     if (auto) event.auto = true;
     pushEvent(room, event, now);
     room.turnAt = now;
@@ -134,6 +137,7 @@ export function registerCircleRoutes({ api, auth, wrap, clock, publicUser, db, b
     dir: room.dir ?? 1,
     song: room.song ?? 'random',
     deck: room.deck?.length ?? 0,
+    counts: room.deck ? deckCounts(room.deck) : null,
     pending: room.pending ? { circle: room.pending.circle, by: room.pending.by } : null,
     players: room.players.map((p) => ({ id: p.id, name: p.name, user: p.user, team: p.team, circles: p.circles, turns: p.turns, gone: p.gone })),
     events: room.events,
@@ -259,7 +263,7 @@ export function registerCircleRoutes({ api, auth, wrap, clock, publicUser, db, b
     })
   );
 
-  // Your turn: take the top circle, or pick who loses the circles.
+  // Your turn: take the circle you picked (your colour or a rainbow one), or pick who loses the circles.
   api.post(
     '/circles/rooms/:code/play',
     auth,
@@ -267,7 +271,7 @@ export function registerCircleRoutes({ api, auth, wrap, clock, publicUser, db, b
       const room = roomOr404(req);
       const now = clock();
       mine(room, req);
-      act(room, req.user.id, { target: req.body?.target }, now);
+      act(room, req.user.id, { target: req.body?.target, circle: req.body?.circle }, now);
       return { room: describe(room, now) };
     })
   );

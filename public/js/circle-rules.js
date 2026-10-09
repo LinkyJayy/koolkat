@@ -2,7 +2,7 @@
 // (Practice against bots). The game is plain data, so it's easy to test.
 //
 // The bot spills the bag of circles into a random pile, the Deck. On your
-// turn you take a circle: only your own team's colour or a rainbow one
+// turn you pick a circle to take: only your own team's colour or a rainbow one
 // (Lose 2, Lose 4, Lucky); the others' colours stay in the Deck for them.
 //  - your colour: +1 circle;
 //  - Lose 2 / Lose 4: pick an opponent, they lose that many circles;
@@ -139,23 +139,35 @@ export function endTurn(game, nextId = null) {
   return next;
 }
 
+/** How many of each circle are in the Deck (which ones are left is no secret). */
+export function deckCounts(deck) {
+  const counts = Object.fromEntries([...TEAMS, ...RAINBOW].map((k) => [k, 0]));
+  for (const c of deck) counts[c] = (counts[c] ?? 0) + 1;
+  return counts;
+}
+
+/** The circles a team can pick from: its own colour and the rainbow ones. */
+export const choicesFor = (team) => [team, ...RAINBOW];
+
 /**
  * Take a circle. Each team only takes its own colour and the rainbow circles
  * (Lose 2, Lose 4, Lucky): the other teams' circles stay in the Deck for them.
- * Returns the event.
+ * `circle` is the one you picked (none: the top one you can take, like a bot).
+ * Returns the event, or null if you can't take that one.
  */
-export function draw(game, rand = randomInt) {
+export function draw(game, rand = randomInt, circle = null) {
   const player = teamOf(game, game.turnId);
-  const event = { type: 'draw', by: player.id };
   const takeable = (c) => c === player.team || RAINBOW.includes(c);
-  let at = game.deck.findLastIndex(takeable);
-  if (at < 0) {
+  if (circle != null && !takeable(circle)) return null;
+  const event = { type: 'draw', by: player.id };
+  if (!game.deck.some(takeable)) {
     // Nothing left for you: the bot spills the bag again.
     game.deck = shuffle([...game.deck, ...newDeck(game.players.map((p) => p.team), rand)], rand);
     event.refill = true;
-    at = game.deck.findLastIndex(takeable);
   }
-  const [circle] = game.deck.splice(at, 1);
+  const at = circle == null ? game.deck.findLastIndex(takeable) : game.deck.lastIndexOf(circle);
+  if (at < 0) return null; // none of those left: pick another
+  [circle] = game.deck.splice(at, 1);
   event.circle = circle;
   if (TEAMS.includes(circle)) {
     player.circles += 1;

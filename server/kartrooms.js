@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { fail } from './http.js';
 import { WIN_BOLTS } from './bolts.js';
 import { placeGems } from '../public/js/rewards.js';
+import { KART_MAP_IDS, KART_MAP_SIZE } from '../public/js/kart-maps.js';
 
 // Kat Kart online: race your friends. One person makes a race and shares its
 // 4-letter code; up to 8 people join, and the host starts it. While racing,
@@ -98,6 +99,7 @@ export function registerKartRoutes({ api, auth, wrap, clock, publicUser, db, bol
     hostId: room.hostId,
     startAt: room.startAt ?? null,
     song: room.song ?? 'random',
+    map: room.map ?? 'random',
     serverNow: now,
     players: [...room.players.values()].map((p) => ({
       id: p.id,
@@ -138,7 +140,7 @@ export function registerKartRoutes({ api, auth, wrap, clock, publicUser, db, bol
       const now = clock();
       for (const [code, r] of rooms) if (now - r.createdAt > ROOM_MAX_AGE) rooms.delete(code);
       leave(req.user.id);
-      const room = { code: newCode(), hostId: req.user.id, state: 'lobby', players: new Map(), createdAt: now, song: 'random' };
+      const room = { code: newCode(), hostId: req.user.id, state: 'lobby', players: new Map(), createdAt: now, song: 'random', map: 'random' };
       rooms.set(room.code, room);
       join(room, userById.get(req.user.id), now);
       res.status(201);
@@ -191,6 +193,8 @@ export function registerKartRoutes({ api, auth, wrap, clock, publicUser, db, bol
       room.startAt = now + COUNTDOWN;
       // Random: pick now, so everyone hears the same song.
       if (!KART_SONGS.includes(room.song)) room.song = KART_SONGS[crypto.randomInt(KART_SONGS.length)];
+      // Same for the map, so everyone races the same track.
+      if (!KART_MAP_IDS.includes(room.map)) room.map = KART_MAP_IDS[crypto.randomInt(KART_MAP_IDS.length)];
       return { room: describe(room, now) };
     })
   );
@@ -210,6 +214,21 @@ export function registerKartRoutes({ api, auth, wrap, clock, publicUser, db, bol
     })
   );
 
+  // The host picks the map.
+  api.post(
+    '/kart/rooms/:code/map',
+    auth,
+    wrap((req) => {
+      const room = roomOr404(req);
+      if (room.hostId !== req.user.id) fail(403, 'Only the host picks the map');
+      if (room.state !== 'lobby') fail(409, 'The race has already started');
+      const map = String(req.body?.map ?? '');
+      if (map !== 'random' && !KART_MAP_IDS.includes(map)) fail(400, "That's not a Kat Kart map");
+      room.map = map;
+      return { room: describe(room, clock()) };
+    })
+  );
+
   // Where your kart is; answers with everyone's.
   api.post(
     '/kart/rooms/:code/state',
@@ -222,7 +241,7 @@ export function registerKartRoutes({ api, auth, wrap, clock, publicUser, db, bol
       me.seen = now;
       const b = req.body ?? {};
       if (room.state === 'racing' && now >= room.startAt) {
-        const st = { x: num(b.x, 0, 1024), y: num(b.y, 0, 1024), h: num(b.h, -100, 100), v: num(b.v, 0, 10), progress: num(b.progress, -1e5, 1e5), lap: num(b.lap, -1, 10) };
+        const st = { x: num(b.x, 0, KART_MAP_SIZE), y: num(b.y, 0, KART_MAP_SIZE), h: num(b.h, -100, 100), v: num(b.v, 0, 10), progress: num(b.progress, -1e5, 1e5), lap: num(b.lap, -1, 10) };
         if (Object.values(st).every((v) => v != null)) me.st = st;
         // Power-ups used on everyone else (Mouse, Food Bowl, Thunder).
         for (const use of Array.isArray(b.uses) ? b.uses.slice(0, 3) : []) {

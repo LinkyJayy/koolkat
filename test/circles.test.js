@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { openDatabase } from '../server/db.js';
 import { createApp } from '../server/app.js';
 import { LUCKY, TURNS, choose, draw, newDeck, playLucky } from '../server/circlerooms.js';
+import { TEAMS, deckCounts } from '../public/js/circle-rules.js';
 import { createIdentity, deriveKeysFromPassword } from '../public/js/crypto.js';
 
 const game = (n = 3) => ({
@@ -48,6 +49,25 @@ describe('Circle Chaos rules', () => {
     const refill = draw(g);
     assert.equal(refill.refill, true);
     assert.ok(refill.circle === 'red' || ['lose2', 'lose4', 'lucky'].includes(refill.circle));
+  });
+
+  test('pick which circle to take: your colour or a rainbow one', () => {
+    const g = game();
+    g.deck = ['lose2', 'red', 'lucky', 'green', 'red'];
+    assert.deepEqual(deckCounts(g.deck), { ...Object.fromEntries(TEAMS.map((t) => [t, 0])), red: 2, green: 1, lose2: 1, lose4: 0, lucky: 1 });
+    assert.equal(draw(g, undefined, 'green'), null, "not someone else's colour");
+    assert.equal(draw(g, undefined, 'lose4'), null, 'none of those left');
+    assert.equal(g.turnId, 1, 'still your turn');
+    assert.equal(draw(g, undefined, 'lucky').circle, 'lucky', 'Red picks the Lucky Card under its own circles');
+    assert.deepEqual(g.deck, ['lose2', 'red', 'green', 'red']);
+    g.turnId = 1;
+    assert.equal(draw(g, () => 0, 'lose2').choose, true);
+    assert.deepEqual(g.deck, ['red', 'green', 'red']);
+    // Nothing of yours left: the bot spills the bag, and you still get what you picked.
+    g.pending = null;
+    g.turnId = 2;
+    const refill = draw(g, undefined, 'yellow');
+    assert.deepEqual([refill.refill, refill.circle, refill.to], [true, 'yellow', 2]);
   });
 
   test('Lose 2 / Lose 4: you pick the opponent', () => {
@@ -162,7 +182,17 @@ describe('Circle Chaos online', () => {
     now += 3500;
     const tokens = { [ann.id]: ann.token, [ben.id]: ben.token, [cat.id]: cat.token };
     assert.equal((await call('POST', `/circles/rooms/${code}/play`, ben.token)).status, 409, 'not your turn');
-    let turns = 0;
+    // Everyone can see what's left in the Deck, and picks from it.
+    room = (await call('GET', `/circles/rooms/${code}`, ann.token)).body.room;
+    assert.deepEqual([room.counts.red, room.counts.lose4], [14, 3]);
+    assert.equal((await call('POST', `/circles/rooms/${code}/play`, ann.token, { circle: 'purple' })).status, 400, "not Red's colour");
+    assert.equal((await call('POST', `/circles/rooms/${code}/play`, ann.token, { circle: 'nope' })).status, 400);
+    let picked = (await call('POST', `/circles/rooms/${code}/play`, ann.token, { circle: 'red' })).body.room;
+    assert.equal(picked.events.at(-1).circle, 'red');
+    assert.equal(picked.counts.red, 13);
+    picked = (await call('POST', `/circles/rooms/${code}/play`, cat.token, { circle: 'lucky' })).body.room;
+    assert.equal(picked.events.find((e) => e.type === 'draw' && e.by === cat.id).circle, 'lucky');
+    let turns = 2;
     room = (await call('GET', `/circles/rooms/${code}`, ann.token)).body.room;
     while (room.state === 'playing') {
       const token = tokens[room.turnId];

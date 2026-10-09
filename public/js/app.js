@@ -32,9 +32,9 @@ import { teamEdge } from './teams.js';
 import { BUG_CATEGORIES, SUGGESTION_CATEGORIES, categoryLabel } from './feedback-categories.js';
 import { BOLTS_PER_GEM, chaseGems, escapeGems, invaderGems, placeGems, wordleGems } from './rewards.js';
 import { DIFFICULTIES as KI_DIFFICULTIES, LIVES as KI_LIVES, createKatInvaders } from './invaders.js';
-import { choose as ccChoose, draw as ccDraw, newDeck as ccNewDeck, ranked as ccRanked } from './circle-rules.js';
+import { choicesFor as ccChoicesFor, choose as ccChoose, deckCounts as ccDeckCounts, draw as ccDraw, newDeck as ccNewDeck, ranked as ccRanked } from './circle-rules.js';
 import { BASE_TEAMS, TEAMS as CC_TEAMS, TEAM_NAMES as CC_TEAM_NAMES, TURNS as CC_TURNS, circleIcon as ccCircleIcon, createCircleTable, describeEvent as ccDescribe, teamIcon as ccTeamIcon } from './circles.js';
-import { RACE_SONGS, RACERS as KART_RACERS, createKatKart, createRaceMusic, formatRaceTime, showNowPlaying } from './kart.js';
+import { KART_MAPS, RACE_SONGS, RACERS as KART_RACERS, createKatKart, createRaceMusic, formatRaceTime, showNowPlaying } from './kart.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -6324,6 +6324,7 @@ const practiceView = (g) => ({
   turnEndsAt: null,
   dir: g.dir,
   deck: g.deck.length,
+  counts: ccDeckCounts(g.deck),
   pending: g.pending,
   players: g.players.map((p) => ({ ...p })),
   events: g.events,
@@ -6353,12 +6354,15 @@ function practiceEvent(g, event) {
 }
 
 /** One move (yours or a bot's) in Practice. */
-function practiceMove(g, { target } = {}) {
+function practiceMove(g, { target, circle } = {}) {
   let event;
   if (g.pending) {
     event = ccChoose(g, target);
     if (!event) return;
-  } else event = ccDraw(g);
+  } else {
+    event = ccDraw(g, undefined, circle ?? null);
+    if (!event) return;
+  }
   practiceEvent(g, event);
   if (!g.turnId) {
     g.state = 'done';
@@ -6480,7 +6484,10 @@ function renderCircles(room) {
   ccTable.setCount(room.deck);
   // What you can do
   const choosing = mine && room.pending;
-  $('btn-cc-draw').hidden = !mine || Boolean(room.pending);
+  const picking = mine && !room.pending;
+  $('cc-picks').hidden = !picking;
+  if (picking) renderCirclePicks(room);
+  else $('cc-pick-list').dataset.key = '';
   $('cc-targets').hidden = !choosing;
   if (choosing) {
     $('cc-targets-title').textContent = `Who loses ${room.pending.circle === 'lose4' ? 4 : 2}?`;
@@ -6529,7 +6536,40 @@ async function ccPlay(body = {}) {
     toast(err.message, { error: true });
   }
 }
-$('btn-cc-draw').addEventListener('click', (e) => withBusy(e.currentTarget, () => ccPlay()));
+
+/**
+ * Your turn: pick the circle to take, your own colour or a rainbow one (the
+ * other teams' colours aren't yours to take). Each shows how many are left;
+ * if none of them are, the bot spills the bag again whichever you pick.
+ */
+const CC_PICK_NAMES = { lose2: 'Lose 2', lose4: 'Lose 4', lucky: 'Lucky' };
+function renderCirclePicks(room) {
+  const me = room.players.find((p) => p.id === state.me.userId);
+  const kinds = ccChoicesFor(me.team);
+  const counts = room.counts ?? {};
+  const empty = kinds.every((k) => !counts[k]);
+  const list = $('cc-pick-list');
+  const key = `${room.events.at(-1)?.id}:${kinds.map((k) => counts[k] ?? 0).join()}`;
+  if (list.dataset.key === key) return;
+  list.dataset.key = key;
+  list.replaceChildren(
+    ...kinds.map((kind, i) => {
+      const n = counts[kind] ?? 0;
+      const name = CC_PICK_NAMES[kind] ?? CC_TEAM_NAMES[kind];
+      const b = el(
+        'button',
+        { type: 'button', class: 'cc-pick', 'data-circle': kind, 'aria-label': `${name}: ${n} left (key ${i + 1})`, title: `${name} (${i + 1})` },
+        el('img', { src: ccCircleIcon(kind), alt: '', class: 'pixel' }),
+        el('span', { class: 'cc-pick-name', text: name }),
+        el('span', { class: 'cc-pick-count', text: empty ? '🤖 refill' : `×${n}` })
+      );
+      b.disabled = !empty && !n;
+      b.addEventListener('click', () => withBusy(b, () => ccPlay({ circle: kind })));
+      if (kind === me.team) b.style.setProperty('--cc-team', teamEdge(kind));
+      return b;
+    })
+  );
+}
 
 function showCirclesResults(room) {
   clearInterval(cc.timer);
@@ -6963,7 +7003,7 @@ $('btn-kart-again').addEventListener('click', () => {
     leaveKartRoom();
     openPlayables();
     openKartMenu();
-  } else openKart({ mode: 'solo', level: kartLevel(), song: $('kart-song-solo').value });
+  } else openKart(soloKartOpts());
 });
 
 // ---------- the Kat Kart menu: solo, or race friends with a code ----------
@@ -6988,6 +7028,41 @@ $('kart-song-solo').addEventListener('change', (e) => {
     // Remembering it is only a convenience.
   }
 });
+// The map: Random, or one of the tracks. Solo you pick; online the host does.
+const KART_MAP_KEY = 'koolkat.katKart.map';
+for (const select of [$('kart-map-solo'), $('kart-map-online')]) {
+  select.replaceChildren(
+    el('option', { value: 'random', text: '🔀 Random' }),
+    ...KART_MAPS.map((map) => el('option', { value: map.id, text: `${map.emoji} ${map.name}` }))
+  );
+}
+try {
+  $('kart-map-solo').value = localStorage.getItem(KART_MAP_KEY) || 'random';
+} catch {
+  // Random it is.
+}
+if (!$('kart-map-solo').value) $('kart-map-solo').value = 'random';
+$('kart-map-solo').addEventListener('change', (e) => {
+  try {
+    localStorage.setItem(KART_MAP_KEY, e.target.value);
+  } catch {
+    // Remembering it is only a convenience.
+  }
+});
+$('kart-map-online').addEventListener('change', async (e) => {
+  try {
+    const { room } = await api('POST', `/kart/rooms/${kartOnline.code}/map`, { map: e.target.value });
+    renderLobby(room);
+  } catch (err) {
+    toast(err.message, { error: true });
+  }
+});
+/** A solo race with the picked map (Random: any of them) and music. */
+function soloKartOpts() {
+  const picked = $('kart-map-solo').value;
+  const map = KART_MAPS.some((m) => m.id === picked) ? picked : KART_MAPS[Math.floor(Math.random() * KART_MAPS.length)].id;
+  return { mode: 'solo', level: kartLevel(), song: $('kart-song-solo').value, map };
+}
 $('kart-song-online').addEventListener('change', async (e) => {
   try {
     const { room } = await api('POST', `/kart/rooms/${kartOnline.code}/song`, { song: e.target.value });
@@ -7008,7 +7083,7 @@ function openKartMenu() {
 $('btn-kart-close').addEventListener('click', () => $('dialog-kart').close());
 $('btn-kart-solo').addEventListener('click', () => {
   $('dialog-kart').close();
-  openKart({ mode: 'solo', level: kartLevel(), song: $('kart-song-solo').value });
+  openKart(soloKartOpts());
 });
 $('btn-kart-create').addEventListener('click', (e) =>
   withBusy(e.currentTarget, async () => {
@@ -7073,6 +7148,10 @@ function renderLobby(room) {
   songSelect.disabled = !host;
   if (document.activeElement !== songSelect) songSelect.value = room.song ?? 'random';
   $('kart-song-note').textContent = host ? '(you pick)' : '(the host picks)';
+  const mapSelect = $('kart-map-online');
+  mapSelect.disabled = !host;
+  if (document.activeElement !== mapSelect) mapSelect.value = room.map ?? 'random';
+  $('kart-map-note').textContent = host ? '(you pick)' : '(the host picks)';
   $('btn-kart-start').hidden = !host;
   $('btn-kart-start').disabled = players.length < 2;
   $('kart-lobby-status').textContent =
@@ -7092,6 +7171,7 @@ function startOnlineRace(room) {
     players: room.players.filter((p) => !p.gone).map((p) => ({ slot: p.slot, name: p.name })),
     startAt: performance.now() + (room.startAt - room.serverNow),
     song: room.song,
+    map: room.map,
     sync: (st) => api('POST', `/kart/rooms/${code}/state`, st, { timeout: 4000 }).then((r) => r.room),
   });
 }
@@ -7206,9 +7286,11 @@ document.addEventListener('keydown', (e) => {
   else if (state.screen === 'kart') katKart.keyDown(e);
   else if (state.screen === 'escape' && katEscape.running) katEscape.keyDown(e);
   else if (state.screen === 'invaders' && katInvaders.running) katInvaders.keyDown(e);
-  else if (state.screen === 'circles' && e.key === ' ' && !$('btn-cc-draw').hidden && !e.target.closest?.('button')) {
+  else if (state.screen === 'circles' && !$('cc-picks').hidden && /^[1-4 ]$/.test(e.key) && !e.target.closest?.('button, input, select, textarea')) {
+    // 1-4 picks that circle; Space takes the first one you can.
     e.preventDefault();
-    $('btn-cc-draw').click();
+    const picks = [...$('cc-pick-list').querySelectorAll('.cc-pick')];
+    (e.key === ' ' ? picks.find((b) => !b.disabled) : picks[Number(e.key) - 1])?.click();
   }
 });
 document.addEventListener('keyup', (e) => {

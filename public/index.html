@@ -405,7 +405,10 @@
     </div>
     <div class="cc-reveal" id="cc-reveal" hidden><img alt="" class="pixel"><p></p></div>
     <div class="cc-actions">
-      <button type="button" class="btn primary wide" id="btn-cc-draw" hidden>Take a circle</button>
+      <div class="cc-picks" id="cc-picks" hidden>
+        <p>Pick a circle to take</p>
+        <div class="cc-pick-list" id="cc-pick-list" role="group" aria-label="Circles you can take"></div>
+      </div>
       <div class="cc-targets" id="cc-targets" hidden>
         <p id="cc-targets-title">Who loses the circles?</p>
         <div class="cc-target-list" id="cc-target-list"></div>
@@ -973,6 +976,9 @@
     <div id="kart-menu-main">
       <img src="icons/kat-kart.png" alt="" class="kart-menu-art">
       <h2>Kat Kart</h2>
+      <label class="kart-song-pick">🗺️ Map
+        <select id="kart-map-solo" aria-label="Race map"></select>
+      </label>
       <label class="kart-song-pick">🎵 Music
         <select id="kart-song-solo" aria-label="Race music"></select>
       </label>
@@ -991,6 +997,9 @@
       <p class="kart-code-big" id="kart-lobby-code"></p>
       <button type="button" class="btn small" id="btn-kart-share">Share the code</button>
       <ul class="kart-lobby-players" id="kart-lobby-players"></ul>
+      <label class="kart-song-pick">🗺️ Map <span class="fineprint" id="kart-map-note"></span>
+        <select id="kart-map-online" aria-label="Race map"></select>
+      </label>
       <label class="kart-song-pick">🎵 Music <span class="fineprint" id="kart-song-note"></span>
         <select id="kart-song-online" aria-label="Race music"></select>
       </label>
@@ -1163,7 +1172,7 @@
       <img src="icons/circles/bag.png" alt="" class="kart-menu-art pixel">
       <h2>Circle Chaos</h2>
       <ul class="cc-rules">
-        <li><img src="icons/circles/red.png" alt="" class="pixel"> Take your own team's colour (+1), or a rainbow circle:</li>
+        <li><img src="icons/circles/red.png" alt="" class="pixel"> Pick a circle each turn: your own team's colour (+1), or a rainbow circle:</li>
         <li><img src="icons/circles/lose2.png" alt="" class="pixel"><img src="icons/circles/lose4.png" alt="" class="pixel"> Lose 2 / Lose 4: pick an opponent to lose them.</li>
         <li><img src="icons/circles/lucky.png" alt="" class="pixel"> Lucky Card: something random happens!</li>
       </ul>

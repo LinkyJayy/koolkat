@@ -1,13 +1,14 @@
 import { gamepadSteer, onPress } from './input.js';
+import { KART_MAPS, KART_MAP_SCALE, KART_MAP_SIZE, kartMap } from './kart-maps.js';
 
 // Kat Kart: a kart race, like Mario Kart, with KoolKat cats, over three laps
-// of the Kool Kircuit. Solo: you (always blue) race seven computer Kats, each
+// of a track (Kool Kircuit, Nighttime, Crystal Cavern, Kingdom or Gold Mine). Solo: you (always blue) race seven computer Kats, each
 // in its own colour, and they get better when you win and easier when you
 // don't. Online: up to 8 friends race each other, each in their slot's colour. The road is drawn in pseudo-3D ("Mode 7", like the old
 // SNES games): every row of the screen below the horizon is a slice of the
 // track map seen from just behind your kart.
 
-const MAP = 1024; // the track map is MAP × MAP world units (1 unit = 1 pixel of the map)
+const MAP = KART_MAP_SIZE; // the track map is MAP × MAP world units (1 unit = 1 pixel of the map)
 const ROAD_HALF = 30;
 const LAPS = 3;
 const STEP = 1000 / 60;
@@ -27,13 +28,7 @@ export const RACERS = [
   { name: 'Brown Kat', color: '#8b5a2b' },
 ];
 
-// The Kool Kircuit: a closed loop through these points (smoothed into a curve).
-const TRACK = [
-  [512, 900], [700, 905], [860, 860], [930, 740], [900, 610], [790, 560], [690, 520], [650, 430],
-  [700, 330], [820, 280], [890, 190], [830, 100], [680, 85], [520, 120], [400, 210], [300, 190],
-  [190, 130], [105, 200], [110, 340], [200, 430], [320, 480], [380, 580], [330, 690], [210, 730],
-  [150, 820], [230, 895], [370, 905],
-];
+export { KART_MAPS };
 const BOOST_AT = [0.18, 0.43, 0.7, 0.9]; // boost pads, as a fraction of the way round
 const ITEM_ROWS_AT = [0.08, 0.3, 0.52, 0.78]; // rows of item boxes
 const ITEM_LANES = [-18, -6, 6, 18];
@@ -73,7 +68,8 @@ export const formatRaceTime = (ms) => {
 };
 
 /** The centre line: the control points smoothed (Catmull-Rom) and spaced ~3 units apart. */
-function buildCenterline() {
+function buildCenterline(points) {
+  const TRACK = points.map(([x, y]) => [x * KART_MAP_SCALE, y * KART_MAP_SCALE]);
   const fine = [];
   const n = TRACK.length;
   for (let i = 0; i < n; i++) {
@@ -106,33 +102,182 @@ function trackPath(ctx, line) {
   ctx.closePath();
 }
 
-/** Draws the track map (grass, curbs, road, start line, boost pads) and the "is this road?" mask. */
-function buildTrack(line, boosts) {
+/** A repeatable random number generator, so a map's scenery is the same every time. */
+function seeded(seed) {
+  let t = seed >>> 0;
+  return () => {
+    t = (t + 0x6d2b79f5) >>> 0;
+    let r = Math.imul(t ^ (t >>> 15), 1 | t);
+    r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Scenery on the ground away from the road (the road is drawn over it). */
+const GROUND_DECOR = {
+  nighttime(ctx, rand) {
+    // City blocks with lit windows.
+    for (let i = 0; i < 140; i++) {
+      const [x, y, w, h] = [rand() * MAP, rand() * MAP, 30 + rand() * 50, 30 + rand() * 50];
+      ctx.fillStyle = rand() < 0.5 ? '#1c1f2c' : '#232737';
+      ctx.fillRect(x, y, w, h);
+      for (let wy = y + 5; wy < y + h - 6; wy += 9) for (let wx = x + 5; wx < x + w - 6; wx += 9) {
+        if (rand() < 0.45) {
+          ctx.fillStyle = rand() < 0.8 ? '#ffd86b' : '#7fd3ff';
+          ctx.fillRect(wx, wy, 4, 4);
+        }
+      }
+    }
+  },
+  'crystal-cavern'(ctx, rand) {
+    // Rocky floor and glowing crystals.
+    for (let i = 0; i < 900; i++) {
+      ctx.fillStyle = rand() < 0.5 ? '#1d142c' : '#32264a';
+      ctx.fillRect(rand() * MAP, rand() * MAP, 6 + rand() * 14, 4 + rand() * 10);
+    }
+    const colors = ['#5ef2ff', '#ff5ed8', '#b47cff', '#7dffb2'];
+    for (let i = 0; i < 260; i++) {
+      const [x, y, s] = [rand() * MAP, rand() * MAP, 6 + rand() * 12];
+      ctx.fillStyle = colors[Math.floor(rand() * colors.length)];
+      ctx.beginPath();
+      ctx.moveTo(x, y - s);
+      ctx.lineTo(x + s * 0.55, y);
+      ctx.lineTo(x, y + s);
+      ctx.lineTo(x - s * 0.55, y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.fillRect(x - 1, y - s * 0.6, 2, s * 0.6);
+    }
+  },
+  kingdom(ctx, rand) {
+    // Flowers and round trees.
+    const petals = ['#ff6fa8', '#fff36b', '#ffffff', '#b47cff'];
+    for (let i = 0; i < 1400; i++) {
+      ctx.fillStyle = petals[Math.floor(rand() * petals.length)];
+      ctx.fillRect(rand() * MAP, rand() * MAP, 3, 3);
+    }
+    for (let i = 0; i < 160; i++) {
+      const [x, y, r] = [rand() * MAP, rand() * MAP, 10 + rand() * 12];
+      ctx.fillStyle = '#2f7a2b';
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#3f9a37';
+      ctx.beginPath();
+      ctx.arc(x - r * 0.3, y - r * 0.3, r * 0.55, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  },
+  'gold-mine'(ctx, rand) {
+    // Rocks and gold nuggets in the dirt.
+    for (let i = 0; i < 500; i++) {
+      ctx.fillStyle = rand() < 0.5 ? '#6f4c28' : '#7d5a34';
+      ctx.beginPath();
+      ctx.arc(rand() * MAP, rand() * MAP, 3 + rand() * 9, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    for (let i = 0; i < 320; i++) {
+      const [x, y, s] = [rand() * MAP, rand() * MAP, 3 + rand() * 6];
+      ctx.fillStyle = '#ffcc33';
+      ctx.fillRect(x, y, s, s * 0.8);
+      ctx.fillStyle = '#fff2a8';
+      ctx.fillRect(x, y, s * 0.4, s * 0.3);
+    }
+  },
+};
+
+/** Extras on top of the road. */
+const ROAD_DECOR = {
+  nighttime(ctx, line) {
+    // Streetlights along both sides, glowing.
+    for (let i = 0; i < line.length; i += 24) {
+      const [x, y] = line[i];
+      const [x2, y2] = line[(i + 1) % line.length];
+      const h = Math.atan2(y2 - y, x2 - x);
+      for (const side of [-1, 1]) {
+        const lx = x - Math.sin(h) * side * (ROAD_HALF + 20);
+        const ly = y + Math.cos(h) * side * (ROAD_HALF + 20);
+        const glow = ctx.createRadialGradient(lx, ly, 0, lx, ly, 14);
+        glow.addColorStop(0, 'rgba(255,230,140,0.95)');
+        glow.addColorStop(1, 'rgba(255,230,140,0)');
+        ctx.fillStyle = glow;
+        ctx.fillRect(lx - 14, ly - 14, 28, 28);
+      }
+    }
+  },
+  kingdom(ctx, line) {
+    // Cobblestones.
+    trackPath(ctx, line);
+    ctx.strokeStyle = 'rgba(60,55,50,0.35)';
+    ctx.lineWidth = 1.5;
+    for (const off of [-0.8, -0.5, -0.2, 0.2, 0.5, 0.8]) {
+      ctx.setLineDash([7, 5]);
+      ctx.lineDashOffset = off * 9;
+      ctx.lineWidth = ROAD_HALF * 2 * Math.abs(off);
+      ctx.strokeStyle = off < 0 ? 'rgba(60,55,50,0.18)' : 'rgba(255,255,255,0.08)';
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    ctx.lineDashOffset = 0;
+  },
+  'gold-mine'(ctx, line) {
+    // Mine-cart rails on wooden sleepers down the middle.
+    trackPath(ctx, line);
+    ctx.setLineDash([4, 7]);
+    ctx.strokeStyle = '#4a3018';
+    ctx.lineWidth = 30;
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = '#a7b0ba';
+    ctx.lineWidth = 2.5;
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      line.forEach(([x, y], i) => {
+        const [x2, y2] = line[(i + 1) % line.length];
+        const h = Math.atan2(y2 - y, x2 - x);
+        const px = x - Math.sin(h) * side * 10;
+        const py = y + Math.cos(h) * side * 10;
+        if (i) ctx.lineTo(px, py);
+        else ctx.moveTo(px, py);
+      });
+      ctx.closePath();
+      ctx.stroke();
+    }
+  },
+};
+
+/** Draws the track map (ground, curbs, road, start line, boost pads) and the "is this road?" mask. */
+function buildTrack(line, boosts, map) {
+  const colors = map.colors;
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = MAP;
   const ctx = canvas.getContext('2d');
-  // Grass, in a checker so you can feel the speed.
+  // The ground, in a checker so you can feel the speed.
   for (let y = 0; y < MAP; y += 32) for (let x = 0; x < MAP; x += 32) {
-    ctx.fillStyle = (x + y) % 64 ? '#3da447' : '#46b351';
+    ctx.fillStyle = (x + y) % 64 ? colors.ground[0] : colors.ground[1];
     ctx.fillRect(x, y, 32, 32);
   }
+  GROUND_DECOR[map.id]?.(ctx, seeded(map.id.length * 7919));
   ctx.lineJoin = ctx.lineCap = 'round';
   trackPath(ctx, line);
-  ctx.strokeStyle = '#e7d7a4';
+  ctx.strokeStyle = colors.curbEdge;
   ctx.lineWidth = ROAD_HALF * 2 + 26;
   ctx.stroke();
-  ctx.strokeStyle = '#ffffff';
+  ctx.strokeStyle = colors.curbA;
   ctx.lineWidth = ROAD_HALF * 2 + 10;
   ctx.stroke();
   ctx.setLineDash([12, 12]);
-  ctx.strokeStyle = '#e5172f';
+  ctx.strokeStyle = colors.curbB;
   ctx.stroke();
   ctx.setLineDash([]);
-  ctx.strokeStyle = '#5d5f66';
+  ctx.strokeStyle = colors.road;
   ctx.lineWidth = ROAD_HALF * 2;
   ctx.stroke();
+  ROAD_DECOR[map.id]?.(ctx, line);
+  trackPath(ctx, line);
   ctx.setLineDash([10, 18]);
-  ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+  ctx.strokeStyle = colors.lane;
   ctx.lineWidth = 2;
   ctx.stroke();
   ctx.setLineDash([]);
@@ -225,15 +370,27 @@ function loadImage(src) {
   });
 }
 
+// The karts and icons are the same on every map; only the last map's track is
+// kept (each is a big picture).
+let shared = null;
 let assets = null;
-async function loadAssets() {
-  if (assets) return assets;
-  const line = buildCenterline();
+async function loadAssets(mapId) {
+  const map = kartMap(mapId);
+  if (assets?.map === map) return assets;
+  shared ??= (async () => {
+    const image = await loadImage('icons/kat-kart.png');
+    const sprites = RACERS.map((r) => kartSprite(image, r.color));
+    const icons = Object.fromEntries(await Promise.all(POWERUP_KINDS.map(async (k) => [k, await loadImage(POWERUPS[k].icon)])));
+    return { sprites, icons, itemBox: itemBoxSprite() };
+  })().catch((err) => {
+    shared = null;
+    throw err;
+  });
+  const { sprites, icons, itemBox } = await shared;
+  if (assets?.map === map) return assets;
+  const line = buildCenterline(map.points);
   const boosts = BOOST_AT.map((f) => ({ index: Math.floor(f * line.length) }));
-  const track = buildTrack(line, boosts);
-  const image = await loadImage('icons/kat-kart.png');
-  const sprites = RACERS.map((r) => kartSprite(image, r.color));
-  const icons = Object.fromEntries(await Promise.all(POWERUP_KINDS.map(async (k) => [k, await loadImage(POWERUPS[k].icon)])));
+  const track = buildTrack(line, boosts, map);
   const itemSpots = ITEM_ROWS_AT.flatMap((f) => {
     const i = Math.floor(f * line.length);
     const [x, y] = line[i];
@@ -241,7 +398,7 @@ async function loadAssets() {
     const h = Math.atan2(y2 - y, x2 - x);
     return ITEM_LANES.map((off) => ({ index: i, x: x - Math.sin(h) * off, y: y + Math.cos(h) * off }));
   });
-  assets = { line, boosts, ...track, sprites, icons, itemSpots, itemBox: itemBoxSprite() };
+  assets = { map, line, boosts, ...track, sprites, icons, itemSpots, itemBox };
   return assets;
 }
 
@@ -372,38 +529,188 @@ function itemBoxSprite() {
   return c;
 }
 
-/** Distant hills, scrolled as you turn. */
-function buildSky(width, height) {
+/** The sky and the far-off scenery, scrolled as you turn: each map has its own. */
+function buildSky(width, height, mapId) {
   const canvas = document.createElement('canvas');
   canvas.width = width * 2;
   canvas.height = height;
   const ctx = canvas.getContext('2d');
-  const sky = ctx.createLinearGradient(0, 0, 0, height);
-  sky.addColorStop(0, '#4aa3ff');
-  sky.addColorStop(1, '#bfe3ff');
-  ctx.fillStyle = sky;
-  ctx.fillRect(0, 0, canvas.width, height);
-  ctx.fillStyle = '#ffffff';
-  for (let i = 0; i < 6; i++) {
-    const x = (i / 6) * canvas.width + 20;
-    const y = height * (0.2 + (i % 3) * 0.12);
-    for (const [ox, r] of [[0, 9], [10, 12], [22, 8]]) {
-      ctx.beginPath();
-      ctx.arc(x + ox, y, r, 0, Math.PI * 2);
-      ctx.fill();
+  const W = canvas.width;
+  const rand = seeded(mapId.length * 104729 + width);
+  const gradient = (top, bottom) => {
+    const sky = ctx.createLinearGradient(0, 0, 0, height);
+    sky.addColorStop(0, top);
+    sky.addColorStop(1, bottom);
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, height);
+  };
+  const clouds = (color) => {
+    ctx.fillStyle = color;
+    for (let i = 0; i < 6; i++) {
+      const x = (i / 6) * W + 20;
+      const y = height * (0.2 + (i % 3) * 0.12);
+      for (const [ox, r] of [[0, 9], [10, 12], [22, 8]]) {
+        ctx.beginPath();
+        ctx.arc(x + ox, y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
-  }
+  };
+  // Rolling hills (they wrap round, so the picture joins up as you turn).
   const hills = (color, base, amp, freq) => {
     ctx.fillStyle = color;
     ctx.beginPath();
     ctx.moveTo(0, height);
-    for (let x = 0; x <= canvas.width; x += 4) {
-      const t = (x / canvas.width) * Math.PI * 2;
+    for (let x = 0; x <= W; x += 4) {
+      const t = (x / W) * Math.PI * 2;
       ctx.lineTo(x, height - base - amp * (0.5 + 0.5 * Math.sin(t * freq) * Math.cos(t * (freq + 1))));
     }
-    ctx.lineTo(canvas.width, height);
+    ctx.lineTo(W, height);
     ctx.fill();
   };
+  const stars = (count) => {
+    for (let i = 0; i < count; i++) {
+      ctx.fillStyle = rand() < 0.8 ? '#ffffff' : '#bfe3ff';
+      ctx.fillRect(Math.floor(rand() * W), Math.floor(rand() * height * 0.75), 1, 1);
+    }
+  };
+
+  if (mapId === 'nighttime') {
+    gradient('#050820', '#26306a');
+    stars(140);
+    // The moon.
+    ctx.fillStyle = '#fff6d0';
+    ctx.beginPath();
+    ctx.arc(W * 0.3, height * 0.28, Math.max(6, height * 0.12), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#e8ddb0';
+    ctx.beginPath();
+    ctx.arc(W * 0.3 + 3, height * 0.28 - 2, Math.max(2, height * 0.03), 0, Math.PI * 2);
+    ctx.fill();
+    // The city skyline, windows lit.
+    for (let x = 0; x < W; ) {
+      const bw = 10 + Math.floor(rand() * 16);
+      const bh = height * (0.18 + rand() * 0.45);
+      ctx.fillStyle = rand() < 0.5 ? '#0d1022' : '#141833';
+      ctx.fillRect(x, height - bh, bw, bh);
+      for (let wy = height - bh + 3; wy < height - 3; wy += 4) for (let wx = x + 2; wx < x + bw - 2; wx += 3) {
+        if (rand() < 0.3) {
+          ctx.fillStyle = '#ffd86b';
+          ctx.fillRect(wx, wy, 1, 2);
+        }
+      }
+      x += bw + Math.floor(rand() * 3);
+    }
+    return canvas;
+  }
+  if (mapId === 'crystal-cavern') {
+    gradient('#0e0618', '#3a2560');
+    // Glowing specks in the rock.
+    for (let i = 0; i < 80; i++) {
+      ctx.fillStyle = ['#5ef2ff', '#ff5ed8', '#b47cff'][i % 3];
+      ctx.fillRect(Math.floor(rand() * W), Math.floor(rand() * height * 0.6), 1, 1);
+    }
+    // Stalactites hanging from the cave roof.
+    ctx.fillStyle = '#1a1028';
+    ctx.fillRect(0, 0, W, Math.max(2, height * 0.05));
+    for (let x = 0; x < W; x += 6 + Math.floor(rand() * 10)) {
+      const len = height * (0.08 + rand() * 0.3);
+      ctx.beginPath();
+      ctx.moveTo(x - 4, 0);
+      ctx.lineTo(x + 4, 0);
+      ctx.lineTo(x, len);
+      ctx.closePath();
+      ctx.fill();
+    }
+    hills('#24183a', 2, height * 0.4, 4);
+    // Big crystals on the horizon.
+    const colors = ['#5ef2ff', '#ff5ed8', '#b47cff', '#7dffb2'];
+    for (let x = 6; x < W; x += 18 + Math.floor(rand() * 26)) {
+      const ch = height * (0.15 + rand() * 0.35);
+      const cw = 4 + rand() * 6;
+      ctx.fillStyle = colors[Math.floor(rand() * colors.length)];
+      ctx.beginPath();
+      ctx.moveTo(x - cw, height);
+      ctx.lineTo(x - cw * 0.7, height - ch * 0.8);
+      ctx.lineTo(x, height - ch);
+      ctx.lineTo(x + cw * 0.7, height - ch * 0.8);
+      ctx.lineTo(x + cw, height);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.45)';
+      ctx.fillRect(x - 1, height - ch * 0.85, 1.5, ch * 0.7);
+    }
+    return canvas;
+  }
+  if (mapId === 'kingdom') {
+    gradient('#5fb4ff', '#d8efff');
+    clouds('#ffffff');
+    hills('#8cc97f', 4, height * 0.3, 3);
+    // Castles on the hills.
+    for (const fx of [0.12, 0.45, 0.78]) {
+      const cx = W * fx;
+      const base = height - height * 0.1;
+      const tw = Math.max(3, height * 0.045);
+      const th = height * 0.3;
+      ctx.fillStyle = '#b9b3c4';
+      ctx.fillRect(cx - tw * 2.5, base - th * 0.55, tw * 5, th * 0.55);
+      for (const tx of [-2.5, 1.5]) {
+        ctx.fillRect(cx + tx * tw, base - th * 0.85, tw, th * 0.85);
+        ctx.fillStyle = '#4a5bd0';
+        ctx.beginPath();
+        ctx.moveTo(cx + tx * tw - 1, base - th * 0.85);
+        ctx.lineTo(cx + (tx + 0.5) * tw, base - th * 1.05);
+        ctx.lineTo(cx + (tx + 1) * tw + 1, base - th * 0.85);
+        ctx.fill();
+        ctx.fillStyle = '#b9b3c4';
+      }
+      // The keep, with a flag.
+      ctx.fillRect(cx - tw * 0.6, base - th, tw * 1.2, th);
+      ctx.fillStyle = '#6a6478';
+      ctx.fillRect(cx - tw * 0.3, base - th * 0.3, tw * 0.6, th * 0.3);
+      ctx.fillStyle = '#333';
+      ctx.fillRect(cx, base - th * 1.25, 1, th * 0.25);
+      ctx.fillStyle = '#e5172f';
+      ctx.fillRect(cx + 1, base - th * 1.25, tw * 0.8, th * 0.1);
+    }
+    hills('#4f9a52', 2, height * 0.14, 5);
+    return canvas;
+  }
+  if (mapId === 'gold-mine') {
+    gradient('#ff9a4a', '#ffe0a0');
+    // The sun going down.
+    ctx.fillStyle = '#fff1b8';
+    ctx.beginPath();
+    ctx.arc(W * 0.65, height * 0.55, Math.max(6, height * 0.16), 0, Math.PI * 2);
+    ctx.fill();
+    // Flat-topped mesas.
+    for (let x = 0; x < W; ) {
+      const mw = 30 + rand() * 50;
+      const mh = height * (0.2 + rand() * 0.35);
+      ctx.fillStyle = rand() < 0.5 ? '#b0582c' : '#9a4a26';
+      ctx.beginPath();
+      ctx.moveTo(x, height);
+      ctx.lineTo(x + mw * 0.15, height - mh);
+      ctx.lineTo(x + mw * 0.85, height - mh);
+      ctx.lineTo(x + mw, height);
+      ctx.fill();
+      x += mw * (0.6 + rand() * 0.6);
+    }
+    hills('#7d5a34', 2, height * 0.16, 4);
+    // Mine entrances with wooden frames.
+    for (const fx of [0.2, 0.55, 0.9]) {
+      const mx = W * fx;
+      const s = Math.max(6, height * 0.16);
+      ctx.fillStyle = '#5a3a1c';
+      ctx.fillRect(mx - s, height - s * 1.6, s * 2, s * 1.6);
+      ctx.fillStyle = '#120a04';
+      ctx.fillRect(mx - s * 0.7, height - s * 1.3, s * 1.4, s * 1.3);
+    }
+    return canvas;
+  }
+  // The Kool Kircuit: a sunny day.
+  gradient('#4aa3ff', '#bfe3ff');
+  clouds('#ffffff');
   hills('#7fbf7a', 6, height * 0.35, 3);
   hills('#4f9a52', 2, height * 0.2, 5);
   return canvas;
@@ -429,23 +736,24 @@ export function createKatKart(els) {
     if (canvas.width !== w || canvas.height !== h) {
       canvas.width = w;
       canvas.height = h;
-      race && (race.view = makeView(w, h));
+      race && (race.view = makeView(w, h, race.a.map.id));
     }
   }
-  function makeView(w, h) {
+  function makeView(w, h, mapId) {
     const horizon = Math.round(h * (h > w ? 0.42 : 0.36));
-    return { w, h, horizon, focal: Math.min(w, h * 1.15) * 0.95, image: ctx.createImageData(w, h), sky: buildSky(w, horizon + 1) };
+    return { w, h, horizon, focal: Math.min(w, h * 1.15) * 0.95, image: ctx.createImageData(w, h), sky: buildSky(w, horizon + 1, mapId) };
   }
 
   /**
    * Start a race.
    *   { mode: 'solo', level }: against seven computer Kats; level 1 is easy.
+   *   Either way, `map` is the track's id (see kart-maps.js).
    *   { mode: 'online', mySlot, players: [{ slot, name }], startAt, sync }:
    *     `startAt` is GO in this phone's time; `sync(state)` sends your kart and
    *     resolves with the race from the server.
    */
   async function start(opts = { mode: 'solo', level: 1 }) {
-    const a = await loadAssets();
+    const a = await loadAssets(opts.map);
     size();
     const n = a.line.length;
     const online = opts.mode === 'online';
@@ -499,7 +807,7 @@ export function createKatKart(els) {
       level,
       sync: opts.sync,
       song: opts.song ?? 'random', // the host's pick (or yours, solo)
-      view: makeView(canvas.width, canvas.height),
+      view: makeView(canvas.width, canvas.height, a.map.id),
       state: 'countdown',
       // GO is 3 seconds from now (solo) or when the server says (online).
       goAt: online ? opts.startAt : performance.now() + 3000,
@@ -910,23 +1218,24 @@ export function createKatKart(els) {
   function drawMinimap() {
     const m = minimap.getContext('2d');
     const s = minimap.width / MAP;
+    const k = KART_MAP_SCALE; // keep the lines and dots the same size on screen
     m.clearRect(0, 0, minimap.width, minimap.height);
     m.save();
     m.scale(s, s);
     m.lineJoin = m.lineCap = 'round';
     trackPath(m, race.a.line);
     m.strokeStyle = 'rgba(0,0,0,0.45)';
-    m.lineWidth = ROAD_HALF * 2 + 26;
+    m.lineWidth = (ROAD_HALF * 2 + 26) * k;
     m.stroke();
     m.strokeStyle = '#fff';
-    m.lineWidth = ROAD_HALF * 1.4;
+    m.lineWidth = ROAD_HALF * 1.4 * k;
     m.stroke();
     for (const r of race.racers.slice().reverse()) {
       m.beginPath();
-      m.arc(r.x, r.y, r.player ? 34 : 26, 0, Math.PI * 2);
+      m.arc(r.x, r.y, (r.player ? 34 : 26) * k, 0, Math.PI * 2);
       m.fillStyle = r.color;
       m.fill();
-      m.lineWidth = r.player ? 12 : 6;
+      m.lineWidth = (r.player ? 12 : 6) * k;
       m.strokeStyle = r.player ? '#fff' : '#000';
       m.stroke();
     }
@@ -1094,6 +1403,6 @@ export function createKatKart(els) {
     get running() {
       return Boolean(race);
     },
-    previewTrack: async () => (await loadAssets()).preview,
+    previewTrack: async (mapId) => (await loadAssets(mapId)).preview,
   };
 }

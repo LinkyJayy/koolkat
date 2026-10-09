@@ -41,6 +41,7 @@ const PRECACHE = [
   'js/wordle.js',
   'js/wordle-words.js',
   'js/kart.js',
+  'js/kart-maps.js',
   'js/input.js',
   'js/escape.js',
   'icons/escape-cat.png',
