@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { fail } from './http.js';
 import { WIN_BOLTS } from './bolts.js';
 import { placeGems } from '../public/js/rewards.js';
-import { KART_MAP_IDS, KART_MAP_SIZE } from '../public/js/kart-maps.js';
+import { KART_MAP_IDS, KART_MAP_SIZE, kartMap } from '../public/js/kart-maps.js';
 
 // Kat Kart online: race your friends. One person makes a race and shares its
 // 4-letter code; up to 8 people join, and the host starts it. While racing,
@@ -10,7 +10,7 @@ import { KART_MAP_IDS, KART_MAP_SIZE } from '../public/js/kart-maps.js';
 // everyone else's back. Races live in memory (a restart ends them).
 
 export const MAX_RACERS = 8;
-/** The Kat Kart OST: the host picks one (or Random, picked when the race starts). */
+/** The Kat Kart OST: the host picks one (or Random, picked when the race starts, or the map's own song: the default). */
 export const KART_SONGS = ['natho-town', 'crystal-cavern', 'kingdom-dominance', 'gold-mine'];
 /** Power-ups a racer can use on everyone else (speed boosts only affect yourself). */
 export const ATTACKS = ['mouse', 'food', 'thunder'];
@@ -98,7 +98,7 @@ export function registerKartRoutes({ api, auth, wrap, clock, publicUser, db, bol
     state: room.state,
     hostId: room.hostId,
     startAt: room.startAt ?? null,
-    song: room.song ?? 'random',
+    song: room.song ?? 'map',
     map: room.map ?? 'random',
     serverNow: now,
     players: [...room.players.values()].map((p) => ({
@@ -140,7 +140,7 @@ export function registerKartRoutes({ api, auth, wrap, clock, publicUser, db, bol
       const now = clock();
       for (const [code, r] of rooms) if (now - r.createdAt > ROOM_MAX_AGE) rooms.delete(code);
       leave(req.user.id);
-      const room = { code: newCode(), hostId: req.user.id, state: 'lobby', players: new Map(), createdAt: now, song: 'random', map: 'random' };
+      const room = { code: newCode(), hostId: req.user.id, state: 'lobby', players: new Map(), createdAt: now, song: 'map', map: 'random' };
       rooms.set(room.code, room);
       join(room, userById.get(req.user.id), now);
       res.status(201);
@@ -191,10 +191,10 @@ export function registerKartRoutes({ api, auth, wrap, clock, publicUser, db, bol
       if (ready.length < 2) fail(409, 'Wait for at least one friend to join');
       room.state = 'racing';
       room.startAt = now + COUNTDOWN;
-      // Random: pick now, so everyone hears the same song.
-      if (!KART_SONGS.includes(room.song)) room.song = KART_SONGS[crypto.randomInt(KART_SONGS.length)];
-      // Same for the map, so everyone races the same track.
+      // Random: pick now, so everyone races the same track and hears the same song.
       if (!KART_MAP_IDS.includes(room.map)) room.map = KART_MAP_IDS[crypto.randomInt(KART_MAP_IDS.length)];
+      if (room.song === 'map') room.song = kartMap(room.map).song;
+      if (!KART_SONGS.includes(room.song)) room.song = KART_SONGS[crypto.randomInt(KART_SONGS.length)];
       return { room: describe(room, now) };
     })
   );
@@ -208,7 +208,7 @@ export function registerKartRoutes({ api, auth, wrap, clock, publicUser, db, bol
       if (room.hostId !== req.user.id) fail(403, 'Only the host picks the music');
       if (room.state !== 'lobby') fail(409, 'The race has already started');
       const song = String(req.body?.song ?? '');
-      if (song !== 'random' && !KART_SONGS.includes(song)) fail(400, "That song isn't on the Kat Kart OST");
+      if (song !== 'random' && song !== 'map' && !KART_SONGS.includes(song)) fail(400, "That song isn't on the Kat Kart OST");
       room.song = song;
       return { room: describe(room, clock()) };
     })

@@ -1,6 +1,6 @@
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { KART_MAP_IDS } from '../public/js/kart-maps.js';
+import { KART_MAP_IDS, kartMap } from '../public/js/kart-maps.js';
 import { openDatabase } from '../server/db.js';
 import { createApp } from '../server/app.js';
 import { createIdentity, deriveKeysFromPassword } from '../public/js/crypto.js';
@@ -56,6 +56,8 @@ describe('Kat Kart online races', () => {
     assert.equal((await call('POST', `/kart/rooms/${code}/song`, { token: ann.token, body: { song: 'crystal-cavern' } })).body.room.song, 'crystal-cavern');
     // And the map.
     assert.equal(joined.body.room.map, 'random');
+    assert.equal(joined.body.room.song, 'map', "the map's own song, unless the host picks another");
+    assert.deepEqual(KART_MAP_IDS.map((id) => kartMap(id).song), ['natho-town', 'crystal-cavern', 'crystal-cavern', 'kingdom-dominance', 'gold-mine']);
     assert.equal((await call('POST', `/kart/rooms/${code}/map`, { token: ben.token, body: { map: 'kingdom' } })).status, 403);
     assert.equal((await call('POST', `/kart/rooms/${code}/map`, { token: ann.token, body: { map: 'moon-base' } })).status, 400);
     for (const map of KART_MAP_IDS) assert.equal((await call('POST', `/kart/rooms/${code}/map`, { token: ann.token, body: { map } })).body.room.map, map);
@@ -92,8 +94,9 @@ describe('Kat Kart online races', () => {
     const [a, b] = [await reg('ann'), await reg('ben')];
     const code = (await c2('POST', '/kart/rooms', a)).body.room.code;
     await c2('POST', `/kart/rooms/${code}/join`, b);
-    const picked = (await c2('POST', `/kart/rooms/${code}/start`, a)).body.room.map;
-    assert.ok(KART_MAP_IDS.includes(picked), 'Random picks a map when the race starts');
+    const begun = (await c2('POST', `/kart/rooms/${code}/start`, a)).body.room;
+    assert.ok(KART_MAP_IDS.includes(begun.map), 'Random picks a map when the race starts');
+    assert.equal(begun.song, kartMap(begun.map).song, "and the music is that map's song (the default)");
     now += 5000;
     await c2('POST', `/kart/rooms/${code}/state`, a, { x: 100, y: 200, h: 1, v: 2, progress: 50, lap: 0, finished: null });
     const seen = (await c2('POST', `/kart/rooms/${code}/state`, b, { x: 120, y: 210, h: 1, v: 2, progress: 40, lap: 0 })).body.room;

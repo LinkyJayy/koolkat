@@ -151,22 +151,67 @@ const GROUND_DECOR = {
     }
   },
   kingdom(ctx, rand) {
-    // Flowers and round trees.
-    const petals = ['#ff6fa8', '#fff36b', '#ffffff', '#b47cff'];
-    for (let i = 0; i < 1400; i++) {
-      ctx.fillStyle = petals[Math.floor(rand() * petals.length)];
-      ctx.fillRect(rand() * MAP, rand() * MAP, 3, 3);
+    // Inside the castle: a flagstone floor, rugs, stone pillars and torches.
+    ctx.strokeStyle = 'rgba(40,36,52,0.55)';
+    ctx.lineWidth = 2;
+    for (let y = 0; y < MAP; y += 48) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(MAP, y);
+      ctx.stroke();
+      for (let x = (y / 48) % 2 ? 32 : 0; x < MAP; x += 64) {
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x, y + 48);
+        ctx.stroke();
+      }
     }
-    for (let i = 0; i < 160; i++) {
-      const [x, y, r] = [rand() * MAP, rand() * MAP, 10 + rand() * 12];
-      ctx.fillStyle = '#2f7a2b';
+    for (let i = 0; i < 500; i++) {
+      ctx.fillStyle = rand() < 0.5 ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)';
+      ctx.fillRect(Math.floor(rand() * 32) * 64, Math.floor(rand() * 43) * 48, 62, 46);
+    }
+    // Royal rugs.
+    for (let i = 0; i < 26; i++) {
+      const [x, y, w, h] = [rand() * MAP, rand() * MAP, 70 + rand() * 60, 50 + rand() * 40];
+      ctx.fillStyle = '#e8c040';
+      ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = rand() < 0.5 ? '#2a3fa8' : '#7a1a8a';
+      ctx.fillRect(x + 5, y + 5, w - 10, h - 10);
+      ctx.fillStyle = '#e8c040';
       ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.moveTo(x + w / 2, y + 12);
+      ctx.lineTo(x + w - 14, y + h / 2);
+      ctx.lineTo(x + w / 2, y + h - 12);
+      ctx.lineTo(x + 14, y + h / 2);
+      ctx.closePath();
       ctx.fill();
-      ctx.fillStyle = '#3f9a37';
+    }
+    // Stone pillars in rows, with a torch glowing by every other one.
+    for (let y = 80; y < MAP; y += 200) for (let x = (y / 200) % 2 ? 180 : 80; x < MAP; x += 200) {
+      const [px, py] = [x + (rand() - 0.5) * 30, y + (rand() - 0.5) * 30];
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
       ctx.beginPath();
-      ctx.arc(x - r * 0.3, y - r * 0.3, r * 0.55, 0, Math.PI * 2);
+      ctx.arc(px + 5, py + 6, 20, 0, Math.PI * 2);
       ctx.fill();
+      ctx.fillStyle = '#6d6878';
+      ctx.fillRect(px - 20, py - 20, 40, 40);
+      ctx.fillStyle = '#c9c4d2';
+      ctx.beginPath();
+      ctx.arc(px, py, 15, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#e6e2ec';
+      ctx.beginPath();
+      ctx.arc(px - 4, py - 4, 7, 0, Math.PI * 2);
+      ctx.fill();
+      if (rand() < 0.5) {
+        const glow = ctx.createRadialGradient(px + 26, py, 0, px + 26, py, 26);
+        glow.addColorStop(0, 'rgba(255,200,80,0.9)');
+        glow.addColorStop(1, 'rgba(255,140,40,0)');
+        ctx.fillStyle = glow;
+        ctx.fillRect(px, py - 26, 52, 52);
+        ctx.fillStyle = '#ff9a1f';
+        ctx.fillRect(px + 23, py - 3, 6, 6);
+      }
     }
   },
   'gold-mine'(ctx, rand) {
@@ -186,6 +231,21 @@ const GROUND_DECOR = {
     }
   },
 };
+
+/** Stroke a line running alongside the centre line, `off` units to its side. */
+function offsetPath(ctx, line, off) {
+  ctx.beginPath();
+  line.forEach(([x, y], i) => {
+    const [x2, y2] = line[(i + 1) % line.length];
+    const h = Math.atan2(y2 - y, x2 - x);
+    const px = x - Math.sin(h) * off;
+    const py = y + Math.cos(h) * off;
+    if (i) ctx.lineTo(px, py);
+    else ctx.moveTo(px, py);
+  });
+  ctx.closePath();
+  ctx.stroke();
+}
 
 /** Extras on top of the road. */
 const ROAD_DECOR = {
@@ -207,19 +267,13 @@ const ROAD_DECOR = {
     }
   },
   kingdom(ctx, line) {
-    // Cobblestones.
-    trackPath(ctx, line);
-    ctx.strokeStyle = 'rgba(60,55,50,0.35)';
+    // The red carpet, with gold trim down both sides.
+    ctx.strokeStyle = '#e8c040';
+    ctx.lineWidth = 2.5;
+    for (const side of [-1, 1]) offsetPath(ctx, line, side * (ROAD_HALF - 5));
+    ctx.strokeStyle = 'rgba(255,215,90,0.35)';
     ctx.lineWidth = 1.5;
-    for (const off of [-0.8, -0.5, -0.2, 0.2, 0.5, 0.8]) {
-      ctx.setLineDash([7, 5]);
-      ctx.lineDashOffset = off * 9;
-      ctx.lineWidth = ROAD_HALF * 2 * Math.abs(off);
-      ctx.strokeStyle = off < 0 ? 'rgba(60,55,50,0.18)' : 'rgba(255,255,255,0.08)';
-      ctx.stroke();
-    }
-    ctx.setLineDash([]);
-    ctx.lineDashOffset = 0;
+    for (const side of [-1, 1]) offsetPath(ctx, line, side * (ROAD_HALF - 10));
   },
   'gold-mine'(ctx, line) {
     // Mine-cart rails on wooden sleepers down the middle.
@@ -231,19 +285,7 @@ const ROAD_DECOR = {
     ctx.setLineDash([]);
     ctx.strokeStyle = '#a7b0ba';
     ctx.lineWidth = 2.5;
-    for (const side of [-1, 1]) {
-      ctx.beginPath();
-      line.forEach(([x, y], i) => {
-        const [x2, y2] = line[(i + 1) % line.length];
-        const h = Math.atan2(y2 - y, x2 - x);
-        const px = x - Math.sin(h) * side * 10;
-        const py = y + Math.cos(h) * side * 10;
-        if (i) ctx.lineTo(px, py);
-        else ctx.moveTo(px, py);
-      });
-      ctx.closePath();
-      ctx.stroke();
-    }
+    for (const side of [-1, 1]) offsetPath(ctx, line, side * 10);
   },
 };
 
@@ -644,37 +686,106 @@ function buildSky(width, height, mapId) {
     return canvas;
   }
   if (mapId === 'kingdom') {
-    gradient('#5fb4ff', '#d8efff');
-    clouds('#ffffff');
-    hills('#8cc97f', 4, height * 0.3, 3);
-    // Castles on the hills.
-    for (const fx of [0.12, 0.45, 0.78]) {
-      const cx = W * fx;
-      const base = height - height * 0.1;
-      const tw = Math.max(3, height * 0.045);
-      const th = height * 0.3;
-      ctx.fillStyle = '#b9b3c4';
-      ctx.fillRect(cx - tw * 2.5, base - th * 0.55, tw * 5, th * 0.55);
-      for (const tx of [-2.5, 1.5]) {
-        ctx.fillRect(cx + tx * tw, base - th * 0.85, tw, th * 0.85);
-        ctx.fillStyle = '#4a5bd0';
+    // Inside the throne room: the far wall, with stained-glass windows,
+    // royal banners, torches, pillars and chandeliers.
+    gradient('#4a4458', '#6e677e');
+    ctx.strokeStyle = 'rgba(30,26,40,0.45)';
+    ctx.lineWidth = 1;
+    for (let y = 0, row = 0; y < height; y += 6, row++) {
+      ctx.beginPath();
+      ctx.moveTo(0, y + 0.5);
+      ctx.lineTo(W, y + 0.5);
+      ctx.stroke();
+      for (let x = row % 2 ? 6 : 0; x < W; x += 12) {
         ctx.beginPath();
-        ctx.moveTo(cx + tx * tw - 1, base - th * 0.85);
-        ctx.lineTo(cx + (tx + 0.5) * tw, base - th * 1.05);
-        ctx.lineTo(cx + (tx + 1) * tw + 1, base - th * 0.85);
-        ctx.fill();
-        ctx.fillStyle = '#b9b3c4';
+        ctx.moveTo(x + 0.5, y);
+        ctx.lineTo(x + 0.5, y + 6);
+        ctx.stroke();
       }
-      // The keep, with a flag.
-      ctx.fillRect(cx - tw * 0.6, base - th, tw * 1.2, th);
-      ctx.fillStyle = '#6a6478';
-      ctx.fillRect(cx - tw * 0.3, base - th * 0.3, tw * 0.6, th * 0.3);
-      ctx.fillStyle = '#333';
-      ctx.fillRect(cx, base - th * 1.25, 1, th * 0.25);
-      ctx.fillStyle = '#e5172f';
-      ctx.fillRect(cx + 1, base - th * 1.25, tw * 0.8, th * 0.1);
     }
-    hills('#4f9a52', 2, height * 0.14, 5);
+    const glass = ['#e5172f', '#1f4fff', '#ffcc00', '#1aa33a', '#8a2be2'];
+    const bays = 6;
+    for (let i = 0; i < bays; i++) {
+      const cx = ((i + 0.5) / bays) * W;
+      // Stained-glass window with a pointed arch.
+      const ww = Math.max(8, height * 0.13);
+      const top = height * 0.18;
+      const bottom = height * 0.72;
+      ctx.fillStyle = '#2a2536';
+      ctx.fillRect(cx - ww / 2 - 2, top, ww + 4, bottom - top + 2);
+      ctx.beginPath();
+      ctx.moveTo(cx - ww / 2 - 2, top);
+      ctx.lineTo(cx, top - ww * 0.8);
+      ctx.lineTo(cx + ww / 2 + 2, top);
+      ctx.fill();
+      const panes = 6;
+      for (let p = 0; p < panes; p++) for (let q = 0; q < 2; q++) {
+        ctx.fillStyle = glass[(p + q + i) % glass.length];
+        ctx.fillRect(cx - ww / 2 + q * (ww / 2) + 0.5, top + p * ((bottom - top) / panes) + 0.5, ww / 2 - 1, (bottom - top) / panes - 1);
+      }
+      ctx.fillStyle = glass[i % glass.length];
+      ctx.beginPath();
+      ctx.moveTo(cx - ww / 2, top);
+      ctx.lineTo(cx, top - ww * 0.65);
+      ctx.lineTo(cx + ww / 2, top);
+      ctx.fill();
+      // A banner and a torch between the windows.
+      const bx = cx + W / bays / 2;
+      const bw = Math.max(6, height * 0.09);
+      ctx.fillStyle = '#b3122e';
+      ctx.beginPath();
+      ctx.moveTo(bx - bw / 2, height * 0.08);
+      ctx.lineTo(bx + bw / 2, height * 0.08);
+      ctx.lineTo(bx + bw / 2, height * 0.55);
+      ctx.lineTo(bx, height * 0.47);
+      ctx.lineTo(bx - bw / 2, height * 0.55);
+      ctx.fill();
+      ctx.fillStyle = '#e8c040';
+      ctx.fillRect(bx - bw / 2, height * 0.08, bw, 2);
+      ctx.beginPath();
+      ctx.arc(bx, height * 0.25, bw * 0.22, 0, Math.PI * 2);
+      ctx.fill();
+      const ty = height * 0.66;
+      const glow = ctx.createRadialGradient(bx, ty, 0, bx, ty, height * 0.12);
+      glow.addColorStop(0, 'rgba(255,200,90,0.75)');
+      glow.addColorStop(1, 'rgba(255,160,60,0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(bx - height * 0.12, ty - height * 0.12, height * 0.24, height * 0.24);
+      ctx.fillStyle = '#5b3b25';
+      ctx.fillRect(bx - 1, ty, 2, height * 0.06);
+      ctx.fillStyle = '#ffb02e';
+      ctx.fillRect(bx - 1.5, ty - 3, 3, 3);
+    }
+    // Pillars in front of the wall.
+    for (let i = 0; i < bays; i++) {
+      const px = (i / bays) * W;
+      const pw = Math.max(6, height * 0.08);
+      ctx.fillStyle = '#9a95a6';
+      ctx.fillRect(px - pw / 2, 0, pw, height);
+      ctx.fillStyle = '#b9b4c4';
+      ctx.fillRect(px - pw / 2, 0, pw * 0.35, height);
+      ctx.fillStyle = '#7d788a';
+      ctx.fillRect(px - pw / 2 - 2, height - 5, pw + 4, 5);
+    }
+    // Chandeliers hanging from the ceiling.
+    for (let i = 0; i < 3; i++) {
+      const cx = ((i + 0.25) / 3) * W;
+      const cy = height * 0.12;
+      ctx.fillStyle = '#3a2a10';
+      ctx.fillRect(cx, 0, 1, cy);
+      ctx.fillStyle = '#c79a20';
+      ctx.fillRect(cx - 12, cy, 25, 2);
+      for (let k = -2; k <= 2; k++) {
+        const glow = ctx.createRadialGradient(cx + k * 5, cy - 2, 0, cx + k * 5, cy - 2, 6);
+        glow.addColorStop(0, 'rgba(255,240,170,1)');
+        glow.addColorStop(1, 'rgba(255,220,120,0)');
+        ctx.fillStyle = glow;
+        ctx.fillRect(cx + k * 5 - 6, cy - 8, 12, 12);
+      }
+    }
+    // Where the wall meets the floor.
+    ctx.fillStyle = '#3a3546';
+    ctx.fillRect(0, height - 3, W, 3);
     return canvas;
   }
   if (mapId === 'gold-mine') {
@@ -807,7 +918,8 @@ export function createKatKart(els) {
       online,
       level,
       sync: opts.sync,
-      song: opts.song ?? 'random', // the host's pick (or yours, solo)
+      // The host's pick (or yours, solo); 'map' is the map's own song.
+      song: opts.song === 'map' ? a.map.song : opts.song ?? 'random',
       view: makeView(canvas.width, canvas.height, a.map.id),
       state: 'countdown',
       // GO is 3 seconds from now (solo) or when the server says (online).

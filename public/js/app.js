@@ -7007,20 +7007,23 @@ $('btn-kart-again').addEventListener('click', () => {
 });
 
 // ---------- the Kat Kart menu: solo, or race friends with a code ----------
-// Race music: Random, or a song from the Kat Kart OST. Solo you pick; online the host does.
-const KART_SONG_KEY = 'koolkat.katKart.song';
+// Race music: the map's own song (the default), Random, or a song from the Kat
+// Kart OST. Solo you pick; online the host does. (A new key, so everyone starts
+// on the map's song.)
+const KART_SONG_KEY = 'koolkat.katKart.music';
 for (const select of [$('kart-song-solo'), $('kart-song-online')]) {
   select.replaceChildren(
+    el('option', { value: 'map', text: "🗺️ The map's song" }),
     el('option', { value: 'random', text: '🔀 Random' }),
     ...RACE_SONGS.map((song) => el('option', { value: song.id, text: `${song.title} · ${song.artist}` }))
   );
 }
 try {
-  $('kart-song-solo').value = localStorage.getItem(KART_SONG_KEY) || 'random';
+  $('kart-song-solo').value = localStorage.getItem(KART_SONG_KEY) || 'map';
 } catch {
-  // Random it is.
+  // The map's song it is.
 }
-if (!$('kart-song-solo').value) $('kart-song-solo').value = 'random';
+if (!$('kart-song-solo').value) $('kart-song-solo').value = 'map';
 $('kart-song-solo').addEventListener('change', (e) => {
   try {
     localStorage.setItem(KART_SONG_KEY, e.target.value);
@@ -7146,7 +7149,7 @@ function renderLobby(room) {
   // The host picks the music; everyone else sees what it'll be.
   const songSelect = $('kart-song-online');
   songSelect.disabled = !host;
-  if (document.activeElement !== songSelect) songSelect.value = room.song ?? 'random';
+  if (document.activeElement !== songSelect) songSelect.value = room.song ?? 'map';
   $('kart-song-note').textContent = host ? '(you pick)' : '(the host picks)';
   const mapSelect = $('kart-map-online');
   mapSelect.disabled = !host;
