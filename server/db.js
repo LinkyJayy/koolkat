@@ -331,6 +331,15 @@ CREATE TABLE IF NOT EXISTS bolt_rewards (
 CREATE INDEX IF NOT EXISTS bolt_rewards_user ON bolt_rewards(user_id, created_at);
 CREATE UNIQUE INDEX IF NOT EXISTS bolt_rewards_ref ON bolt_rewards(user_id, ref) WHERE ref IS NOT NULL;
 
+-- The Bolt Shop: what each person bought, and for how much (selling gives it back).
+CREATE TABLE IF NOT EXISTS shop_items (
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  item       TEXT NOT NULL,
+  price      INTEGER NOT NULL,
+  bought_at  INTEGER NOT NULL,
+  PRIMARY KEY (user_id, item)
+);
+
 -- Server-wide key/value settings (e.g. generated VAPID keys).
 CREATE TABLE IF NOT EXISTS settings (
   key    TEXT PRIMARY KEY,
@@ -340,6 +349,9 @@ CREATE TABLE IF NOT EXISTS settings (
 
 // Columns added after the first release. Each is added if an older database lacks it.
 const MIGRATIONS = [
+  // Bought in the Bolt Shop: KoolKat Unlimited (for as long as you keep it) and the Bolt Badge.
+  ['users', 'bolt_unlimited', 'INTEGER'],
+  ['users', 'bolt_badge', 'INTEGER'],
   ['friendships', 'streak_reminded_day', 'INTEGER'],
   // KoolKat Unlimited end time (gifts, codes, approved requests).
   ['users', 'plan_until', 'INTEGER'],

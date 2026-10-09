@@ -9,7 +9,10 @@
 //  - Lucky: something random happens (see LUCKY).
 // Everyone gets 15 turns. Most circles at the end wins.
 
-export const TEAMS = ['red', 'yellow', 'green', 'blue', 'purple'];
+import { ALL_TEAMS } from './teams.js';
+
+// Every team colour (the Bolt Shop ones too).
+export const TEAMS = ALL_TEAMS;
 export const TURNS = 15;
 const randomInt = (n) => Math.floor(Math.random() * n);
 

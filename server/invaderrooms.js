@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { fail } from './http.js';
 import { WIN_BOLTS } from './bolts.js';
 import { KART_SONGS } from './kartrooms.js';
+import { ALL_TEAMS, BASE_TEAMS, TEAM_NAMES } from '../public/js/teams.js';
 
 // Kat Invaders online: 2 to 5 people, one team colour each. Everyone gets the
 // same mice (from the same seed) and has 2 minutes to shoot as many as they
@@ -9,7 +10,6 @@ import { KART_SONGS } from './kartrooms.js';
 // music. Each phone sends its score ~6 times a second. Most points wins.
 // Games live in memory (a restart ends them).
 
-export const INVADER_TEAMS = ['red', 'yellow', 'green', 'blue', 'purple'];
 export const INVADER_LIVES = { easy: 5, medium: 3, hard: 1 };
 export const INVADER_SECONDS = 120;
 const CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -23,7 +23,7 @@ const num = (v, min, max) => {
   return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : null;
 };
 
-export function registerInvaderRoutes({ api, auth, wrap, clock, publicUser, db, bolts }) {
+export function registerInvaderRoutes({ api, auth, wrap, clock, publicUser, db, bolts, shop }) {
   const rooms = new Map();
   const roomOf = new Map();
   const userById = db.prepare('SELECT * FROM users WHERE id = ?');
@@ -104,7 +104,7 @@ export function registerInvaderRoutes({ api, auth, wrap, clock, publicUser, db, 
 
   function join(room, user, now) {
     const used = new Set([...room.players.values()].map((p) => p.team));
-    room.players.set(user.id, { id: user.id, name: user.display_name, user: publicUser(user), team: INVADER_TEAMS.find((t) => !used.has(t)), seen: now, gone: false });
+    room.players.set(user.id, { id: user.id, name: user.display_name, user: publicUser(user), team: BASE_TEAMS.find((t) => !used.has(t)), seen: now, gone: false });
     roomOf.set(user.id, room.code);
   }
 
@@ -131,7 +131,7 @@ export function registerInvaderRoutes({ api, auth, wrap, clock, publicUser, db, 
       const now = clock();
       if (!room.players.has(req.user.id)) {
         if (room.state !== 'lobby') fail(409, 'That game has already started');
-        if (room.players.size >= INVADER_TEAMS.length) fail(409, 'That game is full (5 teams)');
+        if (room.players.size >= BASE_TEAMS.length) fail(409, 'That game is full (5 teams)');
         leave(req.user.id);
         join(room, userById.get(req.user.id), now);
       }
@@ -157,7 +157,8 @@ export function registerInvaderRoutes({ api, auth, wrap, clock, publicUser, db, 
       const me = mine(room, req);
       if (room.state !== 'lobby') fail(409, 'The game has already started');
       const team = String(req.body?.team ?? '');
-      if (!INVADER_TEAMS.includes(team)) fail(400, 'Pick Red, Yellow, Green, Blue or Purple');
+      if (!ALL_TEAMS.includes(team)) fail(400, "That's not a team colour");
+      if (shop && !shop.canUseTeam(me.id, team)) fail(403, `Get the ${TEAM_NAMES[team]} team in the Bolt Shop first`);
       if ([...room.players.values()].some((p) => p.team === team && p.id !== me.id)) fail(409, 'Someone already has that team');
       me.team = team;
       return { room: describe(room, clock()) };

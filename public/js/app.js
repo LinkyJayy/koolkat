@@ -30,7 +30,7 @@ import { focusFirst, initInput } from './input.js';
 import { createKatEscape } from './escape.js';
 import { DIFFICULTIES as KI_DIFFICULTIES, LIVES as KI_LIVES, createKatInvaders } from './invaders.js';
 import { choose as ccChoose, draw as ccDraw, newDeck as ccNewDeck, ranked as ccRanked } from './circle-rules.js';
-import { TEAMS as CC_TEAMS, TEAM_COLORS as CC_TEAM_COLORS, TEAM_NAMES as CC_TEAM_NAMES, TURNS as CC_TURNS, circleIcon as ccCircleIcon, createCircleTable, describeEvent as ccDescribe, teamIcon as ccTeamIcon } from './circles.js';
+import { BASE_TEAMS, TEAMS as CC_TEAMS, TEAM_COLORS as CC_TEAM_COLORS, TEAM_NAMES as CC_TEAM_NAMES, TURNS as CC_TURNS, circleIcon as ccCircleIcon, createCircleTable, describeEvent as ccDescribe, teamIcon as ccTeamIcon } from './circles.js';
 import { RACE_SONGS, RACERS as KART_RACERS, createKatKart, createRaceMusic, formatRaceTime, showNowPlaying } from './kart.js';
 
 const $ = (id) => document.getElementById(id);
@@ -111,6 +111,7 @@ const badgeImg = (user) => {
   const parts = nodes(
     user?.verified && el('img', { src: 'icons/social/verified.png', alt: 'Verified', title: 'Verified', class: 'verified-badge' }),
     user?.badge && el('img', { src: badgeSrc(user), alt: 'KoolKat Unlimited', title: 'KoolKat Unlimited', class: 'kool-badge' }),
+    user?.boltBadge && el('img', { src: 'icons/bolt-badge.png', alt: 'Bolt Badge', title: 'Bolt Badge', class: 'bolt-badge' }),
     user?.birthday && el('span', { class: 'birthday-pop', title: "It's their birthday!", 'aria-label': "It's their birthday", text: '🎉' })
   );
   if (parts.length < 2) return parts[0] ?? null;
@@ -2444,6 +2445,7 @@ async function refreshMe() {
   Object.assign(state.me, {
     displayName: me.user.displayName,
     badge: me.user.badge,
+    boltBadge: me.user.boltBadge,
     badgeUrl: me.user.badgeUrl,
     flair: me.user.flair,
     accent: me.user.accent,
@@ -5341,6 +5343,80 @@ async function earnBolts(game, reason, extra = {}) {
     // Bolts are a bonus; the game still counts.
   }
 }
+// ---------- The Bolt Shop: team colours, Unlimited and the Bolt Badge ----------
+const SHOP_ART = { 'bolt-badge': 'icons/bolt-badge.png', unlimited: 'icons/kool-badge.png' };
+const SHOP_INFO = {
+  'bolt-badge': 'A ⚡ next to your name, for everyone to see.',
+  unlimited: 'Everything in KoolKat Unlimited, for as long as you keep it (all the team colours too).',
+};
+let shopState = null;
+function applyShop(shop) {
+  shopState = shop;
+  usableTeams = new Set(shop.teams);
+  showBolts(shop.bolts);
+}
+/** What you have (bolts and team colours). Quietly keeps the old if it can't. */
+async function loadShop() {
+  try {
+    applyShop((await api('GET', '/shop')).shop);
+  } catch {
+    // Offline: keep what we had.
+  }
+  return shopState;
+}
+async function openShop() {
+  const shop = await loadShop();
+  if (!shop) return toast("Couldn't open the Bolt Shop", { error: true });
+  renderShop();
+  if (!$('dialog-shop').open) $('dialog-shop').showModal();
+  focusFirst();
+}
+$('btn-shop').addEventListener('click', openShop);
+$('btn-shop-close').addEventListener('click', () => $('dialog-shop').close());
+
+function shopCard(item) {
+  const team = item.kind === 'team' ? item.team : null;
+  const card = el(
+    'div',
+    { class: `shop-item${item.owned || item.included ? ' owned' : ''}` },
+    el('img', { src: team ? ccTeamIcon(team) : SHOP_ART[item.id], alt: '' })
+  );
+  if (team) card.style.setProperty('--shop-color', CC_TEAM_COLORS[team]);
+  const text = el('div', {}, el('strong', { text: item.name }), el('span', { class: 'fineprint', text: item.kind === 'team' ? `${item.price.toLocaleString()} ⚡` : `${SHOP_INFO[item.id]} ${item.price.toLocaleString()} ⚡` }));
+  let action;
+  if (item.owned) action = el('button', { type: 'button', class: 'btn small', text: `Sell · +${item.paid.toLocaleString()} ⚡`, onclick: () => shopTrade('sell', item) });
+  else if (item.included) action = el('button', { type: 'button', class: 'btn small', text: item.kind === 'unlimited' ? '✓ You have it' : '✓ With Unlimited', disabled: true });
+  else {
+    const short = item.price - shopState.bolts;
+    action = el('button', { type: 'button', class: `btn small${short > 0 ? '' : ' primary'}`, text: short > 0 ? `Need ${short.toLocaleString()} more` : `Buy · ${item.price.toLocaleString()} ⚡`, onclick: () => shopTrade('buy', item) });
+  }
+  if (team) card.append(el('strong', { text: CC_TEAM_NAMES[team] }), el('span', { class: 'fineprint', text: item.owned ? 'Yours' : item.included ? 'With Unlimited' : `${item.price.toLocaleString()} ⚡` }), action);
+  else card.append(text, action);
+  return card;
+}
+function renderShop() {
+  $('shop-balance').textContent = shopState.bolts.toLocaleString();
+  $('shop-teams').replaceChildren(...shopState.items.filter((i) => i.kind === 'team').map(shopCard));
+  $('shop-extras').replaceChildren(...shopState.items.filter((i) => i.kind !== 'team').map(shopCard));
+}
+async function shopTrade(action, item) {
+  const ask =
+    action === 'buy'
+      ? `Buy ${item.name} for ${item.price.toLocaleString()} bolts?`
+      : `Sell ${item.name}? You'll get all ${item.paid.toLocaleString()} bolts back${item.kind === 'unlimited' ? ', and lose KoolKat Unlimited' : ''}.`;
+  if (!(await askConfirm(ask, { ok: action === 'buy' ? 'Buy' : 'Sell', danger: action === 'sell' }))) return;
+  try {
+    const { shop } = await api('POST', `/shop/${action}`, { item: item.id });
+    applyShop(shop);
+    renderShop();
+    toast(action === 'buy' ? `${item.name} is yours! ⚡` : `Sold. +${item.paid.toLocaleString()} ⚡`);
+    // Unlimited and the badge change what you (and everyone else) see.
+    if (item.kind !== 'team') refreshMe().catch(() => {});
+  } catch (err) {
+    toast(err.message, { error: true });
+  }
+}
+
 /** An online game ended: the server paid any winners, so check for new bolts. */
 async function checkBolts() {
   const got = await refreshBolts();
@@ -5349,7 +5425,7 @@ async function checkBolts() {
 
 function openPlayables() {
   show('playables');
-  refreshBolts();
+  loadShop(); // your bolts and team colours
   const best = readJson(KART_BEST);
   $('kart-best').textContent = [best && `🏆 Best: ${ordinalPlace(best.place)} in ${formatRaceTime(best.time)}`, `🤖 Bots: level ${kartLevel()}`].filter(Boolean).join(' · ');
   const stats = readJson(WORDLE_STATS);
@@ -5722,6 +5798,36 @@ function leaveEscapeRoom() {
   escapeOnline.code = null;
 }
 
+// ---------- Team colours (Circle Chaos and Kat Invaders) ----------
+// The first five are free; the rest come from the Bolt Shop (or Unlimited).
+let usableTeams = new Set(BASE_TEAMS);
+const canUseTeam = (team) => usableTeams.has(team);
+/** Team buttons: yours to pick, taken by someone else (their name), or 🔒 in the Bolt Shop. */
+function teamPicker(box, { chosen, taken = new Map(), onPick, icon = ccTeamIcon }) {
+  box.replaceChildren(
+    ...CC_TEAMS.map((team) => {
+      const who = taken.get(team);
+      const locked = !canUseTeam(team);
+      const b = el(
+        'button',
+        {
+          type: 'button',
+          class: `cc-team-btn${locked ? ' locked' : ''}`,
+          role: 'radio',
+          'aria-checked': String(chosen === team),
+          'aria-label': locked ? `${CC_TEAM_NAMES[team]}: in the Bolt Shop` : who ? `${CC_TEAM_NAMES[team]} (${who})` : CC_TEAM_NAMES[team],
+          onclick: () => (locked ? openShop() : onPick(team)),
+        },
+        el('img', { src: icon(team), alt: '', class: 'pixel' }),
+        el('span', { text: locked ? '🔒' : who ?? CC_TEAM_NAMES[team] })
+      );
+      b.style.setProperty('--cc-team', CC_TEAM_COLORS[team]);
+      b.disabled = Boolean(who);
+      return b;
+    })
+  );
+}
+
 // ---------- Circle Chaos: 2 to 5 teams, online with a code ----------
 const CC_STATS = 'koolkat.circleChaos';
 const ccTable = createCircleTable($('cc-canvas'));
@@ -5757,6 +5863,7 @@ $('cc-song-online').addEventListener('change', async (e) => {
 function openCirclesMenu() {
   ccMusic.unlock(); // this tap lets the music play later
   renderPracticePicks();
+  loadShop().then(() => renderPracticePicks());
   $('cc-menu-main').hidden = false;
   $('cc-lobby').hidden = true;
   $('cc-code').value = '';
@@ -5828,20 +5935,7 @@ function renderCirclesLobby(room) {
   const me = players.find((p) => p.id === state.me.userId);
   const host = room.hostId === state.me.userId;
   // Pick your team: the ones other people have are taken.
-  $('cc-team-pick').replaceChildren(
-    ...CC_TEAMS.map((team) => {
-      const taken = players.find((p) => p.team === team && p.id !== me?.id);
-      const b = el(
-        'button',
-        { type: 'button', class: 'cc-team-btn', role: 'radio', 'aria-checked': String(me?.team === team), 'aria-label': taken ? `${CC_TEAM_NAMES[team]} (${taken.name})` : CC_TEAM_NAMES[team], onclick: () => pickCircleTeam(team) },
-        el('img', { src: ccTeamIcon(team), alt: '', class: 'pixel' }),
-        el('span', { text: taken ? taken.name : CC_TEAM_NAMES[team] })
-      );
-      b.style.setProperty('--cc-team', CC_TEAM_COLORS[team]);
-      b.disabled = Boolean(taken);
-      return b;
-    })
-  );
+  teamPicker($('cc-team-pick'), { chosen: me?.team, taken: new Map(players.filter((p) => p.id !== me?.id).map((p) => [p.team, p.name])), onPick: pickCircleTeam });
   $('cc-lobby-players').replaceChildren(
     ...players.map((p) =>
       el(
@@ -5925,18 +6019,8 @@ if (!CC_TEAMS.includes(ccPractice.team)) ccPractice.team = 'red';
 ccPractice.bots = Math.max(1, Math.min(4, Number(ccPractice.bots) || 3));
 
 function renderPracticePicks() {
-  $('cc-practice-team').replaceChildren(
-    ...CC_TEAMS.map((team) => {
-      const b = el(
-        'button',
-        { type: 'button', class: 'cc-team-btn', role: 'radio', 'aria-checked': String(ccPractice.team === team), onclick: () => setPractice({ team }) },
-        el('img', { src: ccTeamIcon(team), alt: '', class: 'pixel' }),
-        el('span', { text: CC_TEAM_NAMES[team] })
-      );
-      b.style.setProperty('--cc-team', CC_TEAM_COLORS[team]);
-      return b;
-    })
-  );
+  if (!canUseTeam(ccPractice.team)) ccPractice.team = 'red'; // sold it
+  teamPicker($('cc-practice-team'), { chosen: ccPractice.team, onPick: (team) => setPractice({ team }) });
   for (const b of document.querySelectorAll('.cc-bot-btn')) b.setAttribute('aria-checked', String(Number(b.dataset.bots) === ccPractice.bots));
 }
 function setPractice(change) {
@@ -5974,7 +6058,8 @@ const practiceView = (g) => ({
 
 function startCirclesPractice() {
   leaveCirclesRoom();
-  const teams = [ccPractice.team, ...CC_TEAMS.filter((t) => t !== ccPractice.team).slice(0, ccPractice.bots)];
+  if (!canUseTeam(ccPractice.team)) ccPractice.team = 'red';
+  const teams = [ccPractice.team, ...BASE_TEAMS.filter((t) => t !== ccPractice.team).slice(0, ccPractice.bots)];
   const players = teams
     .map((team, i) => (i === 0 ? { id: state.me.userId, name: state.me.displayName } : { id: `bot-${i}`, name: `🤖 ${CC_BOT_NAMES[i - 1]}`, bot: true }))
     .map((p, i) => ({ ...p, team: teams[i], circles: 0, turns: 0, gone: false }))
@@ -6247,23 +6332,8 @@ $('ki-song').addEventListener('change', (e) => {
   saveKi();
 });
 
-/** Team buttons (taken ones greyed out) and difficulty buttons. */
-function kiTeamButtons(box, chosen, taken, onPick) {
-  box.replaceChildren(
-    ...CC_TEAMS.map((team) => {
-      const who = taken.get(team);
-      const b = el(
-        'button',
-        { type: 'button', class: 'cc-team-btn', role: 'radio', 'aria-checked': String(chosen === team), 'aria-label': who ? `${CC_TEAM_NAMES[team]} (${who})` : CC_TEAM_NAMES[team], onclick: () => onPick(team) },
-        el('img', { src: kiTeamIcon(team), alt: '', class: 'pixel' }),
-        el('span', { text: who ?? CC_TEAM_NAMES[team] })
-      );
-      b.style.setProperty('--cc-team', CC_TEAM_COLORS[team]);
-      b.disabled = Boolean(who);
-      return b;
-    })
-  );
-}
+/** Team buttons (shared with Circle Chaos), with Kat Invaders' cats. */
+const kiTeamButtons = (box, chosen, taken, onPick) => teamPicker(box, { chosen, taken, onPick, icon: kiTeamIcon });
 function kiDifficultyButtons(box, chosen, enabled, onPick) {
   box.replaceChildren(
     ...KI_DIFFICULTIES.map(([id, name, lives]) => {
@@ -6274,6 +6344,7 @@ function kiDifficultyButtons(box, chosen, enabled, onPick) {
   );
 }
 function renderKiMenu() {
+  if (!canUseTeam(ki.team)) ki.team = 'red'; // sold it
   kiTeamButtons($('ki-team-pick'), ki.team, new Map(), (team) => {
     ki.team = team;
     saveKi();
@@ -6298,6 +6369,7 @@ for (const b of document.querySelectorAll('.ki-bot-btn')) {
 function openInvadersMenu() {
   katInvaders.unlockAudio(); // this tap lets the music play later
   renderKiMenu();
+  loadShop().then(() => renderKiMenu());
   $('ki-menu-main').hidden = false;
   $('ki-lobby').hidden = true;
   $('ki-code').value = '';
@@ -6416,7 +6488,7 @@ $('btn-ki-create').addEventListener('click', (e) =>
     const { room } = await api('POST', '/invaders/rooms');
     enterKiLobby(room);
     // Your favourite team, if it's free.
-    if (room.players.find((p) => p.id === state.me.userId)?.team !== ki.team) kiLobbyPost('team', { team: ki.team }, true);
+    if (canUseTeam(ki.team) && room.players.find((p) => p.id === state.me.userId)?.team !== ki.team) kiLobbyPost('team', { team: ki.team }, true);
   })
 );
 const joinKi = () =>

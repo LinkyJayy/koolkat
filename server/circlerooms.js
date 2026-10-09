@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { fail } from './http.js';
 import { WIN_BOLTS } from './bolts.js';
 import { KART_SONGS } from './kartrooms.js';
+import { BASE_TEAMS, TEAM_NAMES } from '../public/js/teams.js';
 import { TEAMS, canPlay, choose, draw, newDeck, nextAfter, ranked } from '../public/js/circle-rules.js';
 
 export * from '../public/js/circle-rules.js';
@@ -23,7 +24,7 @@ const randomInt = (n) => crypto.randomInt(n);
 
 // ---------- online ----------
 
-export function registerCircleRoutes({ api, auth, wrap, clock, publicUser, db, bolts }) {
+export function registerCircleRoutes({ api, auth, wrap, clock, publicUser, db, bolts, shop }) {
   const rooms = new Map();
   const roomOf = new Map();
   const userById = db.prepare('SELECT * FROM users WHERE id = ?');
@@ -154,7 +155,7 @@ export function registerCircleRoutes({ api, auth, wrap, clock, publicUser, db, b
 
   function join(room, user, now) {
     const used = new Set(room.players.map((p) => p.team));
-    const team = TEAMS.find((t) => !used.has(t));
+    const team = BASE_TEAMS.find((t) => !used.has(t));
     room.players.push({ id: user.id, name: user.display_name, user: publicUser(user), team, circles: 0, turns: 0, seen: now, gone: false });
     roomOf.set(user.id, room.code);
   }
@@ -182,7 +183,7 @@ export function registerCircleRoutes({ api, auth, wrap, clock, publicUser, db, b
       const now = clock();
       if (!room.players.some((p) => p.id === req.user.id)) {
         if (room.state !== 'lobby') fail(409, 'That game has already started');
-        if (room.players.length >= TEAMS.length) fail(409, 'That game is full (5 teams)');
+        if (room.players.length >= BASE_TEAMS.length) fail(409, 'That game is full (5 teams)');
         leave(req.user.id);
         join(room, userById.get(req.user.id), now);
       }
@@ -209,7 +210,8 @@ export function registerCircleRoutes({ api, auth, wrap, clock, publicUser, db, b
       const me = mine(room, req);
       if (room.state !== 'lobby') fail(409, 'The game has already started');
       const team = String(req.body?.team ?? '');
-      if (!TEAMS.includes(team)) fail(400, 'Pick Red, Yellow, Green, Blue or Purple');
+      if (!TEAMS.includes(team)) fail(400, "That's not a team colour");
+      if (shop && !shop.canUseTeam(me.id, team)) fail(403, `Get the ${TEAM_NAMES[team]} team in the Bolt Shop first`);
       if (room.players.some((p) => p.team === team && p.id !== me.id)) fail(409, 'Someone already has that team');
       me.team = team;
       return { room: describe(room, clock()) };

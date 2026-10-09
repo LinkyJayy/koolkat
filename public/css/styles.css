@@ -2676,3 +2676,29 @@ img.pixel { image-rendering: pixelated; }
 #dialog-invaders .pixel { image-rendering: pixelated; }
 .escape-results li img.ki-mini { width: 22px; image-rendering: pixelated; }
 .cc-table .kart-now-playing { bottom: 8px; }
+
+/* Bolt Shop */
+.bolts-bar .shop-open { margin-left: auto; background: #ffd400; color: #1b1446; font-weight: 900; }
+.bolt-badge { height: 0.95em; width: auto; margin-left: 4px; vertical-align: -0.1em; image-rendering: pixelated; }
+.author-link .bolt-badge { height: 14px; }
+.up-title .bolt-badge { height: 0.6em; vertical-align: middle; }
+.shop-dialog { width: min(94vw, 460px); }
+.shop-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.shop-head h2 { margin: 0; }
+.shop-head .bolts-balance strong { color: var(--text); }
+.shop-section { margin: 14px 0 8px; font-size: 16px; }
+.shop-section .fineprint { font-weight: 500; }
+.shop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
+.shop-item { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 8px; border: 3px solid var(--border); border-radius: 14px; background: var(--surface); text-align: center; }
+.shop-item.owned { border-color: var(--shop-color, var(--brand)); }
+.shop-item img { width: 44px; height: 44px; object-fit: contain; image-rendering: pixelated; }
+.shop-item strong { font-size: 14px; }
+.shop-item .fineprint { margin: 0; }
+.shop-item .btn { width: 100%; }
+.shop-list { display: grid; gap: 8px; }
+.shop-list .shop-item { flex-direction: row; text-align: left; }
+.shop-list .shop-item > div { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.shop-list .shop-item .btn { width: auto; }
+.cc-team-pick { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+.cc-team-btn.locked { opacity: 0.7; border-style: dashed; }
+.cc-team-btn span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; font-size: 10px; }

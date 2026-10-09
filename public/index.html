@@ -201,6 +201,7 @@
     <p class="playables-intro">Games for everyone on KoolKat. Free, no Unlimited needed.</p>
     <div class="bolts-bar">
       <span class="bolts-balance"><img src="icons/powerups/thunder.png" alt="" class="pixel"><strong id="bolts-balance">0</strong> bolts</span>
+      <button type="button" class="btn small shop-open" id="btn-shop">🛒 Bolt Shop</button>
       <span class="fineprint">Win any game: +100 ⚡ · KatEscape: keep every ⚡ you collect</span>
     </div>
     <div class="playables-grid">
@@ -1007,6 +1008,19 @@
         <button type="button" class="btn primary" id="btn-escape-start">Start</button>
       </div>
     </div>
+  </dialog>
+
+  <dialog id="dialog-shop" class="shop-dialog">
+    <div class="shop-head">
+      <h2>⚡ Bolt Shop</h2>
+      <span class="bolts-balance"><img src="icons/powerups/thunder.png" alt="" class="pixel"><strong id="shop-balance">0</strong></span>
+    </div>
+    <p class="fineprint">Changed your mind? Sell anything back for every bolt you paid.</p>
+    <h3 class="shop-section">Team colours <span class="fineprint">for Circle Chaos and Kat Invaders</span></h3>
+    <div class="shop-grid" id="shop-teams"></div>
+    <h3 class="shop-section">Extras</h3>
+    <div class="shop-list" id="shop-extras"></div>
+    <button type="button" class="btn wide" id="btn-shop-close">Close</button>
   </dialog>
 
   <dialog id="dialog-invaders" class="kart-menu">

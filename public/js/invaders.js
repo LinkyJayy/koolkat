@@ -12,6 +12,7 @@
 
 import { gamepadSteer } from './input.js';
 import { createRaceMusic, showNowPlaying } from './kart.js';
+import { ALL_TEAMS, BASE_TEAMS } from './teams.js';
 
 export const GAME_SECONDS = 120;
 export const LIVES = { easy: 5, medium: 3, hard: 1 };
@@ -90,7 +91,7 @@ export function createKatInvaders(els) {
 
   async function loadAssets() {
     if (assets) return assets;
-    const teams = ['red', 'yellow', 'green', 'blue', 'purple'];
+    const teams = ALL_TEAMS;
     const imgs = await Promise.all([...teams.map((t) => `icons/invaders/team-${t}.png`), 'icons/invaders/mouse.png'].map(loadImage));
     assets = { cats: Object.fromEntries(teams.map((t, i) => [t, imgs[i]])), mouse: imgs[5] };
     return assets;
@@ -135,7 +136,7 @@ export function createKatInvaders(els) {
     };
     for (const p of opts.others ?? []) game.others.set(p.id, { name: p.name, team: p.team, x: 0.5, score: 0, lives, status: 'playing' });
     if (mode === 'practice') {
-      const teams = ['red', 'yellow', 'green', 'blue', 'purple'].filter((t) => t !== game.team);
+      const teams = BASE_TEAMS.filter((t) => t !== game.team);
       const n = opts.bots ?? 3;
       for (let i = 0; i < n; i++) game.others.set(`bot-${i + 1}`, makeBot(`🤖 ${BOT_NAMES[i]}`, teams[i], lives, (i + 1) / (n + 1)));
     }

@@ -4,11 +4,12 @@
 // Practice the same rules (circle-rules.js) run here against bots. This draws the table in chunky pixels like
 // Kat Kart and KatEscape, and shows what each circle did.
 
-export const TEAMS = ['red', 'yellow', 'green', 'blue', 'purple'];
-export const TEAM_NAMES = { red: 'Red', yellow: 'Yellow', green: 'Green', blue: 'Blue', purple: 'Purple' };
-export const TEAM_COLORS = { red: '#ff0000', yellow: '#ffe400', green: '#37ff00', blue: '#004cff', purple: '#9d00ff' };
+import { ALL_TEAMS, TEAM_COLORS, TEAM_NAMES } from './teams.js';
+
+export { BASE_TEAMS, TEAM_COLORS, TEAM_NAMES } from './teams.js';
+export const TEAMS = ALL_TEAMS;
 export const TURNS = 15;
-const CIRCLE_NAMES = { red: 'a Red circle', yellow: 'a Yellow circle', green: 'a Green circle', blue: 'a Blue circle', purple: 'a Purple circle', lose2: 'Lose 2', lose4: 'Lose 4', lucky: 'a Lucky Card' };
+const CIRCLE_NAMES = { ...Object.fromEntries(ALL_TEAMS.map((t) => [t, `a ${TEAM_NAMES[t]} circle`])), lose2: 'Lose 2', lose4: 'Lose 4', lucky: 'a Lucky Card' };
 export const circleIcon = (kind) => `icons/circles/${kind}.png`;
 export const teamIcon = (team) => `icons/circles/team-${team}.png`;
 
@@ -66,7 +67,7 @@ export function createCircleTable(canvas) {
   let flying = null; // { kind, start } a circle being taken
   let count = 0;
   let frame = 0;
-  const kinds = ['red', 'yellow', 'green', 'blue', 'purple', 'lose2', 'lose4', 'lucky'];
+  const kinds = [...ALL_TEAMS, 'lose2', 'lose4', 'lucky'];
 
   async function load() {
     if (sprites) return sprites;
