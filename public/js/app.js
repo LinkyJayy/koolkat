@@ -212,6 +212,7 @@ function show(name) {
   if (state.screen === 'kart' && name !== 'kart') {
     katKart.stop();
     leaveKartRoom();
+    kartRotation(false);
   }
   for (const s of document.querySelectorAll('.screen')) s.hidden = s.id !== `screen-${name}`;
   state.screen = name;
@@ -7277,11 +7278,26 @@ const KART_COLORS = KART_RACERS.map((r) => r.color);
 const kartLevel = () => Math.max(1, Number(readJson(KART_LEVEL)) || 1);
 const kartOnline = { code: null, room: null, timer: null, mode: 'solo' };
 
+/**
+ * The installed app stays upright (portrait), but Kat Kart can be raced with
+ * the phone turned sideways: let it turn while racing, and back after.
+ * (In a browser tab it turns anyway; this only matters for the installed app.)
+ */
+function kartRotation(free) {
+  try {
+    if (free) screen.orientation?.lock?.('any')?.catch?.(() => {});
+    else screen.orientation?.unlock?.();
+  } catch {
+    // Not supported here: the phone decides.
+  }
+}
+
 function openKart(opts) {
   // One thing at a time: the race has its own music.
   if (!audioEl.paused) audioEl.pause();
   kartOnline.mode = opts.mode;
   show('kart');
+  kartRotation(true);
   $('kart-podium').hidden = true;
   $('btn-kart-again').textContent = opts.mode === 'online' ? 'Race again' : 'Race again';
   katKart.start(opts).catch((err) => toast(err.message, { error: true }));

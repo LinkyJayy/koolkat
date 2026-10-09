@@ -1389,7 +1389,9 @@ export function createKatKart(els) {
         }
       }
       pickUpItems(r);
-      if (!r.player && r.item && race.now >= r.useAt && r.finished == null) useItem(r);
+      // (A computer Kat that's been slowed down uses its speed boost straight away to get out of it.)
+      const slowed = race.now < r.slowUntil && r.item && POWERUPS[r.item].self;
+      if (!r.player && r.item && (race.now >= r.useAt || slowed) && r.finished == null) useItem(r);
       if (r.finished == null && r.lap >= LAPS && !r.remote) {
         r.finished = race.now - race.startTime;
         if (r.player) race.finishedAt = race.now;
@@ -1446,22 +1448,36 @@ export function createKatKart(els) {
     if (!kind) return;
     r.item = null;
     const p = POWERUPS[kind];
+    let shookOff = null;
     if (p.self) {
       r.boostMul = p.mul;
       r.boostUntil = race.now + p.ms;
+      // A speed boost gets you out of a slow-down (Mouse, Food Bowl, even Thunder).
+      if (race.now < r.slowUntil) {
+        shookOff = r.slowKind;
+        r.slowUntil = 0;
+        r.slowMul = 1;
+        r.slowKind = null;
+      }
     } else {
       for (const other of race.racers) if (other !== r && !other.remote) hit(other, kind, r);
     }
     if (r.player) {
       if (race.online) race.pendingUses.push({ id: `${r.slot}-${Math.random().toString(36).slice(2, 10)}`, kind });
       renderItem();
-      alertText(p.self ? `${p.name}! ×${p.mul}` : `${p.name}! Everyone else slows down`, kind);
+      const text = shookOff ? `${p.name}! ×${p.mul} You shook off the ${POWERUPS[shookOff].name}!` : p.self ? `${p.name}! ×${p.mul}` : `${p.name}! Everyone else slows down`;
+      alertText(text, kind);
     }
   }
 
   function hit(r, kind, from) {
     if (r.finished != null) return;
     const p = POWERUPS[kind];
+    // Going at Double or Triple Speed: slow-downs don't touch you.
+    if (race.now < r.boostUntil) {
+      if (r.player) alertText(`${p.name} from ${from?.player ? 'you' : from?.name ?? 'someone'}, but you're too fast for it!`, r.boostMul >= 2 ? 'triple' : 'double');
+      return;
+    }
     r.slowMul = p.mul;
     r.slowUntil = race.now + p.ms;
     r.slowKind = kind;

@@ -2890,3 +2890,19 @@ img.pixel { image-rendering: pixelated; }
 .book-page-edit-pic { display: flex; align-items: center; gap: 10px; }
 .book-page-pic { display: grid; place-items: center; min-width: 120px; height: 72px; overflow: hidden; padding: 0 8px; border: 2px dashed var(--border); border-radius: 10px; background: var(--bg); color: var(--muted); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
 .book-page-pic img { height: 100%; max-width: 160px; object-fit: cover; }
+
+/* Kat Kart on a phone turned sideways: a smaller HUD so the road (and the steering buttons) can be seen. */
+@media (orientation: landscape) and (max-height: 520px) {
+  .kart-hud { padding-left: max(10px, env(safe-area-inset-left)); padding-right: max(10px, env(safe-area-inset-right)); padding-top: 6px; }
+  .kart-place { font-size: 28px; }
+  .kart-lap, .kart-time { font-size: 13px; }
+  .kart-minimap { width: 80px; height: 80px; }
+  .kart-board { top: 84px; left: max(8px, env(safe-area-inset-left)); padding: 4px 6px; font-size: 10.5px; }
+  .kart-board li { line-height: 1.3; }
+  .kart-steer { bottom: 10px; padding: 0 max(24px, env(safe-area-inset-left)) 0 max(24px, env(safe-area-inset-right)); }
+  .kart-item { bottom: 10px; width: 62px; height: 62px; }
+  .kart-item img { width: 44px; height: 44px; }
+  .kart-countdown { font-size: 72px; }
+  .kart-menu-art { width: 64px; height: 64px; }
+  .kart-now-playing { bottom: 82px; }
+}
