@@ -1,4 +1,4 @@
-import { gamepadSteer } from './input.js';
+import { gamepadSteer, onPress } from './input.js';
 
 // Kat Kart: a kart race, like Mario Kart, with KoolKat cats, over three laps
 // of the Kool Kircuit. Solo: you (always blue) race seven computer Kats, each
@@ -1038,30 +1038,31 @@ export function createKatKart(els) {
   }
 
   // Controls: hold the left or right half of the screen (or the arrow keys / A, D).
+  // Multi-touch: every finger counts; with fingers on both sides, the one put
+  // down last steers (so you can switch sides without letting go). The
+  // power-up button works with another finger still steering.
   function setTouch(e) {
     if (!race) return;
     const rect = canvas.parentElement.getBoundingClientRect();
-    let left = false;
-    let right = false;
-    for (const p of activePointers.values()) {
-      if (p < rect.left + rect.width / 2) left = true;
-      else right = true;
-    }
-    input.left = left;
-    input.right = right;
+    let newest = null;
+    for (const p of activePointers.values()) if (!newest || p.at > newest.at) newest = p;
+    const side = newest ? (newest.x < rect.left + rect.width / 2 ? 'left' : 'right') : null;
+    input.left = side === 'left';
+    input.right = side === 'right';
     e?.preventDefault?.();
   }
   const activePointers = new Map();
   const stage = canvas.parentElement;
   stage.addEventListener('pointerdown', (e) => {
     if (e.target.closest('button')) return;
-    activePointers.set(e.pointerId, e.clientX);
+    activePointers.set(e.pointerId, { x: e.clientX, at: performance.now() });
     stage.setPointerCapture?.(e.pointerId);
     setTouch(e);
   });
   stage.addEventListener('pointermove', (e) => {
-    if (!activePointers.has(e.pointerId)) return;
-    activePointers.set(e.pointerId, e.clientX);
+    const p = activePointers.get(e.pointerId);
+    if (!p) return;
+    p.x = e.clientX;
     setTouch(e);
   });
   for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
@@ -1080,7 +1081,7 @@ export function createKatKart(els) {
     e.preventDefault();
   }
   window.addEventListener('resize', () => race && size());
-  els.item?.addEventListener('click', usePlayerItem);
+  onPress(els.item, usePlayerItem);
 
 
   return {

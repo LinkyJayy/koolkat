@@ -2769,3 +2769,5 @@ img.pixel { image-rendering: pixelated; }
 .feedback-reply-body { white-space: pre-wrap; overflow-wrap: anywhere; }
 .feedback-reply-form { display: flex; gap: 6px; align-items: flex-end; margin-top: 6px; }
 .feedback-reply-input { flex: 1; min-width: 0; font: inherit; resize: vertical; }
+/* Multi-touch games: holding a finger still shouldn't open the phone's long-press menu. */
+.kart-stage, .escape-stage, .ki-stage { -webkit-touch-callout: none; }

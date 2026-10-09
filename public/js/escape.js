@@ -22,7 +22,7 @@
 //    CHASE_SECONDS. No speed power-ups, only Mice: the cop throws one and the
 //    chaser slows down until the cop is closer than normal.
 
-import { gamepadSteer } from './input.js';
+import { gamepadSteer, onPress } from './input.js';
 import { createRaceMusic, showNowPlaying } from './kart.js';
 
 const LANE = 1.25; // world units between lanes
@@ -287,26 +287,36 @@ export function createKatEscape(els) {
     }
   }
 
-  // Swipes
-  let touch = null;
-  canvas.parentElement.addEventListener('pointerdown', (e) => {
+  // Swipes, with any number of fingers: each finger swipes on its own, and
+  // one finger can keep going (left, then up, without lifting).
+  const touches = new Map(); // pointerId -> { x, y, swiped }
+  const stage = canvas.parentElement;
+  stage.addEventListener('pointerdown', (e) => {
     if (e.target.closest('button, select, label')) return;
-    touch = { x: e.clientX, y: e.clientY, done: false };
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY, swiped: false });
+    stage.setPointerCapture?.(e.pointerId);
   });
-  canvas.parentElement.addEventListener('pointermove', (e) => {
-    if (!touch || touch.done) return;
-    const dx = e.clientX - touch.x;
-    const dy = e.clientY - touch.y;
+  stage.addEventListener('pointermove', (e) => {
+    const t = touches.get(e.pointerId);
+    if (!t) return;
+    const dx = e.clientX - t.x;
+    const dy = e.clientY - t.y;
     if (Math.hypot(dx, dy) < 28) return;
-    touch.done = true;
+    t.swiped = true;
+    // Start the next swipe from here.
+    t.x = e.clientX;
+    t.y = e.clientY;
     move(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up');
   });
-  canvas.parentElement.addEventListener('pointerup', () => {
+  const lift = (e) => {
+    const t = touches.get(e.pointerId);
+    touches.delete(e.pointerId);
     // A tap starts the run.
-    if (touch && !touch.done && game?.state === 'ready') begin();
-    touch = null;
-  });
-  els.item.addEventListener('click', () => useItem());
+    if (e.type === 'pointerup' && t && !t.swiped && game?.state === 'ready') begin();
+  };
+  for (const type of ['pointerup', 'pointercancel']) stage.addEventListener(type, lift);
+  // The Mouse button works with other fingers still on the screen.
+  onPress(els.item, () => useItem());
 
   function keyDown(e) {
     const key = e.key.toLowerCase();

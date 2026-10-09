@@ -221,31 +221,60 @@ export function createKatInvaders(els) {
     g.bullets.push({ x: g.x + 12, y: PLAYER_Y - 10 });
   }
 
-  // Swipes: drag left / right to move, swipe up or tap to shoot.
-  let touch = null;
+  // Touch, with any number of fingers: drag one finger left / right to move;
+  // tap (or hold, or flick up) with another to shoot. A finger held still
+  // keeps shooting.
+  const HOLD_TO_FIRE = 0.25; // seconds still before a finger starts firing
+  const touches = new Map(); // pointerId -> { x, sx, sy, moved, shot, at, firing }
   const stage = canvas.parentElement;
   stage.addEventListener('pointerdown', (e) => {
     if (e.target.closest('button, select, label')) return;
-    touch = { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false, shot: false };
-  });
-  stage.addEventListener('pointermove', (e) => {
-    if (!touch || !game) return;
-    const scale = W / Math.max(1, canvas.getBoundingClientRect().width);
-    const dx = e.clientX - touch.x;
-    touch.x = e.clientX;
-    if (Math.abs(e.clientX - touch.sx) > 6) touch.moved = true;
-    if (game.state === 'playing') game.x = Math.max(10, Math.min(W - 18, game.x + dx * scale * 1.2));
-    // A flick upwards shoots.
-    if (!touch.shot && touch.sy - e.clientY > 30 && Math.abs(e.clientY - touch.sy) > Math.abs(e.clientX - touch.sx)) {
-      touch.shot = true;
+    stage.setPointerCapture?.(e.pointerId);
+    const others = touches.size > 0;
+    // shooter: put down while another finger moves you (it never steers, even if it wiggles).
+    const t = { x: e.clientX, sx: e.clientX, sy: e.clientY, moved: false, shot: false, at: performance.now(), firing: false, shooter: others };
+    touches.set(e.pointerId, t);
+    // Another finger is already moving you: this one shoots, straight away.
+    if (others && game?.state === 'playing') {
+      t.firing = true;
+      t.shot = true;
       fire();
     }
   });
-  stage.addEventListener('pointerup', () => {
-    if (touch && !touch.moved && !touch.shot) fire();
-    touch = null;
+  stage.addEventListener('pointermove', (e) => {
+    const t = touches.get(e.pointerId);
+    if (!t || !game) return;
+    const scale = W / Math.max(1, canvas.getBoundingClientRect().width);
+    const dx = e.clientX - t.x;
+    t.x = e.clientX;
+    // A finger resting (and firing) can still start moving you.
+    if (!t.shooter && !t.moved && Math.abs(e.clientX - t.sx) > 6) {
+      t.moved = true;
+      t.firing = false;
+    }
+    if (t.moved && game.state === 'playing') game.x = Math.max(10, Math.min(W - 18, game.x + dx * scale * 1.2));
+    // A flick upwards shoots.
+    if (!t.shot && t.sy - e.clientY > 30 && Math.abs(e.clientY - t.sy) > Math.abs(e.clientX - t.sx)) {
+      t.shot = true;
+      fire();
+    }
   });
-  stage.addEventListener('pointercancel', () => (touch = null));
+  const lift = (e) => {
+    const t = touches.get(e.pointerId);
+    touches.delete(e.pointerId);
+    // A quick tap shoots (and the first one starts the game).
+    if (e.type === 'pointerup' && t && !t.moved && !t.shot) fire();
+  };
+  for (const type of ['pointerup', 'pointercancel']) stage.addEventListener(type, lift);
+  /** Fingers held still (or put down while another moves you) keep shooting. */
+  function touchFiring() {
+    const now = performance.now();
+    for (const t of touches.values()) {
+      if (!t.moved && !t.firing && now - t.at > HOLD_TO_FIRE * 1000) t.firing = true;
+      if (t.firing) return true;
+    }
+    return false;
+  }
 
   const KEYS = { arrowleft: 'left', a: 'left', arrowright: 'right', d: 'right', ' ': 'fire', w: 'fire', arrowup: 'fire', enter: 'fire' };
   function keyDown(e) {
@@ -283,7 +312,7 @@ export function createKatInvaders(els) {
     // Move
     const dir = (g.held.right ? 1 : 0) - (g.held.left ? 1 : 0) || g.padSteer || 0;
     g.x = Math.max(10, Math.min(W - 18, g.x + dir * MOVE_SPEED * dt));
-    if (g.held.fire && t >= g.fireAt) fire();
+    if ((g.held.fire || touchFiring()) && t >= g.fireAt) fire();
     // Bullets
     for (const b of g.bullets) b.y -= BULLET_SPEED * dt;
     g.bullets = g.bullets.filter((b) => b.y > -8 && !b.hit);

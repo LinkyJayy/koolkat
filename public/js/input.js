@@ -251,3 +251,25 @@ export function gamepadSteer() {
   }
   return steer;
 }
+
+/**
+ * A game button (a power-up, a Mouse) that works the moment a finger lands
+ * on it, even while other fingers are holding the screen (phones often don't
+ * send a "click" then). Keyboard Enter / Space and mouse clicks still work.
+ */
+export function onPress(button, action) {
+  if (!button) return;
+  let pressedAt = 0;
+  button.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation(); // don't steer / swipe / shoot with this finger
+    pressedAt = performance.now();
+    action();
+  });
+  button.addEventListener('click', () => {
+    // Already handled on pointerdown (the click that follows a tap).
+    if (performance.now() - pressedAt < 800) return;
+    action();
+  });
+}
