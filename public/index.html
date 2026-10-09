@@ -252,9 +252,14 @@
     <div class="kart-stage" id="kart-stage">
       <canvas id="kart-canvas" width="256" height="400" aria-label="Kat Kart race"></canvas>
       <div class="kart-hud">
-        <button type="button" class="icon-btn" id="btn-kart-quit" aria-label="Quit race">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12Z"/></svg>
-        </button>
+        <div class="kart-hud-buttons">
+          <button type="button" class="icon-btn" id="btn-kart-quit" aria-label="Quit race">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12Z"/></svg>
+          </button>
+          <button type="button" class="icon-btn" id="btn-kart-rotate" aria-label="Turn sideways (landscape)" title="Turn sideways (landscape)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16.5 2.5 15 4l2 2h-3a7 7 0 0 0-7 7v1h2v-1a5 5 0 0 1 5-5h3l-2 2 1.5 1.5L21 7l-4.5-4.5ZM3 15v6a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-6a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1Zm2 1h10v4H5v-4Z"/></svg>
+          </button>
+        </div>
         <div class="kart-stats">
           <strong class="kart-place" id="kart-place">8th</strong>
           <span class="kart-lap" id="kart-lap">Lap 1/3</span>
@@ -1126,6 +1131,7 @@
       <label class="kart-song-pick">🎵 Music
         <select id="kart-song-solo" aria-label="Race music"></select>
       </label>
+      <label class="kart-song-pick kart-landscape-pick"><input type="checkbox" id="kart-landscape"> 📱 Race sideways (landscape, full screen)</label>
       <button type="button" class="btn primary wide" id="btn-kart-solo">🤖 Solo vs bots · <span id="kart-level">Level 1</span></button>
       <p class="fineprint">Win a race and the bots get faster. Lose and they get easier.</p>
       <p class="kart-menu-or">Race your friends</p>

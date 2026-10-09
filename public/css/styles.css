@@ -2906,3 +2906,11 @@ img.pixel { image-rendering: pixelated; }
   .kart-menu-art { width: 64px; height: 64px; }
   .kart-now-playing { bottom: 82px; }
 }
+.kart-hud-buttons { display: flex; flex-direction: column; gap: 6px; }
+#btn-kart-rotate.on { background: #ffd21a; color: #000; }
+.kart-landscape-pick { font-size: 14px; }
+.kart-landscape-pick input { width: 18px; height: 18px; }
+@media (orientation: landscape) and (max-height: 520px) {
+  .kart-hud-buttons { flex-direction: row; }
+  .kart-hud-buttons .icon-btn { width: 36px; height: 36px; }
+}

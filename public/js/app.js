@@ -212,7 +212,7 @@ function show(name) {
   if (state.screen === 'kart' && name !== 'kart') {
     katKart.stop();
     leaveKartRoom();
-    kartRotation(false);
+    if (kartSideways) kartLandscape(false);
   }
   for (const s of document.querySelectorAll('.screen')) s.hidden = s.id !== `screen-${name}`;
   state.screen = name;
@@ -7279,25 +7279,84 @@ const kartLevel = () => Math.max(1, Number(readJson(KART_LEVEL)) || 1);
 const kartOnline = { code: null, room: null, timer: null, mode: 'solo' };
 
 /**
- * The installed app stays upright (portrait), but Kat Kart can be raced with
- * the phone turned sideways: let it turn while racing, and back after.
- * (In a browser tab it turns anyway; this only matters for the installed app.)
+ * Racing sideways. The installed app stays upright (portrait), and Android
+ * only lets a web app turn the screen when it's full screen, so: full screen,
+ * then lock to landscape. This has to start from a tap (Solo, Make a race,
+ * Join, Race again or the 🔄 button). Leaving Kat Kart puts everything back.
  */
-function kartRotation(free) {
+const KART_LANDSCAPE_KEY = 'koolkat.katKart.landscape';
+const kartLandscapeWanted = () => {
   try {
-    if (free) screen.orientation?.lock?.('any')?.catch?.(() => {});
-    else screen.orientation?.unlock?.();
+    return localStorage.getItem(KART_LANDSCAPE_KEY) === '1';
   } catch {
-    // Not supported here: the phone decides.
+    return false;
   }
+};
+let kartSideways = false;
+async function kartLandscape(on) {
+  if (on) {
+    kartSideways = true;
+    try {
+      if (!document.fullscreenElement) await document.documentElement.requestFullscreen?.({ navigationUI: 'hide' });
+    } catch {
+      // Some browsers don't do full screen; try the lock anyway.
+    }
+    try {
+      await screen.orientation?.lock?.('landscape');
+    } catch {
+      if (kartSideways && state.screen === 'kart') toast('📱 Turn your phone sideways to race in landscape');
+    }
+  } else {
+    kartSideways = false;
+    try {
+      screen.orientation?.unlock?.();
+    } catch {
+      // Nothing was locked.
+    }
+    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+  }
+  $('btn-kart-rotate').classList.toggle('on', kartSideways);
 }
+$('kart-landscape').checked = kartLandscapeWanted();
+$('kart-landscape').addEventListener('change', (e) => {
+  try {
+    localStorage.setItem(KART_LANDSCAPE_KEY, e.target.checked ? '1' : '0');
+  } catch {
+    // Remembering it is only a convenience.
+  }
+});
+// Tapping Solo, Make a race, Join or Race again: go sideways first, if that's what you picked.
+for (const id of ['btn-kart-solo', 'btn-kart-create', 'btn-kart-join', 'btn-kart-again']) {
+  $(id).addEventListener('click', () => kartLandscapeWanted() && !kartSideways && kartLandscape(true));
+}
+$('btn-kart-rotate').addEventListener('click', () => {
+  const on = !kartSideways;
+  kartLandscape(on);
+  $('kart-landscape').checked = on;
+  try {
+    localStorage.setItem(KART_LANDSCAPE_KEY, on ? '1' : '0');
+  } catch {
+    // Remembering it is only a convenience.
+  }
+});
+// Full screen ended some other way (the back gesture): not sideways any more.
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement && kartSideways) {
+    kartSideways = false;
+    try {
+      screen.orientation?.unlock?.();
+    } catch {
+      // Nothing was locked.
+    }
+    $('btn-kart-rotate').classList.remove('on');
+  }
+});
 
 function openKart(opts) {
   // One thing at a time: the race has its own music.
   if (!audioEl.paused) audioEl.pause();
   kartOnline.mode = opts.mode;
   show('kart');
-  kartRotation(true);
   $('kart-podium').hidden = true;
   $('btn-kart-again').textContent = opts.mode === 'online' ? 'Race again' : 'Race again';
   katKart.start(opts).catch((err) => toast(err.message, { error: true }));
@@ -7520,6 +7579,10 @@ $('btn-kart-share').addEventListener('click', async () => {
 $('dialog-kart').addEventListener('close', () => {
   // Closed the lobby without starting: leave the race.
   if (!kartOnline.racing) leaveKartRoom();
+  // (And if it went sideways for the race that didn't happen, put it back.)
+  setTimeout(() => {
+    if (kartSideways && state.screen !== 'kart') kartLandscape(false);
+  }, 0);
 });
 
 function leaveKartRoom() {

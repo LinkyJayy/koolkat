@@ -1481,6 +1481,9 @@ export function createKatKart(els) {
     r.slowMul = p.mul;
     r.slowUntil = race.now + p.ms;
     r.slowKind = kind;
+    // It bites straight away (the kart doesn't just coast down to the slower speed).
+    r.speed *= p.mul;
+    r.spinUntil = race.now + 600;
     if (r.player) {
       if (kind === 'thunder') race.flashUntil = race.now + 250;
       alertText(`${p.name} from ${from?.player ? 'you' : from?.name ?? 'someone'}!`, kind);
@@ -1698,7 +1701,14 @@ export function createKatKart(els) {
       const sy = horizon + (lift * focal) / dz;
       if (hidden(sx, sy, dz)) continue;
       const bob = r.speed > 0.5 ? Math.sin(race.now / 60 + r.wobble) * sizePx * 0.015 : 0;
-      ctx.drawImage(r.sprite, sx - sizePx / 2, sy - sizePx * 0.92 + bob, sizePx, sizePx);
+      if (race.now < (r.spinUntil ?? 0)) {
+        // Just got hit: a quick wobble, so you can see it land.
+        ctx.save();
+        ctx.translate(sx, sy - sizePx * 0.42);
+        ctx.rotate(Math.sin(race.now / 40) * 0.35);
+        ctx.drawImage(r.sprite, -sizePx / 2, -sizePx * 0.5 + bob, sizePx, sizePx);
+        ctx.restore();
+      } else ctx.drawImage(r.sprite, sx - sizePx / 2, sy - sizePx * 0.92 + bob, sizePx, sizePx);
       if ((r.boost > 0 || race.now < r.boostUntil) && dz < 200) {
         ctx.fillStyle = 'rgba(255,170,0,0.8)';
         ctx.fillRect(sx - sizePx * 0.15, sy - sizePx * 0.05, sizePx * 0.3, sizePx * 0.12);
