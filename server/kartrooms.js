@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { fail } from './http.js';
 import { WIN_BOLTS } from './bolts.js';
+import { placeGems } from '../public/js/rewards.js';
 
 // Kat Kart online: race your friends. One person makes a race and shares its
 // 4-letter code; up to 8 people join, and the host starts it. While racing,
@@ -25,7 +26,7 @@ const num = (v, min, max) => {
   return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : null;
 };
 
-export function registerKartRoutes({ api, auth, wrap, clock, publicUser, db, bolts }) {
+export function registerKartRoutes({ api, auth, wrap, clock, publicUser, db, bolts, gems }) {
   const rooms = new Map(); // code -> room
   const roomOf = new Map(); // userId -> code
   const userById = db.prepare('SELECT * FROM users WHERE id = ?');
@@ -72,6 +73,8 @@ export function registerKartRoutes({ api, auth, wrap, clock, publicUser, db, bol
         room.results = results(room);
         // The winner gets bolts.
         for (const r of room.results) if (r.place === 1 && r.time != null) bolts?.award(r.id, 'kart', 'win', WIN_BOLTS, `kart:${room.code}:${room.createdAt}`);
+        // Gems for everyone who finished, by place.
+        for (const r of room.results) if (r.time != null) gems?.award(r.id, 'kart', 'finish', placeGems(r.place, room.results.length), `kart:${room.code}:${room.createdAt}`);
       }
     }
   }

@@ -28,6 +28,7 @@ import { playNotification, setSoundsOn, soundsOn } from './sounds.js';
 import { createKatWordle } from './wordle.js';
 import { focusFirst, initInput } from './input.js';
 import { createKatEscape } from './escape.js';
+import { BOLTS_PER_GEM, chaseGems, escapeGems, invaderGems, placeGems, wordleGems } from './rewards.js';
 import { DIFFICULTIES as KI_DIFFICULTIES, LIVES as KI_LIVES, createKatInvaders } from './invaders.js';
 import { choose as ccChoose, draw as ccDraw, newDeck as ccNewDeck, ranked as ccRanked } from './circle-rules.js';
 import { BASE_TEAMS, TEAMS as CC_TEAMS, TEAM_COLORS as CC_TEAM_COLORS, TEAM_NAMES as CC_TEAM_NAMES, TURNS as CC_TURNS, circleIcon as ccCircleIcon, createCircleTable, describeEvent as ccDescribe, teamIcon as ccTeamIcon } from './circles.js';
@@ -5316,44 +5317,64 @@ const readJson = (key) => {
   }
 };
 
-// ---------- Bolts ⚡: the Playables currency ----------
-// Win any game: +100. KatEscape: keep every bolt you collect. Online games
-// pay out on the server; Solo and Practice games tell it here.
-let boltBalance = null;
-function showBolts(n) {
-  boltBalance = n;
-  $('bolts-balance').textContent = n.toLocaleString();
-}
-async function refreshBolts() {
-  try {
-    const { bolts } = await api('GET', '/bolts');
-    const before = boltBalance;
-    showBolts(bolts);
-    return before == null ? 0 : bolts - before;
-  } catch {
-    return 0;
+// ---------- Bolts ⚡ and gems 💎: the Playables currencies ----------
+// Win any game: +100 bolts. KatEscape: keep every bolt you collect. Every
+// game you finish: 1 to 10 gems, the better you did. 1 gem = 100 bolts.
+// Online games pay out on the server; Solo and Practice games tell it here.
+const wallet = { bolts: null, gems: null };
+function showWallet({ bolts, gems }) {
+  if (bolts != null) {
+    wallet.bolts = bolts;
+    $('bolts-balance').textContent = bolts.toLocaleString();
+  }
+  if (gems != null) {
+    wallet.gems = gems;
+    $('gems-balance').textContent = gems.toLocaleString();
   }
 }
-async function earnBolts(game, reason, extra = {}) {
+/** Fresh balances; returns how much each went up by. */
+async function refreshWallet() {
   try {
-    const { earned, bolts } = await api('POST', '/bolts/earn', { game, reason, ...extra });
-    showBolts(bolts);
-    if (earned) toast(`+${earned.toLocaleString()} ⚡ bolts${reason === 'win' ? ' for winning!' : ' from your run!'}`);
+    const before = { ...wallet };
+    const now = await api('GET', '/bolts');
+    showWallet(now);
+    if (shopState) Object.assign(shopState, now);
+    return { bolts: before.bolts == null ? 0 : now.bolts - before.bolts, gems: before.gems == null ? 0 : now.gems - before.gems };
   } catch {
-    // Bolts are a bonus; the game still counts.
+    return { bolts: 0, gems: 0 };
   }
 }
+function toastRewards({ bolts = 0, gems = 0 }, why = '') {
+  const parts = [bolts > 0 && `+${bolts.toLocaleString()} ⚡ bolts`, gems > 0 && `+${gems} 💎 ${gems === 1 ? 'gem' : 'gems'}`].filter(Boolean);
+  if (parts.length) toast(`${parts.join(' · ')}${why}`);
+}
+/**
+ * A Solo or Practice game finished: { win } (+100 bolts), { runBolts } (KatEscape's
+ * collected bolts), { gems } (1 to 10, from how well you did).
+ */
+async function earnRewards(game, { win = false, runBolts = 0, gems = 0 } = {}) {
+  const got = { bolts: 0, gems: 0 };
+  const calls = [];
+  if (win) calls.push(api('POST', '/bolts/earn', { game, reason: 'win' }).then((r) => (got.bolts += r.earned)));
+  if (runBolts > 0) calls.push(api('POST', '/bolts/earn', { game, reason: 'run', bolts: runBolts }).then((r) => (got.bolts += r.earned)));
+  if (gems > 0) calls.push(api('POST', '/gems/earn', { game, gems }).then((r) => (got.gems += r.earned)));
+  await Promise.allSettled(calls); // rewards are a bonus; the game still counts
+  await refreshWallet();
+  toastRewards(got, win ? ' for winning!' : '');
+}
+
 // ---------- The Bolt Shop: team colours, Unlimited and the Bolt Badge ----------
-const SHOP_ART = { 'bolt-badge': 'icons/bolt-badge.png', unlimited: 'icons/kool-badge.png' };
+const SHOP_ART = { 'bolt-badge': 'icons/bolt-badge.png', unlimited: 'icons/kool-badge.png', 'unlimited-trial': 'icons/kool-badge.png' };
 const SHOP_INFO = {
   'bolt-badge': 'A ⚡ next to your name, for everyone to see.',
+  'unlimited-trial': 'Try everything in KoolKat Unlimited for 30 days (all the team colours too).',
   unlimited: 'Everything in KoolKat Unlimited, for as long as you keep it (all the team colours too).',
 };
 let shopState = null;
 function applyShop(shop) {
   shopState = shop;
   usableTeams = new Set(shop.teams);
-  showBolts(shop.bolts);
+  showWallet({ bolts: shop.bolts, gems: shop.gems });
 }
 /** What you have (bolts and team colours). Quietly keeps the old if it can't. */
 async function loadShop() {
@@ -5382,10 +5403,11 @@ function shopCard(item) {
     el('img', { src: team ? ccTeamIcon(team) : SHOP_ART[item.id], alt: '' })
   );
   if (team) card.style.setProperty('--shop-color', CC_TEAM_COLORS[team]);
-  const text = el('div', {}, el('strong', { text: item.name }), el('span', { class: 'fineprint', text: item.kind === 'team' ? `${item.price.toLocaleString()} ⚡` : `${SHOP_INFO[item.id]} ${item.price.toLocaleString()} ⚡` }));
+  const ends = item.kind === 'trial' && item.owned && shopState.trialUntil ? ` Ends ${new Date(shopState.trialUntil).toLocaleDateString()}.` : '';
+  const text = el('div', {}, el('strong', { text: item.name }), el('span', { class: 'fineprint', text: item.kind === 'team' ? `${item.price.toLocaleString()} ⚡` : `${SHOP_INFO[item.id]}${ends} ${item.price.toLocaleString()} ⚡` }));
   let action;
   if (item.owned) action = el('button', { type: 'button', class: 'btn small', text: `Sell · +${item.paid.toLocaleString()} ⚡`, onclick: () => shopTrade('sell', item) });
-  else if (item.included) action = el('button', { type: 'button', class: 'btn small', text: item.kind === 'unlimited' ? '✓ You have it' : '✓ With Unlimited', disabled: true });
+  else if (item.included) action = el('button', { type: 'button', class: 'btn small', text: item.kind === 'team' ? '✓ With Unlimited' : '✓ You have Unlimited', disabled: true });
   else {
     const short = item.price - shopState.bolts;
     action = el('button', { type: 'button', class: `btn small${short > 0 ? '' : ' primary'}`, text: short > 0 ? `Need ${short.toLocaleString()} more` : `Buy · ${item.price.toLocaleString()} ⚡`, onclick: () => shopTrade('buy', item) });
@@ -5396,6 +5418,8 @@ function shopCard(item) {
 }
 function renderShop() {
   $('shop-balance').textContent = shopState.bolts.toLocaleString();
+  $('shop-gems').textContent = (shopState.gems ?? 0).toLocaleString();
+  updateSwap();
   $('shop-teams').replaceChildren(...shopState.items.filter((i) => i.kind === 'team').map(shopCard));
   $('shop-extras').replaceChildren(...shopState.items.filter((i) => i.kind !== 'team').map(shopCard));
 }
@@ -5417,10 +5441,35 @@ async function shopTrade(action, item) {
   }
 }
 
-/** An online game ended: the server paid any winners, so check for new bolts. */
+// Swap gems and bolts: 1 gem = 100 bolts, either way.
+const swapCount = () => Math.max(1, Math.floor(Number($('swap-gems').value) || 1));
+function updateSwap() {
+  const n = swapCount();
+  $('swap-worth').textContent = `= ${(n * BOLTS_PER_GEM).toLocaleString()} bolts`;
+  $('btn-swap-to-gems').disabled = (shopState?.bolts ?? 0) < n * BOLTS_PER_GEM;
+  $('btn-swap-to-bolts').disabled = (shopState?.gems ?? 0) < n;
+}
+$('swap-gems').addEventListener('input', updateSwap);
+async function swap(to) {
+  const n = swapCount();
+  const ask = to === 'gems' ? `Swap ${(n * BOLTS_PER_GEM).toLocaleString()} bolts for ${n} 💎?` : `Swap ${n} 💎 for ${(n * BOLTS_PER_GEM).toLocaleString()} bolts?`;
+  if (!(await askConfirm(ask, { ok: 'Swap' }))) return;
+  try {
+    const now = await api('POST', '/gems/convert', { to, gems: n });
+    Object.assign(shopState, now);
+    showWallet(now);
+    renderShop();
+    toast(to === 'gems' ? `+${n} 💎` : `+${(n * BOLTS_PER_GEM).toLocaleString()} ⚡`);
+  } catch (err) {
+    toast(err.message, { error: true });
+  }
+}
+$('btn-swap-to-gems').addEventListener('click', () => swap('gems'));
+$('btn-swap-to-bolts').addEventListener('click', () => swap('bolts'));
+
+/** An online game ended: the server paid out (bolts for winning, gems for everyone), so check. */
 async function checkBolts() {
-  const got = await refreshBolts();
-  if (got > 0) toast(`+${got.toLocaleString()} ⚡ bolts for winning!`);
+  toastRewards(await refreshWallet());
 }
 
 function openPlayables() {
@@ -5525,8 +5574,8 @@ const katEscape = createKatEscape({
       final: `${score.toLocaleString()} points`,
       detail: `${distance.toLocaleString()} m · ⚡ ${bolts.toLocaleString()} bolts · ${newBest ? '🏆 New best!' : `Best: ${best.toLocaleString()}`}`,
     });
-    // Every bolt you collected is yours.
-    earnBolts('escape', 'run', { bolts });
+    // Every bolt you collected is yours, and gems for how far you ran.
+    earnRewards('escape', { runBolts: bolts, gems: escapeGems(distance) });
   },
   // Caught: one revive a game.
   onDown: ({ reason, score, online, mode }) => {
@@ -5560,9 +5609,10 @@ const katEscape = createKatEscape({
   },
   onWaiting: () => showEscapeOver({ title: "🚓 You're out!", detail: 'Waiting for the results…' }),
   onResults: (r) => {
-    earnBolts('escape', 'run', { bolts: r.bolts ?? 0 });
-    if (r.mode === 'practice' && r.players.find((p) => p.me)?.place === 1) setTimeout(() => earnBolts('escape', 'win'), 400);
-    else if (r.mode !== 'practice') setTimeout(checkBolts, 1200);
+    // Your bolts and gems (online, the server pays the winner's bolts).
+    const gems = r.mode === 'chase' ? chaseGems(r.winner === r.role) : escapeGems(r.distance);
+    const practiceWin = r.mode === 'practice' && r.players.find((p) => p.me)?.place === 1;
+    earnRewards('escape', { runBolts: r.bolts ?? 0, gems, win: practiceWin }).then(() => r.mode !== 'practice' && setTimeout(checkBolts, 1200));
     if (r.mode === 'chase') {
       const won = r.winner === r.role;
       const cop = r.role === 'cop';
@@ -6275,7 +6325,7 @@ function showCirclesResults(room) {
   focusFirst();
   ccMusic.pause();
   if (room.practice) {
-    if (me?.place === 1) earnBolts('circles', 'win');
+    earnRewards('circles', { win: me?.place === 1, gems: placeGems(me?.place ?? room.results.length, room.results.length) });
     return; // only real games count towards your record
   }
   checkBolts();
@@ -6401,7 +6451,7 @@ const katInvaders = createKatInvaders({
         detail: r.newBest ? '🏆 New best!' : `Best: ${r.best.toLocaleString()}`,
         img: r.survived ? kiTeamIcon(ki.team) : 'icons/invaders/mouse.png',
       });
-      if (r.survived) earnBolts('invaders', 'win');
+      earnRewards('invaders', { win: r.survived, gems: invaderGems(r.score) });
       return;
     }
     const winners = players.filter((p) => p.place === 1);
@@ -6413,7 +6463,7 @@ const katInvaders = createKatInvaders({
       img: kiTeamIcon(winners[0]?.team ?? ki.team),
     });
     if (r.mode === 'practice') {
-      if (me?.place === 1 && r.score > 0) earnBolts('invaders', 'win');
+      earnRewards('invaders', { win: me?.place === 1 && r.score > 0, gems: placeGems(me?.place ?? players.length, players.length) });
     } else {
       clearInterval(ki.timer);
       checkBolts();
@@ -6625,7 +6675,7 @@ function leaveInvadersRoom() {
 }
 
 // Kat Wordle
-const katWordle = createKatWordle({ board: $('kw-board'), keyboard: $('kw-keyboard'), message: $('kw-message'), result: $('kw-result'), hints: $('kw-hints'), onFinish: ({ won }) => won && earnBolts('wordle', 'win') });
+const katWordle = createKatWordle({ board: $('kw-board'), keyboard: $('kw-keyboard'), message: $('kw-message'), result: $('kw-result'), hints: $('kw-hints'), onFinish: ({ won, guesses }) => earnRewards('wordle', { win: won, gems: wordleGems(won, guesses) }) });
 function openWordle() {
   show('wordle');
   katWordle.start();
@@ -6855,7 +6905,7 @@ function leaveKartRoom() {
 /** The podium: 2nd, 1st and 3rd on their steps, then everyone's times. */
 function showPodium(results, info = {}) {
   const me = results.find((r) => r.player);
-  if (info.mode === 'solo' && me?.place === 1) earnBolts('kart', 'win');
+  if (info.mode === 'solo') earnRewards('kart', { win: me?.place === 1, gems: placeGems(me?.place ?? results.length, results.length) });
   else if (info.mode === 'online') checkBolts();
   // Solo: the bots adapt. Win and they get faster; lose and they get easier.
   const levelLine = $('podium-level');

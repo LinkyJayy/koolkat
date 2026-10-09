@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { fail } from './http.js';
 import { WIN_BOLTS } from './bolts.js';
+import { placeGems } from '../public/js/rewards.js';
 import { KART_SONGS } from './kartrooms.js';
 import { BASE_TEAMS, TEAM_NAMES } from '../public/js/teams.js';
 import { TEAMS, canPlay, choose, draw, newDeck, nextAfter, ranked } from '../public/js/circle-rules.js';
@@ -24,7 +25,7 @@ const randomInt = (n) => crypto.randomInt(n);
 
 // ---------- online ----------
 
-export function registerCircleRoutes({ api, auth, wrap, clock, publicUser, db, bolts, shop }) {
+export function registerCircleRoutes({ api, auth, wrap, clock, publicUser, db, bolts, gems, shop }) {
   const rooms = new Map();
   const roomOf = new Map();
   const userById = db.prepare('SELECT * FROM users WHERE id = ?');
@@ -75,6 +76,7 @@ export function registerCircleRoutes({ api, auth, wrap, clock, publicUser, db, b
     room.turnId = null;
     room.results = ranked(room.players);
     for (const r of room.results) if (r.place === 1 && !r.gone) bolts?.award(r.id, 'circles', 'win', WIN_BOLTS, `circles:${room.code}:${room.startAt}`);
+    for (const r of room.results) if (!r.gone) gems?.award(r.id, 'circles', 'finish', placeGems(r.place, room.results.length), `circles:${room.code}:${room.startAt}`);
     pushEvent(room, { type: 'done' }, now);
   }
 

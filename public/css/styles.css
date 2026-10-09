@@ -2702,3 +2702,11 @@ img.pixel { image-rendering: pixelated; }
 .cc-team-pick { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
 .cc-team-btn.locked { opacity: 0.7; border-style: dashed; }
 .cc-team-btn span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; font-size: 10px; }
+
+/* Gems 💎 */
+.gems-balance strong { color: #4fd6ff !important; }
+.shop-wallet { display: inline-flex; gap: 12px; }
+.shop-swap { display: grid; gap: 8px; padding: 12px; border-radius: 14px; background: var(--surface); }
+.shop-swap-amount { display: flex; align-items: center; gap: 8px; font-weight: 800; }
+.shop-swap-amount input { width: 7em; }
+.shop-swap .row { display: flex; flex-wrap: wrap; gap: 8px; }

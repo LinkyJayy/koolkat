@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { openDatabase } from '../server/db.js';
 import { createApp } from '../server/app.js';
 import { runBolts } from '../server/bolts.js';
+import { escapeGems, invaderGems, placeGems, wordleGems } from '../public/js/rewards.js';
 import { GAME_SECONDS, mousePos, mouseSchedule } from '../public/js/invaders.js';
 import { createIdentity, deriveKeysFromPassword } from '../public/js/crypto.js';
 
@@ -61,6 +62,16 @@ describe('Bolts', () => {
   });
 });
 
+describe('Gems for how well you did', () => {
+  test('1 to 10', () => {
+    assert.deepEqual([1, 2, 3, 4].map((p) => placeGems(p, 4)), [10, 7, 4, 1]);
+    assert.equal(placeGems(1, 1), 10);
+    assert.deepEqual([wordleGems(true, 1), wordleGems(true, 6), wordleGems(false, 6)], [10, 3, 1]);
+    assert.deepEqual([escapeGems(0), escapeGems(1300), escapeGems(99999)], [1, 4, 10]);
+    assert.deepEqual([invaderGems(0), invaderGems(950), invaderGems(1e6)], [1, 4, 10]);
+  });
+});
+
 describe('Kat Invaders', () => {
   test('the same seed gives everyone the same mice, worth 10 to 50', () => {
     const a = mouseSchedule(42);
@@ -99,5 +110,8 @@ describe('Kat Invaders', () => {
     assert.deepEqual(room.results.map((r) => [r.name, r.place, r.score]), [['kib', 1, 300], ['kia', 2, 250]]);
     assert.equal((await call('GET', '/bolts', ben.token)).body.bolts, 100, 'the winner got 100 bolts');
     assert.equal((await call('GET', '/bolts', ann.token)).body.bolts, 0);
+    // Gems for everyone, by place.
+    assert.equal((await call('GET', '/bolts', ben.token)).body.gems, 10);
+    assert.equal((await call('GET', '/bolts', ann.token)).body.gems, 1);
   });
 });

@@ -59,6 +59,8 @@ const PRECACHE = [
   'icons/invaders/team-purple.png',
   'icons/invaders/mouse.png',
   'js/teams.js',
+  'js/rewards.js',
+  'icons/gem.png',
   'icons/bolt-badge.png',
   'icons/circles/team-orange.png',
   'icons/circles/orange.png',

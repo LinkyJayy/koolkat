@@ -93,7 +93,8 @@ export function createKatInvaders(els) {
     if (assets) return assets;
     const teams = ALL_TEAMS;
     const imgs = await Promise.all([...teams.map((t) => `icons/invaders/team-${t}.png`), 'icons/invaders/mouse.png'].map(loadImage));
-    assets = { cats: Object.fromEntries(teams.map((t, i) => [t, imgs[i]])), mouse: imgs[5] };
+    // The mouse is loaded last, after one cat for every team.
+    assets = { cats: Object.fromEntries(teams.map((t, i) => [t, imgs[i]])), mouse: imgs.at(-1) };
     return assets;
   }
 

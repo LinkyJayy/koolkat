@@ -24,8 +24,9 @@ export const isAdmin = (username, admins = adminUsernames()) =>
  * comes from admins: a gift, an approved request, or a redeemed code.
  * Admins always have it. 0 = KoolKat Free.
  */
-// Bought with bolts in the Bolt Shop: Unlimited for as long as you keep it.
-export const unlimitedUntil = (u, admins = adminUsernames()) => (isAdmin(u.username, admins) || u.bolt_unlimited ? FOREVER : u.plan_until ?? 0);
+// Bought with bolts in the Bolt Shop: Lifetime (for as long as you keep it), or a 30-day trial.
+export const unlimitedUntil = (u, admins = adminUsernames()) =>
+  isAdmin(u.username, admins) || u.bolt_unlimited ? FOREVER : Math.max(u.plan_until ?? 0, u.bolt_trial_until ?? 0);
 export const hasUnlimited = (u, now, admins) => unlimitedUntil(u, admins) > now;
 
 // ---------- birthdays ----------

@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { fail } from './http.js';
 import { WIN_BOLTS } from './bolts.js';
+import { placeGems } from '../public/js/rewards.js';
 import { KART_SONGS } from './kartrooms.js';
 import { ALL_TEAMS, BASE_TEAMS, TEAM_NAMES } from '../public/js/teams.js';
 
@@ -23,7 +24,7 @@ const num = (v, min, max) => {
   return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : null;
 };
 
-export function registerInvaderRoutes({ api, auth, wrap, clock, publicUser, db, bolts, shop }) {
+export function registerInvaderRoutes({ api, auth, wrap, clock, publicUser, db, bolts, gems, shop }) {
   const rooms = new Map();
   const roomOf = new Map();
   const userById = db.prepare('SELECT * FROM users WHERE id = ?');
@@ -69,6 +70,7 @@ export function registerInvaderRoutes({ api, auth, wrap, clock, publicUser, db, 
       .sort((a, b) => (b.st?.score ?? 0) - (a.st?.score ?? 0))
       .map((p, i, all) => ({ place: all.findIndex((q) => (q.st?.score ?? 0) === (p.st?.score ?? 0)) + 1, id: p.id, name: p.name, team: p.team, score: p.st?.score ?? 0, gone: p.gone }));
     for (const r of room.results) if (r.place === 1 && !r.gone && r.score > 0) bolts?.award(r.id, 'invaders', 'win', WIN_BOLTS, `invaders:${room.code}:${room.startAt}`);
+    for (const r of room.results) if (!r.gone) gems?.award(r.id, 'invaders', 'finish', placeGems(r.place, room.results.length), `invaders:${room.code}:${room.startAt}`);
   }
 
   const describe = (room, now, withStates = false) => ({
