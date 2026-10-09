@@ -2639,3 +2639,40 @@ img.pixel { image-rendering: pixelated; }
 .cc-bots { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 4px 0 10px; font-weight: 800; }
 .cc-bot-btn { width: 44px; height: 40px; border: 3px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); font: inherit; font-weight: 900; cursor: pointer; }
 .cc-bot-btn[aria-checked="true"] { border-color: var(--brand); background: var(--brand-soft); }
+
+/* Bolts ⚡ */
+.bolts-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 0 16px 12px; padding: 10px 14px; border-radius: 14px; background: linear-gradient(135deg, #1b1446, #2f2380); color: #fff; }
+.bolts-bar .fineprint { color: rgba(255, 255, 255, 0.8); }
+.bolts-balance { display: inline-flex; align-items: center; gap: 6px; font-weight: 800; }
+.bolts-balance strong { font-size: 22px; color: #ffd400; font-variant-numeric: tabular-nums; }
+.bolts-balance img { width: 26px; height: 26px; }
+
+/* Kat Invaders */
+.invaders-card { background: linear-gradient(160deg, #3a2a8f, #120c2b); }
+.invaders-card img { object-fit: contain; padding: 8%; image-rendering: pixelated; }
+.invaders-screen { background: #000; color: #fff; }
+@media (min-width: 760px) { .invaders-screen { left: 0 !important; right: 0 !important; } }
+.ki-stage { position: relative; flex: 1; display: grid; place-items: center; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; background: #120c2b; }
+#ki-canvas { height: 100%; max-width: 100%; aspect-ratio: 180 / 320; object-fit: contain; image-rendering: pixelated; }
+.ki-hud { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: flex-start; gap: 10px; padding: calc(10px + var(--safe-top)) 10px 0; pointer-events: none; }
+.ki-hud > * { pointer-events: auto; }
+.ki-time { margin: 6px auto 0; padding: 2px 10px; border-radius: 10px; background: rgba(0, 0, 0, 0.5); font-weight: 900; font-size: 18px; font-variant-numeric: tabular-nums; }
+.ki-stats { display: flex; flex-direction: column; align-items: flex-end; font-weight: 900; text-shadow: 0 2px 0 #000; }
+.ki-stats strong { font-size: 28px; font-variant-numeric: tabular-nums; -webkit-text-stroke: 1px #000; }
+.ki-stats span { font-size: 13px; letter-spacing: 1px; }
+.ki-board { position: absolute; left: 10px; top: calc(64px + var(--safe-top)); list-style: none; margin: 0; padding: 6px 8px; border-radius: 10px; background: rgba(0, 0, 0, 0.5); font-size: 12px; font-weight: 700; pointer-events: none; }
+.ki-board[hidden] { display: none; }
+.ki-board li { display: flex; align-items: center; gap: 5px; }
+.ki-board li.me { color: #ffd400; }
+.ki-board li.out { opacity: 0.45; }
+.ki-board img { width: 18px; image-rendering: pixelated; }
+.ki-board strong { margin-left: auto; padding-left: 8px; font-variant-numeric: tabular-nums; }
+.ki-stage .kart-alert { white-space: normal; width: max-content; max-width: 86%; text-align: center; }
+.ki-difficulty { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 4px 0 8px; }
+.ki-diff { display: flex; flex-direction: column; align-items: center; padding: 8px 4px; border: 3px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); font: inherit; font-weight: 800; cursor: pointer; }
+.ki-diff span { font-size: 12px; font-weight: 600; color: var(--muted); }
+.ki-diff[aria-checked="true"] { border-color: var(--brand); background: var(--brand-soft); }
+.ki-diff:disabled:not([aria-checked="true"]) { opacity: 0.5; cursor: default; }
+#dialog-invaders .pixel { image-rendering: pixelated; }
+.escape-results li img.ki-mini { width: 22px; image-rendering: pixelated; }
+.cc-table .kart-now-playing { bottom: 8px; }

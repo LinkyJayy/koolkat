@@ -43,6 +43,8 @@ import { registerMusicRoutes } from './music.js';
 import { registerKartRoutes } from './kartrooms.js';
 import { registerEscapeRoutes } from './escaperooms.js';
 import { registerCircleRoutes } from './circlerooms.js';
+import { createBolts, registerBoltRoutes } from './bolts.js';
+import { registerInvaderRoutes } from './invaderrooms.js';
 import { accentIconHandler, manifestHandler, registerCustomizeRoutes } from './customize.js';
 import { activityOf, chatThemeOf, cleanupFriendCodes, registerSocialRoutes } from './social.js';
 import { registerKatMapRoutes } from './katmap.js';
@@ -1300,9 +1302,13 @@ export function createApp({
   // ---------- KoolKat Reels ----------
   const reels = registerReelRoutes({ api, db, clock, auth, wrap, publicUser, hasUnlimitedUser, isAdminUser, pusher, mediaDir, rateLimiter });
   // ---------- KoolKat Playables: Kat Kart online races ----------
-  registerKartRoutes({ api, auth, wrap, clock, publicUser, db });
-  registerEscapeRoutes({ api, auth, wrap, clock, publicUser, db });
-  registerCircleRoutes({ api, auth, wrap, clock, publicUser, db });
+  // Bolts ⚡, the Playables currency. Online games pay out when they end.
+  const bolts = createBolts({ db, clock });
+  registerBoltRoutes({ api, auth, wrap, bolts });
+  registerKartRoutes({ api, auth, wrap, clock, publicUser, db, bolts });
+  registerEscapeRoutes({ api, auth, wrap, clock, publicUser, db, bolts });
+  registerCircleRoutes({ api, auth, wrap, clock, publicUser, db, bolts });
+  registerInvaderRoutes({ api, auth, wrap, clock, publicUser, db, bolts });
 
   // ---------- KoolKat Music ----------
   const music = registerMusicRoutes({ api, db, clock, auth, wrap, publicUser, hasUnlimitedUser, isAdminUser, pusher, mediaDir, rateLimiter });

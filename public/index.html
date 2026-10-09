@@ -126,6 +126,7 @@
         <div class="shelf-row playables-row">
           <button type="button" class="playable-card kart-card" data-play="kart"><img src="icons/kat-kart.png" alt=""><span class="playable-name">Kat Kart</span><span class="playable-sub">Race friends or bots</span></button>
           <button type="button" class="playable-card escape-card" data-play="escape"><img src="icons/escape-cat.png" alt="" class="pixel"><span class="playable-name">KatEscape</span><span class="playable-sub">Run from the cop</span></button>
+          <button type="button" class="playable-card invaders-card" data-play="invaders"><img src="icons/invaders/team-red.png" alt="" class="pixel"><span class="playable-name">Kat Invaders</span><span class="playable-sub">Shoot the mice</span></button>
           <button type="button" class="playable-card circles-card" data-play="circles"><img src="icons/circles/bag.png" alt="" class="pixel"><span class="playable-name">Circle Chaos</span><span class="playable-sub">Grab circles, cause chaos</span></button>
           <button type="button" class="playable-card wordle-card" data-play="wordle"><span class="wordle-art" aria-hidden="true"><b class="c">K</b><b class="p">A</b><b class="a">T</b><b class="c">S</b><b class="a">!</b></span><span class="playable-name">Kat Wordle</span><span class="playable-sub">Guess the word in 6 tries</span></button>
         </div>
@@ -198,6 +199,10 @@
       <span></span>
     </header>
     <p class="playables-intro">Games for everyone on KoolKat. Free, no Unlimited needed.</p>
+    <div class="bolts-bar">
+      <span class="bolts-balance"><img src="icons/powerups/thunder.png" alt="" class="pixel"><strong id="bolts-balance">0</strong> bolts</span>
+      <span class="fineprint">Win any game: +5 ⚡ · KatEscape: up to +15 ⚡ the further you run</span>
+    </div>
     <div class="playables-grid">
       <button type="button" class="playable-card big kart-card" data-play="kart">
         <img src="icons/kat-kart.png" alt="">
@@ -210,6 +215,12 @@
         <span class="playable-name">KatEscape</span>
         <span class="playable-sub">Run down the tracks, dodge trains and barriers, grab bolts and get away from the cop. Play solo, or with friends: All Chasers or Chaser vs Cop. Swipe (or arrows / WASD / D-pad) to move, jump and roll.</span>
         <span class="playable-best" id="escape-best"></span>
+      </button>
+      <button type="button" class="playable-card big invaders-card" data-play="invaders">
+        <img src="icons/invaders/team-red.png" alt="" class="pixel">
+        <span class="playable-name">Kat Invaders</span>
+        <span class="playable-sub">Mice are coming! Shoot as many as you can in 2 minutes (10 to 50 points each), but don't let them get close. Solo, Practice vs bots, or with friends.</span>
+        <span class="playable-best" id="invaders-best"></span>
       </button>
       <button type="button" class="playable-card big circles-card" data-play="circles">
         <img src="icons/circles/bag.png" alt="" class="pixel">
@@ -313,6 +324,41 @@
     </div>
   </section>
 
+  <!-- Kat Invaders -->
+  <section id="screen-invaders" class="screen invaders-screen" hidden>
+    <div class="ki-stage">
+      <canvas id="ki-canvas" width="180" height="320" aria-label="Kat Invaders"></canvas>
+      <div class="ki-hud">
+        <button type="button" class="icon-btn" id="btn-ki-quit" aria-label="Quit">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12Z"/></svg>
+        </button>
+        <span class="ki-time" id="ki-time">2:00</span>
+        <div class="ki-stats"><strong id="ki-score">0</strong><span id="ki-lives" aria-label="Lives"></span></div>
+      </div>
+      <ol class="ki-board" id="ki-board" hidden></ol>
+      <div class="kart-alert" id="ki-alert" hidden></div>
+      <div class="kart-countdown" id="ki-countdown" hidden>3</div>
+      <div class="kart-now-playing" id="ki-now-playing" hidden></div>
+      <div class="escape-hint" id="ki-hint">
+        <img src="icons/invaders/mouse.png" alt="" class="pixel">
+        <strong>Tap to start!</strong>
+        <span>Swipe ← → to move, swipe ↑ or tap to shoot.<br>Keyboard: ← → / A D, Space to shoot. Controller: stick / D-pad, A to shoot.</span>
+        <span>Each mouse is worth 10 to 50 points. Don't let them get close!</span>
+      </div>
+      <div class="escape-over" id="ki-over" data-modal hidden>
+        <img src="icons/invaders/team-red.png" alt="" class="pixel" id="ki-over-img">
+        <h2 id="ki-over-title">Time's up!</h2>
+        <p class="escape-final" id="ki-final"></p>
+        <p class="fineprint" id="ki-over-detail"></p>
+        <ol class="escape-results" id="ki-results" hidden></ol>
+        <div class="row">
+          <button type="button" class="btn" id="btn-ki-exit">Back to Playables</button>
+          <button type="button" class="btn primary" id="btn-ki-again">Play again</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- Circle Chaos -->
   <section id="screen-circles" class="screen circles-screen" hidden>
     <header class="cc-top">
@@ -326,6 +372,7 @@
     <div class="cc-table">
       <canvas id="cc-canvas" width="240" height="120" aria-label="The bot, the bag and the Deck"></canvas>
       <span class="cc-deck-count" id="cc-deck-count"></span>
+      <div class="kart-now-playing" id="cc-now-playing" hidden></div>
     </div>
     <div class="cc-reveal" id="cc-reveal" hidden><img alt="" class="pixel"><p></p></div>
     <div class="cc-actions">
@@ -962,6 +1009,54 @@
     </div>
   </dialog>
 
+  <dialog id="dialog-invaders" class="kart-menu">
+    <div id="ki-menu-main">
+      <img src="icons/invaders/team-red.png" alt="" class="kart-menu-art pixel" id="ki-menu-art">
+      <h2>Kat Invaders</h2>
+      <p class="kart-menu-or">Your team</p>
+      <div class="cc-team-pick" id="ki-team-pick" role="radiogroup" aria-label="Your team"></div>
+      <p class="kart-menu-or">Difficulty</p>
+      <div class="ki-difficulty" id="ki-difficulty" role="radiogroup" aria-label="Difficulty"></div>
+      <label class="kart-song-pick">🎵 Music
+        <select id="ki-song" aria-label="Music"></select>
+      </label>
+      <button type="button" class="btn primary wide" id="btn-ki-solo">🎯 Solo</button>
+      <div class="cc-bots" role="radiogroup" aria-label="How many bots">
+        <span>Bots</span>
+        <button type="button" class="cc-bot-btn ki-bot-btn" data-bots="1" role="radio">1</button>
+        <button type="button" class="cc-bot-btn ki-bot-btn" data-bots="2" role="radio">2</button>
+        <button type="button" class="cc-bot-btn ki-bot-btn" data-bots="3" role="radio">3</button>
+        <button type="button" class="cc-bot-btn ki-bot-btn" data-bots="4" role="radio">4</button>
+      </div>
+      <button type="button" class="btn wide" id="btn-ki-practice">🤖 Practice vs bots</button>
+      <p class="kart-menu-or">Play with friends</p>
+      <button type="button" class="btn wide" id="btn-ki-create">👥 Make a game</button>
+      <div class="inline-form kart-join">
+        <input id="ki-code" maxlength="4" placeholder="Game code" autocapitalize="characters" autocomplete="off" spellcheck="false" aria-label="Game code" enterkeyhint="go">
+        <button type="button" class="btn small primary" id="btn-ki-join">Join</button>
+      </div>
+      <button type="button" class="btn wide" id="btn-ki-close">Close</button>
+    </div>
+    <div id="ki-lobby" hidden>
+      <p class="fineprint">Game code</p>
+      <p class="kart-code-big" id="ki-lobby-code"></p>
+      <button type="button" class="btn small" id="btn-ki-share">Share the code</button>
+      <p class="kart-menu-or">Your team</p>
+      <div class="cc-team-pick" id="ki-lobby-team" role="radiogroup" aria-label="Your team"></div>
+      <ul class="kart-lobby-players" id="ki-lobby-players"></ul>
+      <p class="kart-menu-or">Difficulty <span class="fineprint" id="ki-lobby-note"></span></p>
+      <div class="ki-difficulty" id="ki-lobby-difficulty" role="radiogroup" aria-label="Difficulty"></div>
+      <label class="kart-song-pick">🎵 Music
+        <select id="ki-song-online" aria-label="Music"></select>
+      </label>
+      <p class="fineprint" id="ki-lobby-status"></p>
+      <div class="row">
+        <button type="button" class="btn" id="btn-ki-leave">Leave</button>
+        <button type="button" class="btn primary" id="btn-ki-start">Start</button>
+      </div>
+    </div>
+  </dialog>
+
   <dialog id="dialog-circles" class="kart-menu">
     <div id="cc-menu-main">
       <img src="icons/circles/bag.png" alt="" class="kart-menu-art pixel">
@@ -981,6 +1076,9 @@
         <button type="button" class="cc-bot-btn" data-bots="3" role="radio">3</button>
         <button type="button" class="cc-bot-btn" data-bots="4" role="radio">4</button>
       </div>
+      <label class="kart-song-pick">🎵 Music
+        <select id="cc-song" aria-label="Music"></select>
+      </label>
       <button type="button" class="btn primary wide" id="btn-cc-practice">🎯 Practice</button>
       <p class="kart-menu-or">Play with friends</p>
       <button type="button" class="btn wide" id="btn-cc-create">👥 Make a game</button>
@@ -997,6 +1095,9 @@
       <p class="kart-menu-or">Your team</p>
       <div class="cc-team-pick" id="cc-team-pick" role="radiogroup" aria-label="Your team"></div>
       <ul class="kart-lobby-players" id="cc-lobby-players"></ul>
+      <label class="kart-song-pick">🎵 Music <span class="fineprint" id="cc-song-note"></span>
+        <select id="cc-song-online" aria-label="Music"></select>
+      </label>
       <p class="fineprint" id="cc-lobby-status"></p>
       <div class="row">
         <button type="button" class="btn" id="btn-cc-leave">Leave</button>

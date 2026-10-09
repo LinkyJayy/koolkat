@@ -31,7 +31,7 @@ const num = (v, min, max) => {
   return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : null;
 };
 
-export function registerEscapeRoutes({ api, auth, wrap, clock, publicUser, db }) {
+export function registerEscapeRoutes({ api, auth, wrap, clock, publicUser, db, bolts }) {
   const rooms = new Map();
   const roomOf = new Map();
   const userById = db.prepare('SELECT * FROM users WHERE id = ?');
@@ -100,11 +100,13 @@ export function registerEscapeRoutes({ api, auth, wrap, clock, publicUser, db })
       if (!winner) return;
       room.state = 'done';
       room.results = { winner, reason, chaserId: room.chaserId, copId: room.copId, players: ranked(room) };
+      bolts?.award(winner === 'chaser' ? room.chaserId : room.copId, 'escape', 'win', 5, `escape:${room.code}:${room.startAt}`);
       return;
     }
     if (present(room).every((p) => p.status === 'out')) {
       room.state = 'done';
       room.results = { players: ranked(room) };
+      for (const p of room.results.players) if (p.place === 1 && !p.gone) bolts?.award(p.id, 'escape', 'win', 5, `escape:${room.code}:${room.startAt}`);
     }
   }
 

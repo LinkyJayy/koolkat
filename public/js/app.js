@@ -28,9 +28,10 @@ import { playNotification, setSoundsOn, soundsOn } from './sounds.js';
 import { createKatWordle } from './wordle.js';
 import { focusFirst, initInput } from './input.js';
 import { createKatEscape } from './escape.js';
+import { DIFFICULTIES as KI_DIFFICULTIES, LIVES as KI_LIVES, createKatInvaders } from './invaders.js';
 import { choose as ccChoose, draw as ccDraw, newDeck as ccNewDeck, ranked as ccRanked } from './circle-rules.js';
 import { TEAMS as CC_TEAMS, TEAM_COLORS as CC_TEAM_COLORS, TEAM_NAMES as CC_TEAM_NAMES, TURNS as CC_TURNS, circleIcon as ccCircleIcon, createCircleTable, describeEvent as ccDescribe, teamIcon as ccTeamIcon } from './circles.js';
-import { RACE_SONGS, RACERS as KART_RACERS, createKatKart, formatRaceTime } from './kart.js';
+import { RACE_SONGS, RACERS as KART_RACERS, createKatKart, createRaceMusic, formatRaceTime, showNowPlaying } from './kart.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -187,6 +188,10 @@ function show(name) {
   if (state.screen === 'escape' && name !== 'escape') {
     katEscape.stop();
     leaveEscapeRoom();
+  }
+  if (state.screen === 'invaders' && name !== 'invaders') {
+    katInvaders.stop();
+    leaveInvadersRoom();
   }
   if (state.screen === 'circles' && name !== 'circles') {
     ccTable.stop();
@@ -5309,8 +5314,42 @@ const readJson = (key) => {
   }
 };
 
+// ---------- Bolts ⚡: the Playables currency ----------
+// Win any game: +5. KatEscape: up to +15 the further you run. Online games
+// pay out on the server; Solo and Practice games tell it here.
+let boltBalance = null;
+function showBolts(n) {
+  boltBalance = n;
+  $('bolts-balance').textContent = n.toLocaleString();
+}
+async function refreshBolts() {
+  try {
+    const { bolts } = await api('GET', '/bolts');
+    const before = boltBalance;
+    showBolts(bolts);
+    return before == null ? 0 : bolts - before;
+  } catch {
+    return 0;
+  }
+}
+async function earnBolts(game, reason, extra = {}) {
+  try {
+    const { earned, bolts } = await api('POST', '/bolts/earn', { game, reason, ...extra });
+    showBolts(bolts);
+    if (earned) toast(`+${earned} ⚡ bolts${reason === 'win' ? ' for winning!' : ' for running so far!'}`);
+  } catch {
+    // Bolts are a bonus; the game still counts.
+  }
+}
+/** An online game ended: the server paid any winners, so check for new bolts. */
+async function checkBolts() {
+  const got = await refreshBolts();
+  if (got > 0) toast(`+${got} ⚡ bolts for winning!`);
+}
+
 function openPlayables() {
   show('playables');
+  refreshBolts();
   const best = readJson(KART_BEST);
   $('kart-best').textContent = [best && `🏆 Best: ${ordinalPlace(best.place)} in ${formatRaceTime(best.time)}`, `🤖 Bots: level ${kartLevel()}`].filter(Boolean).join(' · ');
   const stats = readJson(WORDLE_STATS);
@@ -5318,6 +5357,8 @@ function openPlayables() {
   $('escape-best').textContent = escapeBest ? `🏃 Best: ${escapeBest.toLocaleString()} points` : '';
   const circles = readJson(CC_STATS);
   $('circles-best').textContent = circles?.played ? `🏆 ${circles.wins} won of ${circles.played}` : '';
+  const invadersBest = katInvaders.best();
+  $('invaders-best').textContent = invadersBest ? `🐭 Best: ${invadersBest.toLocaleString()} points` : '';
   $('wordle-best').textContent = stats?.played ? `🔥 Streak ${stats.streak} · ${stats.wins}/${stats.played} won` : '';
 }
 $('chip-playables').addEventListener('click', openPlayables);
@@ -5327,6 +5368,7 @@ document.addEventListener('click', (e) => {
   if (card.dataset.play === 'kart') openKartMenu();
   else if (card.dataset.play === 'escape') openEscape();
   else if (card.dataset.play === 'circles') openCirclesMenu();
+  else if (card.dataset.play === 'invaders') openInvadersMenu();
   else openWordle();
 });
 
@@ -5401,12 +5443,15 @@ const katEscape = createKatEscape({
   chase: $('escape-chase'),
   countdown: $('escape-countdown'),
   spectate: $('escape-spectate'),
-  onOver: ({ score, bolts, distance, best, newBest, reason }) =>
+  onOver: ({ score, bolts, distance, best, newBest, reason }) => {
     showEscapeOver({
       title: reason === 'caught' ? '🚓 The cop caught you!' : '💥 Crashed into a train!',
       final: `${score.toLocaleString()} points`,
       detail: `${distance.toLocaleString()} m · ⚡ ${bolts.toLocaleString()} bolts · ${newBest ? '🏆 New best!' : `Best: ${best.toLocaleString()}`}`,
-    }),
+    });
+    // The further you ran, the more bolts (up to 15).
+    earnBolts('escape', 'run', { distance });
+  },
   // Caught: one revive a game.
   onDown: ({ reason, score, online, mode }) => {
     showEscapeOver({
@@ -5439,6 +5484,9 @@ const katEscape = createKatEscape({
   },
   onWaiting: () => showEscapeOver({ title: "🚓 You're out!", detail: 'Waiting for the results…' }),
   onResults: (r) => {
+    earnBolts('escape', 'run', { distance: r.distance ?? 0 });
+    if (r.mode === 'practice' && r.players.find((p) => p.me)?.place === 1) setTimeout(() => earnBolts('escape', 'win'), 400);
+    else if (r.mode !== 'practice') setTimeout(checkBolts, 1200);
     if (r.mode === 'chase') {
       const won = r.winner === r.role;
       const cop = r.role === 'cop';
@@ -5678,8 +5726,36 @@ function leaveEscapeRoom() {
 const CC_STATS = 'koolkat.circleChaos';
 const ccTable = createCircleTable($('cc-canvas'));
 const cc = { code: null, room: null, timer: null, playing: false, seen: 0, sent: 0, applied: 0, myTurn: false };
+// Music from the Kat Kart OST: you pick it in Practice; online the host does.
+const ccMusic = createRaceMusic();
+const CC_SONG = 'koolkat.circleChaos.song';
+const songOptions = () => [el('option', { value: 'random', text: '🔀 Random' }), ...RACE_SONGS.map((song) => el('option', { value: song.id, text: `${song.title} · ${song.artist}` }))];
+$('cc-song').replaceChildren(...songOptions());
+$('cc-song-online').replaceChildren(...songOptions());
+try {
+  $('cc-song').value = localStorage.getItem(CC_SONG) || 'random';
+} catch {
+  // Random it is.
+}
+if (!$('cc-song').value) $('cc-song').value = 'random';
+$('cc-song').addEventListener('change', (e) => {
+  try {
+    localStorage.setItem(CC_SONG, e.target.value);
+  } catch {
+    // Remembering it is only a convenience.
+  }
+});
+$('cc-song-online').addEventListener('change', async (e) => {
+  try {
+    const { room } = await api('POST', `/circles/rooms/${cc.code}/song`, { song: e.target.value });
+    ccApply(room);
+  } catch (err) {
+    toast(err.message, { error: true });
+  }
+});
 
 function openCirclesMenu() {
+  ccMusic.unlock(); // this tap lets the music play later
   renderPracticePicks();
   $('cc-menu-main').hidden = false;
   $('cc-lobby').hidden = true;
@@ -5778,6 +5854,11 @@ function renderCirclesLobby(room) {
       )
     )
   );
+  // The host picks the music; everyone else sees what it'll be.
+  const songSelect = $('cc-song-online');
+  songSelect.disabled = !host;
+  if (document.activeElement !== songSelect) songSelect.value = room.song ?? 'random';
+  $('cc-song-note').textContent = host ? '(you pick)' : '(the host picks)';
   $('btn-cc-start').hidden = !host;
   $('btn-cc-start').disabled = players.length < 2;
   $('cc-lobby-status').textContent =
@@ -5822,6 +5903,7 @@ $('dialog-circles').addEventListener('close', () => {
 function leaveCirclesRoom() {
   clearInterval(cc.timer);
   clearInterval(ccPractice.timer);
+  ccMusic.pause();
   ccPractice.game = null;
   cc.practice = false;
   cc.playing = false;
@@ -5958,6 +6040,9 @@ function startCircles(room) {
   $('cc-reveal').hidden = true;
   $('cc-log').replaceChildren();
   ccTable.start(room.players.map((p) => p.team)).catch(() => {});
+  const song = ccMusic.pick(room.practice ? $('cc-song').value : room.song);
+  ccMusic.play(song);
+  showNowPlaying($('cc-now-playing'), song);
   renderCircles(room);
   if (!room.practice) pollCircles(700, renderCircles);
 }
@@ -6103,7 +6188,12 @@ function showCirclesResults(room) {
   $('cc-results').hidden = false;
   $('btn-cc-again').textContent = room.practice ? 'Practice again' : 'Play again';
   focusFirst();
-  if (room.practice) return; // only real games count
+  ccMusic.pause();
+  if (room.practice) {
+    if (me?.place === 1) earnBolts('circles', 'win');
+    return; // only real games count towards your record
+  }
+  checkBolts();
   const stats = readJson(CC_STATS) ?? { played: 0, wins: 0 };
   stats.played += 1;
   if (me?.place === 1) stats.wins += 1;
@@ -6130,8 +6220,340 @@ $('btn-cc-again').addEventListener('click', () => {
   openCirclesMenu();
 });
 
+// ---------- Kat Invaders: Solo, Practice vs bots, or online with a code ----------
+const KI_SETTINGS = 'koolkat.katInvaders';
+const ki = { code: null, room: null, timer: null, playing: false, sent: 0, applied: 0, mode: 'solo', team: 'red', difficulty: 'medium', bots: 3, song: 'random' };
+try {
+  Object.assign(ki, JSON.parse(localStorage.getItem(KI_SETTINGS) || '{}'), { code: null, room: null, timer: null, playing: false });
+} catch {
+  // The defaults it is.
+}
+if (!CC_TEAMS.includes(ki.team)) ki.team = 'red';
+if (!(ki.difficulty in KI_LIVES)) ki.difficulty = 'medium';
+ki.bots = Math.max(1, Math.min(4, Number(ki.bots) || 3));
+const saveKi = () => {
+  try {
+    localStorage.setItem(KI_SETTINGS, JSON.stringify({ team: ki.team, difficulty: ki.difficulty, bots: ki.bots, song: ki.song }));
+  } catch {
+    // Remembering it is only a convenience.
+  }
+};
+const kiTeamIcon = (team) => `icons/invaders/team-${team}.png`;
+$('ki-song').replaceChildren(...songOptions());
+$('ki-song-online').replaceChildren(...songOptions());
+$('ki-song').value = RACE_SONGS.some((s) => s.id === ki.song) ? ki.song : 'random';
+$('ki-song').addEventListener('change', (e) => {
+  ki.song = e.target.value;
+  saveKi();
+});
+
+/** Team buttons (taken ones greyed out) and difficulty buttons. */
+function kiTeamButtons(box, chosen, taken, onPick) {
+  box.replaceChildren(
+    ...CC_TEAMS.map((team) => {
+      const who = taken.get(team);
+      const b = el(
+        'button',
+        { type: 'button', class: 'cc-team-btn', role: 'radio', 'aria-checked': String(chosen === team), 'aria-label': who ? `${CC_TEAM_NAMES[team]} (${who})` : CC_TEAM_NAMES[team], onclick: () => onPick(team) },
+        el('img', { src: kiTeamIcon(team), alt: '', class: 'pixel' }),
+        el('span', { text: who ?? CC_TEAM_NAMES[team] })
+      );
+      b.style.setProperty('--cc-team', CC_TEAM_COLORS[team]);
+      b.disabled = Boolean(who);
+      return b;
+    })
+  );
+}
+function kiDifficultyButtons(box, chosen, enabled, onPick) {
+  box.replaceChildren(
+    ...KI_DIFFICULTIES.map(([id, name, lives]) => {
+      const b = el('button', { type: 'button', class: 'ki-diff', role: 'radio', 'aria-checked': String(chosen === id), onclick: () => onPick(id) }, name, el('span', { text: lives }));
+      b.disabled = !enabled;
+      return b;
+    })
+  );
+}
+function renderKiMenu() {
+  kiTeamButtons($('ki-team-pick'), ki.team, new Map(), (team) => {
+    ki.team = team;
+    saveKi();
+    renderKiMenu();
+  });
+  $('ki-menu-art').src = kiTeamIcon(ki.team);
+  kiDifficultyButtons($('ki-difficulty'), ki.difficulty, true, (difficulty) => {
+    ki.difficulty = difficulty;
+    saveKi();
+    renderKiMenu();
+  });
+  for (const b of document.querySelectorAll('.ki-bot-btn')) b.setAttribute('aria-checked', String(Number(b.dataset.bots) === ki.bots));
+}
+for (const b of document.querySelectorAll('.ki-bot-btn')) {
+  b.addEventListener('click', () => {
+    ki.bots = Number(b.dataset.bots);
+    saveKi();
+    renderKiMenu();
+  });
+}
+
+function openInvadersMenu() {
+  katInvaders.unlockAudio(); // this tap lets the music play later
+  renderKiMenu();
+  $('ki-menu-main').hidden = false;
+  $('ki-lobby').hidden = true;
+  $('ki-code').value = '';
+  $('dialog-invaders').showModal();
+}
+$('btn-ki-close').addEventListener('click', () => $('dialog-invaders').close());
+
+const katInvaders = createKatInvaders({
+  canvas: $('ki-canvas'),
+  score: $('ki-score'),
+  lives: $('ki-lives'),
+  time: $('ki-time'),
+  board: $('ki-board'),
+  alert: $('ki-alert'),
+  countdown: $('ki-countdown'),
+  nowPlaying: $('ki-now-playing'),
+  hint: $('ki-hint'),
+  song: $('ki-song'),
+  over: $('ki-over'),
+  onWaiting: ({ score, why }) => showKiOver({ title: why === 'out' ? '🐭 Out of lives!' : "⏱ Time's up!", final: `${score.toLocaleString()} points`, detail: 'Waiting for everyone else to finish…', waiting: true }),
+  onOver: (r) => {
+    const meId = r.mode === 'online' ? state.me.userId : 'me';
+    const players = r.players.map((p) => ({ ...p, me: p.id === meId }));
+    const me = players.find((p) => p.me);
+    if (r.mode === 'solo') {
+      showKiOver({
+        title: r.survived ? '🏆 You survived the 2 minutes!' : '🐭 Out of lives!',
+        final: `${r.score.toLocaleString()} points`,
+        detail: r.newBest ? '🏆 New best!' : `Best: ${r.best.toLocaleString()}`,
+        img: r.survived ? kiTeamIcon(ki.team) : 'icons/invaders/mouse.png',
+      });
+      if (r.survived) earnBolts('invaders', 'win');
+      return;
+    }
+    const winners = players.filter((p) => p.place === 1);
+    showKiOver({
+      title: me?.place === 1 ? (winners.length > 1 ? '🤝 You tied for 1st!' : '🏆 You won!') : `${CC_TEAM_NAMES[winners[0]?.team] ?? ''} wins!`,
+      final: `${r.score.toLocaleString()} points`,
+      detail: r.mode === 'practice' ? 'Practice vs bots' : `Kat Invaders · ${KI_DIFFICULTIES.find(([id]) => id === ki.difficulty)?.[1] ?? ''}`,
+      results: players,
+      img: kiTeamIcon(winners[0]?.team ?? ki.team),
+    });
+    if (r.mode === 'practice') {
+      if (me?.place === 1 && r.score > 0) earnBolts('invaders', 'win');
+    } else {
+      clearInterval(ki.timer);
+      checkBolts();
+    }
+  },
+});
+
+function showKiOver({ title, final = '', detail = '', results = null, img = 'icons/invaders/mouse.png', waiting = false }) {
+  $('ki-over-title').textContent = title;
+  $('ki-final').textContent = final;
+  $('ki-over-detail').textContent = detail;
+  $('ki-over-img').src = img;
+  const list = $('ki-results');
+  list.hidden = !results;
+  if (results) {
+    list.replaceChildren(
+      ...results.map((p) =>
+        el(
+          'li',
+          { class: p.me ? 'me' : null },
+          el('span', { class: 'place', text: ordinalPlace(p.place) }),
+          el('img', { src: kiTeamIcon(p.team), alt: '', class: 'ki-mini' }),
+          el('span', { class: 'name', text: `${p.me ? `${p.name} (you)` : p.name}${p.gone ? ' (left)' : ''}` }),
+          el('span', { class: 'pts', text: `${p.score.toLocaleString()} pts` })
+        )
+      )
+    );
+  }
+  $('btn-ki-again').hidden = waiting;
+  $('btn-ki-again').textContent = ki.mode === 'solo' ? 'Play again' : ki.mode === 'practice' ? 'Practice again' : 'Play again';
+  $('ki-over').hidden = false;
+  focusFirst();
+}
+
+function startInvaders(opts) {
+  if (!audioEl.paused) audioEl.pause();
+  ki.mode = opts.mode;
+  katInvaders.unlockAudio();
+  show('invaders');
+  katInvaders.start({ team: ki.team, name: state.me.displayName, difficulty: ki.difficulty, ...opts }).catch((err) => toast(err.message, { error: true }));
+}
+$('btn-ki-solo').addEventListener('click', () => {
+  $('dialog-invaders').close();
+  startInvaders({ mode: 'solo' });
+});
+$('btn-ki-practice').addEventListener('click', () => {
+  $('dialog-invaders').close();
+  startInvaders({ mode: 'practice', bots: ki.bots });
+});
+const leaveInvaders = () => {
+  leaveInvadersRoom();
+  openPlayables();
+};
+$('btn-ki-quit').addEventListener('click', async () => {
+  const inGame = katInvaders.running || (ki.playing && !$('ki-over').hidden && $('btn-ki-again').hidden);
+  if (!inGame || (await askConfirm(ki.playing ? 'Leave the game?' : 'Stop playing?', { ok: ki.playing ? 'Leave' : 'Stop' }))) leaveInvaders();
+});
+$('btn-ki-exit').addEventListener('click', leaveInvaders);
+$('btn-ki-again').addEventListener('click', () => {
+  katInvaders.unlockAudio();
+  if (ki.mode === 'solo') startInvaders({ mode: 'solo' });
+  else if (ki.mode === 'practice') startInvaders({ mode: 'practice', bots: ki.bots });
+  else {
+    leaveInvaders();
+    openInvadersMenu();
+  }
+});
+
+// Online: lobby, teams, the host's difficulty and music.
+$('btn-ki-create').addEventListener('click', (e) =>
+  withBusy(e.currentTarget, async () => {
+    const { room } = await api('POST', '/invaders/rooms');
+    enterKiLobby(room);
+    // Your favourite team, if it's free.
+    if (room.players.find((p) => p.id === state.me.userId)?.team !== ki.team) kiLobbyPost('team', { team: ki.team }, true);
+  })
+);
+const joinKi = () =>
+  withBusy($('btn-ki-join'), async () => {
+    const code = $('ki-code').value.trim().toUpperCase();
+    if (!/^[A-Z]{4}$/.test(code)) throw new Error('Game codes are 4 letters');
+    const { room } = await api('POST', `/invaders/rooms/${code}/join`);
+    enterKiLobby(room);
+  });
+$('btn-ki-join').addEventListener('click', joinKi);
+$('ki-code').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    joinKi();
+  }
+});
+
+function enterKiLobby(room) {
+  ki.code = room.code;
+  $('ki-menu-main').hidden = true;
+  $('ki-lobby').hidden = false;
+  renderKiLobby(room);
+  focusFirst();
+  clearInterval(ki.timer);
+  ki.timer = setInterval(async () => {
+    if (!ki.code) return;
+    const n = ++ki.sent;
+    try {
+      const { room: r } = await api('GET', `/invaders/rooms/${ki.code}`, undefined, { timeout: 5000 });
+      if (n > ki.applied) {
+        ki.applied = n;
+        renderKiLobby(r);
+      }
+    } catch (err) {
+      if (err.status === 404 || err.status === 403) {
+        clearInterval(ki.timer);
+        toast(err.message, { error: true });
+        $('dialog-invaders').close();
+      }
+    }
+  }, 1000);
+}
+async function kiLobbyPost(path, body, quiet = false) {
+  try {
+    const { room } = await api('POST', `/invaders/rooms/${ki.code}/${path}`, body);
+    ki.applied = ++ki.sent;
+    renderKiLobby(room);
+  } catch (err) {
+    if (!quiet) toast(err.message, { error: true });
+  }
+}
+function renderKiLobby(room) {
+  if (ki.playing) return;
+  ki.room = room;
+  $('ki-lobby-code').textContent = room.code;
+  const players = room.players.filter((p) => !p.gone);
+  const me = players.find((p) => p.id === state.me.userId);
+  const host = room.hostId === state.me.userId;
+  kiTeamButtons($('ki-lobby-team'), me?.team, new Map(players.filter((p) => p.id !== me?.id).map((p) => [p.team, p.name])), (team) => {
+    ki.team = team;
+    saveKi();
+    kiLobbyPost('team', { team });
+  });
+  $('ki-lobby-players').replaceChildren(
+    ...players.map((p) =>
+      el(
+        'li',
+        {},
+        el('img', { src: kiTeamIcon(p.team), alt: CC_TEAM_NAMES[p.team], class: 'cc-mini' }),
+        avatar(p.user, 'small'),
+        el('span', { text: p.id === state.me.userId ? `${p.name} (you)` : p.name }),
+        p.id === room.hostId ? el('span', { class: 'fineprint', text: ' · host' }) : null
+      )
+    )
+  );
+  kiDifficultyButtons($('ki-lobby-difficulty'), room.difficulty, host, (difficulty) => kiLobbyPost('difficulty', { difficulty }));
+  $('ki-lobby-note').textContent = host ? '(you pick)' : '(the host picks)';
+  const songSelect = $('ki-song-online');
+  songSelect.disabled = !host;
+  if (document.activeElement !== songSelect) songSelect.value = room.song ?? 'random';
+  $('btn-ki-start').hidden = !host;
+  $('btn-ki-start').disabled = players.length < 2;
+  $('ki-lobby-status').textContent =
+    players.length < 2 ? 'Waiting for friends to join with the code… (2 to 5 people)' : host ? `${players.length} teams ready. Start when everyone's in!` : 'Waiting for the host to start…';
+  if (room.state === 'running') startOnlineInvaders(room);
+}
+$('ki-song-online').addEventListener('change', (e) => kiLobbyPost('song', { song: e.target.value }));
+$('btn-ki-start').addEventListener('click', (e) => withBusy(e.currentTarget, () => kiLobbyPost('start')));
+$('btn-ki-leave').addEventListener('click', () => {
+  leaveInvadersRoom();
+  $('dialog-invaders').close();
+});
+$('btn-ki-share').addEventListener('click', async () => {
+  const text = `Shoot mice with me in Kat Invaders on KoolKat! Open Playables → Kat Invaders and join with code ${ki.code}`;
+  try {
+    if (navigator.share) await navigator.share({ title: 'Kat Invaders', text, url: `${location.origin}/#playables` });
+    else {
+      await navigator.clipboard.writeText(text);
+      toast('Copied');
+    }
+  } catch {
+    // Share sheet closed.
+  }
+});
+$('dialog-invaders').addEventListener('close', () => {
+  if (!ki.playing) leaveInvadersRoom();
+});
+
+function startOnlineInvaders(room) {
+  clearInterval(ki.timer);
+  ki.playing = true;
+  $('dialog-invaders').close();
+  const me = room.players.find((p) => p.id === state.me.userId);
+  const code = room.code;
+  ki.difficulty = room.difficulty;
+  startInvaders({
+    mode: 'online',
+    team: me.team,
+    difficulty: room.difficulty,
+    seed: room.seed,
+    song: room.song,
+    startAt: performance.now() + (room.startAt - room.serverNow),
+    others: room.players.filter((p) => !p.gone && p.id !== me.id).map((p) => ({ id: p.id, name: p.name, team: p.team })),
+    sync: (st) => api('POST', `/invaders/rooms/${code}/state`, st, { timeout: 4000 }).then((r) => r.room),
+  });
+}
+
+function leaveInvadersRoom() {
+  clearInterval(ki.timer);
+  ki.playing = false;
+  if (!ki.code) return;
+  api('POST', `/invaders/rooms/${ki.code}/leave`).catch(() => {});
+  ki.code = null;
+}
+
 // Kat Wordle
-const katWordle = createKatWordle({ board: $('kw-board'), keyboard: $('kw-keyboard'), message: $('kw-message'), result: $('kw-result'), hints: $('kw-hints') });
+const katWordle = createKatWordle({ board: $('kw-board'), keyboard: $('kw-keyboard'), message: $('kw-message'), result: $('kw-result'), hints: $('kw-hints'), onFinish: ({ won }) => won && earnBolts('wordle', 'win') });
 function openWordle() {
   show('wordle');
   katWordle.start();
@@ -6361,6 +6783,8 @@ function leaveKartRoom() {
 /** The podium: 2nd, 1st and 3rd on their steps, then everyone's times. */
 function showPodium(results, info = {}) {
   const me = results.find((r) => r.player);
+  if (info.mode === 'solo' && me?.place === 1) earnBolts('kart', 'win');
+  else if (info.mode === 'online') checkBolts();
   // Solo: the bots adapt. Win and they get faster; lose and they get easier.
   const levelLine = $('podium-level');
   levelLine.hidden = info.mode !== 'solo';
@@ -6417,7 +6841,7 @@ function showPodium(results, info = {}) {
 
 // Keyboard and controller navigation in every menu (see input.js). While a
 // Kat Kart race is on, the arrows / D-pad steer instead.
-initInput({ busy: () => !document.querySelector('dialog[open]') && ((state.screen === 'kart' && katKart.running && $('kart-podium').hidden) || (state.screen === 'escape' && katEscape.running)) });
+initInput({ busy: () => !document.querySelector('dialog[open]') && ((state.screen === 'kart' && katKart.running && $('kart-podium').hidden) || (state.screen === 'escape' && katEscape.running) || (state.screen === 'invaders' && katInvaders.running)) });
 
 // Keyboards: typing in Kat Wordle, arrow keys in Kat Kart, Space for a photo.
 document.addEventListener('keydown', (e) => {
@@ -6430,6 +6854,7 @@ document.addEventListener('keydown', (e) => {
   if (state.screen === 'wordle') katWordle.onKey(e);
   else if (state.screen === 'kart') katKart.keyDown(e);
   else if (state.screen === 'escape' && katEscape.running) katEscape.keyDown(e);
+  else if (state.screen === 'invaders' && katInvaders.running) katInvaders.keyDown(e);
   else if (state.screen === 'circles' && e.key === ' ' && !$('btn-cc-draw').hidden && !e.target.closest?.('button')) {
     e.preventDefault();
     $('btn-cc-draw').click();
@@ -6437,6 +6862,7 @@ document.addEventListener('keydown', (e) => {
 });
 document.addEventListener('keyup', (e) => {
   if (state.screen === 'kart') katKart.keyUp(e);
+  if (state.screen === 'invaders') katInvaders.keyUp(e);
 });
 
 // ---------- social media links ----------

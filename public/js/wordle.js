@@ -70,7 +70,7 @@ function make(tag, cls, text) {
 }
 
 /** Sets up Kat Wordle in its screen. Returns { start } for a new game. */
-export function createKatWordle({ board, keyboard, message, result, hints }) {
+export function createKatWordle({ board, keyboard, message, result, hints, onFinish }) {
   const game = { answer: '', rows: [], current: '', done: false, busy: false, hints: 0 };
 
   // Three hints, one at a time: syllables, then the first letter, then the last.
@@ -227,6 +227,7 @@ export function createKatWordle({ board, keyboard, message, result, hints }) {
       stats.guesses[game.rows.length - 1] += 1;
     } else stats.streak = 0;
     saveStats(stats);
+    onFinish?.({ won, guesses: game.rows.length });
     const words = ['Genius!', 'Magnificent!', 'Impressive!', 'Splendid!', 'Great!', 'Phew!'];
     say(won ? words[game.rows.length - 1] : game.answer.toUpperCase(), 0);
     setTimeout(() => showResult(won, stats), 900);

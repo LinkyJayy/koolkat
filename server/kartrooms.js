@@ -24,7 +24,7 @@ const num = (v, min, max) => {
   return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : null;
 };
 
-export function registerKartRoutes({ api, auth, wrap, clock, publicUser, db }) {
+export function registerKartRoutes({ api, auth, wrap, clock, publicUser, db, bolts }) {
   const rooms = new Map(); // code -> room
   const roomOf = new Map(); // userId -> code
   const userById = db.prepare('SELECT * FROM users WHERE id = ?');
@@ -69,6 +69,8 @@ export function registerKartRoutes({ api, auth, wrap, clock, publicUser, db }) {
       if (!racing.length || racing.every((p) => p.finished != null) || now - firstFinish > FINISH_WAIT) {
         room.state = 'done';
         room.results = results(room);
+        // The winner gets bolts.
+        for (const r of room.results) if (r.place === 1 && r.time != null) bolts?.award(r.id, 'kart', 'win', 5, `kart:${room.code}:${room.createdAt}`);
       }
     }
   }

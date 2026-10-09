@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { fail } from './http.js';
+import { KART_SONGS } from './kartrooms.js';
 import { TEAMS, canPlay, choose, draw, newDeck, nextAfter, ranked } from '../public/js/circle-rules.js';
 
 export * from '../public/js/circle-rules.js';
@@ -21,7 +22,7 @@ const randomInt = (n) => crypto.randomInt(n);
 
 // ---------- online ----------
 
-export function registerCircleRoutes({ api, auth, wrap, clock, publicUser, db }) {
+export function registerCircleRoutes({ api, auth, wrap, clock, publicUser, db, bolts }) {
   const rooms = new Map();
   const roomOf = new Map();
   const userById = db.prepare('SELECT * FROM users WHERE id = ?');
@@ -71,6 +72,7 @@ export function registerCircleRoutes({ api, auth, wrap, clock, publicUser, db })
     room.pending = null;
     room.turnId = null;
     room.results = ranked(room.players);
+    for (const r of room.results) if (r.place === 1 && !r.gone) bolts?.award(r.id, 'circles', 'win', 5, `circles:${room.code}:${room.startAt}`);
     pushEvent(room, { type: 'done' }, now);
   }
 
@@ -126,6 +128,7 @@ export function registerCircleRoutes({ api, auth, wrap, clock, publicUser, db })
     turnId: room.turnId ?? null,
     turnEndsAt: room.state === 'playing' ? room.turnAt + TURN_MS : null,
     dir: room.dir ?? 1,
+    song: room.song ?? 'random',
     deck: room.deck?.length ?? 0,
     pending: room.pending ? { circle: room.pending.circle, by: room.pending.by } : null,
     players: room.players.map((p) => ({ id: p.id, name: p.name, user: p.user, team: p.team, circles: p.circles, turns: p.turns, gone: p.gone })),
@@ -162,7 +165,7 @@ export function registerCircleRoutes({ api, auth, wrap, clock, publicUser, db })
       const now = clock();
       for (const [code, r] of rooms) if (now - r.createdAt > ROOM_MAX_AGE) rooms.delete(code);
       leave(req.user.id);
-      const room = { code: newCode(), hostId: req.user.id, state: 'lobby', players: [], events: [], seq: 0, createdAt: now, dir: 1 };
+      const room = { code: newCode(), hostId: req.user.id, state: 'lobby', players: [], events: [], seq: 0, createdAt: now, dir: 1, song: 'random' };
       rooms.set(room.code, room);
       join(room, userById.get(req.user.id), now);
       res.status(201);
@@ -212,6 +215,21 @@ export function registerCircleRoutes({ api, auth, wrap, clock, publicUser, db })
     })
   );
 
+  // The host picks the music (a Kat Kart song, or Random).
+  api.post(
+    '/circles/rooms/:code/song',
+    auth,
+    wrap((req) => {
+      const room = roomOr404(req);
+      if (room.hostId !== req.user.id) fail(403, 'Only the host picks the music');
+      if (room.state !== 'lobby') fail(409, 'The game has already started');
+      const song = String(req.body?.song ?? '');
+      if (song !== 'random' && !KART_SONGS.includes(song)) fail(400, "That song isn't on the Kat Kart OST");
+      room.song = song;
+      return { room: describe(room, clock()) };
+    })
+  );
+
   api.post(
     '/circles/rooms/:code/start',
     auth,
@@ -224,6 +242,8 @@ export function registerCircleRoutes({ api, auth, wrap, clock, publicUser, db })
       // Seats go in team order: Red, Yellow, Green, Blue, Purple.
       room.players.sort((a, b) => TEAMS.indexOf(a.team) - TEAMS.indexOf(b.team));
       room.deck = newDeck(room.players.map((p) => p.team), randomInt);
+      // Random music: pick now, so everyone hears the same song.
+      if (!KART_SONGS.includes(room.song)) room.song = KART_SONGS[randomInt(KART_SONGS.length)];
       room.state = 'dealing';
       room.startAt = now + DEAL_MS;
       room.dir = 1;

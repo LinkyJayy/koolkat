@@ -317,6 +317,20 @@ CREATE TABLE IF NOT EXISTS music_uploads (
   created_at  INTEGER NOT NULL
 );
 
+-- Bolts, the Playables currency: one row per reward (your balance is the sum).
+-- ref is set for online games, so each game pays out once.
+CREATE TABLE IF NOT EXISTS bolt_rewards (
+  id          INTEGER PRIMARY KEY,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  game        TEXT NOT NULL,
+  reason      TEXT NOT NULL,
+  amount      INTEGER NOT NULL,
+  ref         TEXT,
+  created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS bolt_rewards_user ON bolt_rewards(user_id, created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS bolt_rewards_ref ON bolt_rewards(user_id, ref) WHERE ref IS NOT NULL;
+
 -- Server-wide key/value settings (e.g. generated VAPID keys).
 CREATE TABLE IF NOT EXISTS settings (
   key    TEXT PRIMARY KEY,
