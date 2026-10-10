@@ -106,6 +106,7 @@ export function createKatSurvival(els) {
   const { canvas } = els;
   const ctx = canvas.getContext('2d');
   const music = createRaceMusic();
+  music.bindMute(els.mute);
   let run = null;
   let frame = 0;
   let syncTimer = null;

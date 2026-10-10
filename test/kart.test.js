@@ -53,6 +53,7 @@ describe('Kat Kart online races', () => {
     // The host picks the music.
     assert.equal((await call('POST', `/kart/rooms/${code}/song`, { token: ben.token, body: { song: 'crystal-cavern' } })).status, 403);
     assert.equal((await call('POST', `/kart/rooms/${code}/song`, { token: ann.token, body: { song: 'not-a-song' } })).status, 400);
+    assert.equal((await call('POST', `/kart/rooms/${code}/song`, { token: ann.token, body: { song: 'none' } })).body.room.song, 'none', 'No song is a choice too');
     assert.equal((await call('POST', `/kart/rooms/${code}/song`, { token: ann.token, body: { song: 'crystal-cavern' } })).body.room.song, 'crystal-cavern');
     // And the map.
     assert.equal(joined.body.room.map, 'random');

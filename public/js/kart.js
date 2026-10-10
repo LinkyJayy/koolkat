@@ -691,12 +691,38 @@ export const RACE_SONGS = [
   { id: 'rainbow-wonderland', title: 'Rainbow Wonderland', artist: 'Zalith9', src: 'sounds/rainbow-wonderland.mp3' },
 ];
 
+// "No song": pick it and the game is quiet (pick() gives null, play(null) plays nothing).
+export const NO_SONG = 'none';
+
+// One mute for all the Playables' music, remembered on this device.
+const MUTE_KEY = 'koolkat.games.muted';
+let gamesMuted = false;
+try {
+  gamesMuted = localStorage.getItem(MUTE_KEY) === '1';
+} catch {
+  // Not remembered: start with the sound on.
+}
+const players = new Set(); // every game's music player (they all follow the mute)
+const VOLUME = 0.7;
+export const isGameMusicMuted = () => gamesMuted;
+export function setGameMusicMuted(muted) {
+  gamesMuted = Boolean(muted);
+  try {
+    localStorage.setItem(MUTE_KEY, gamesMuted ? '1' : '0');
+  } catch {
+    // Only for this visit.
+  }
+  for (const p of players) p.applyMute();
+}
+
 export function createRaceMusic() {
   let ctx = null;
   let gain = null;
   let source = null;
   let fallback = null;
   let last = null;
+  let current = null; // the song that's on (null: none)
+  const muteButtons = new Set();
   const buffers = new Map(); // src -> Promise<AudioBuffer | null>
   const load = (song) => {
     if (!buffers.has(song.src)) {
@@ -718,8 +744,18 @@ export function createRaceMusic() {
     }
     source = null;
   };
+  /** The mute button shows while a song's on, and says whether it's muted. */
+  const renderMute = () => {
+    for (const b of muteButtons) {
+      b.hidden = !current;
+      b.textContent = gamesMuted ? '🔇' : '🔊';
+      b.setAttribute('aria-label', gamesMuted ? 'Turn the music on' : 'Mute the music');
+      b.setAttribute('aria-pressed', String(gamesMuted));
+      b.classList.toggle('muted', gamesMuted);
+    }
+  };
   let playing = 0; // so a song that finishes loading late doesn't start after pause()
-  return {
+  const player = {
     unlock() {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return;
@@ -727,13 +763,14 @@ export function createRaceMusic() {
       ctx.resume?.().catch(() => {});
       if (!gain) {
         gain = ctx.createGain();
-        gain.gain.value = 0.7;
+        gain.gain.value = gamesMuted ? 0 : VOLUME;
         gain.connect(ctx.destination);
       }
       for (const song of RACE_SONGS) load(song);
     },
-    /** The next song: the one asked for by id, or a random one (not the one just played). */
+    /** The next song: the one asked for by id, none for "No song", or a random one (not the one just played). */
     pick(id) {
+      if (id === NO_SONG) return null;
       const chosen = RACE_SONGS.find((song) => song.id === id);
       if (chosen) return (last = chosen);
       const choices = RACE_SONGS.filter((song) => song !== last);
@@ -741,12 +778,15 @@ export function createRaceMusic() {
       return last;
     },
     async play(song = this.pick()) {
-      this.unlock();
       const run = ++playing;
       stopSource();
       fallback?.pause();
+      current = song ?? null;
+      renderMute();
+      if (!song) return null; // No song
+      this.unlock();
       if (!ctx) {
-        fallback = Object.assign(new Audio(song.src), { loop: true, volume: 0.7 });
+        fallback = Object.assign(new Audio(song.src), { loop: true, volume: VOLUME, muted: gamesMuted });
         fallback.play().catch(() => {});
         return song;
       }
@@ -764,7 +804,25 @@ export function createRaceMusic() {
       stopSource();
       fallback?.pause();
     },
+    /** A 🔊/🔇 button for this game: hidden when there's no song. */
+    bindMute(button) {
+      if (!button || muteButtons.has(button)) return;
+      muteButtons.add(button);
+      button.addEventListener('pointerdown', (e) => e.stopPropagation()); // not a steer / swipe / shot
+      button.addEventListener('click', (e) => {
+        e.stopPropagation();
+        setGameMusicMuted(!gamesMuted);
+      });
+      renderMute();
+    },
+    applyMute() {
+      if (gain) gain.gain.value = gamesMuted ? 0 : VOLUME;
+      if (fallback) fallback.muted = gamesMuted;
+      renderMute();
+    },
   };
+  players.add(player);
+  return player;
 }
 
 /** Show "Now Playing - Song: Artist" for a few seconds. */
@@ -1119,6 +1177,7 @@ export function createKatKart(els) {
   let frame = 0;
   let input = { left: false, right: false };
   const music = createRaceMusic();
+  music.bindMute(els.mute);
 
   function size() {
     const rect = canvas.parentElement.getBoundingClientRect();

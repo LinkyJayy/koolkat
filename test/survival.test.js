@@ -214,6 +214,7 @@ describe('Kat Survival online', () => {
     assert.deepEqual(room.players.map((p) => p.team), ['red', 'yellow']);
     room = (await call('POST', `/survival/rooms/${code}/team`, ben.token, { team: 'blue' })).body.room;
     assert.equal((await call('POST', `/survival/rooms/${code}/song`, ben.token, { song: 'gold-mine' })).status, 403);
+    assert.equal((await call('POST', `/survival/rooms/${code}/song`, ann.token, { song: 'none' })).body.room.song, 'none');
     await call('POST', `/survival/rooms/${code}/song`, ann.token, { song: 'gold-mine' });
     room = (await call('POST', `/survival/rooms/${code}/start`, ann.token)).body.room;
     assert.equal(room.state, 'running');

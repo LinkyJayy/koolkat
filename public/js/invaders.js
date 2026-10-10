@@ -88,6 +88,7 @@ export function createKatInvaders(els) {
   let frame = 0;
   let assets = null;
   const music = createRaceMusic();
+  music.bindMute(els.mute);
 
   async function loadAssets() {
     if (assets) return assets;

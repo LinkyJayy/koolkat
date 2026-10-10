@@ -2914,3 +2914,7 @@ img.pixel { image-rendering: pixelated; }
   .kart-hud-buttons { flex-direction: row; }
   .kart-hud-buttons .icon-btn { width: 36px; height: 36px; }
 }
+/* The Playables' 🔊 / 🔇 music button (only while a song's on). */
+.music-mute { font-size: 18px; line-height: 1; }
+.music-mute[hidden] { display: none; }
+.music-mute.muted { opacity: 0.75; }

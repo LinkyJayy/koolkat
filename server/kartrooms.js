@@ -194,7 +194,7 @@ export function registerKartRoutes({ api, auth, wrap, clock, publicUser, db, bol
       // Random: pick now, so everyone races the same track and hears the same song.
       if (!KART_MAP_IDS.includes(room.map)) room.map = KART_MAP_IDS[crypto.randomInt(KART_MAP_IDS.length)];
       if (room.song === 'map') room.song = kartMap(room.map).song;
-      if (!KART_SONGS.includes(room.song)) room.song = KART_SONGS[crypto.randomInt(KART_SONGS.length)];
+      if (room.song !== 'none' && !KART_SONGS.includes(room.song)) room.song = KART_SONGS[crypto.randomInt(KART_SONGS.length)];
       return { room: describe(room, now) };
     })
   );
@@ -208,7 +208,7 @@ export function registerKartRoutes({ api, auth, wrap, clock, publicUser, db, bol
       if (room.hostId !== req.user.id) fail(403, 'Only the host picks the music');
       if (room.state !== 'lobby') fail(409, 'The race has already started');
       const song = String(req.body?.song ?? '');
-      if (song !== 'random' && song !== 'map' && !KART_SONGS.includes(song)) fail(400, "That song isn't on the Kat Kart OST");
+      if (song !== 'random' && song !== 'map' && song !== 'none' && !KART_SONGS.includes(song)) fail(400, "That song isn't on the Kat Kart OST");
       room.song = song;
       return { room: describe(room, clock()) };
     })

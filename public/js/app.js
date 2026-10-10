@@ -5740,6 +5740,7 @@ const ESCAPE_SONG_KEY = 'koolkat.katEscape.song';
 for (const select of [$('escape-song'), $('escape-song-online')]) {
   select.replaceChildren(
     el('option', { value: 'random', text: '🔀 Random' }),
+    el('option', { value: 'none', text: '🔇 No song' }),
     ...RACE_SONGS.map((song) => el('option', { value: song.id, text: `${song.title} · ${song.artist}` }))
   );
 }
@@ -5791,6 +5792,7 @@ function showEscapeOver({ title, final = '', detail = '', results = null, down =
 }
 
 const katEscape = createKatEscape({
+  mute: $('btn-escape-mute'),
   canvas: $('escape-canvas'),
   score: $('escape-score'),
   bolts: $('escape-bolts'),
@@ -6120,8 +6122,9 @@ const ccTable = createCircleTable($('cc-canvas'));
 const cc = { code: null, room: null, timer: null, playing: false, seen: 0, sent: 0, applied: 0, myTurn: false };
 // Music from the Kat Kart OST: you pick it in Practice; online the host does.
 const ccMusic = createRaceMusic();
+ccMusic.bindMute($('btn-cc-mute'));
 const CC_SONG = 'koolkat.circleChaos.song';
-const songOptions = () => [el('option', { value: 'random', text: '🔀 Random' }), ...RACE_SONGS.map((song) => el('option', { value: song.id, text: `${song.title} · ${song.artist}` }))];
+const songOptions = () => [el('option', { value: 'random', text: '🔀 Random' }), el('option', { value: 'none', text: '🔇 No song' }), ...RACE_SONGS.map((song) => el('option', { value: song.id, text: `${song.title} · ${song.artist}` }))];
 $('cc-song').replaceChildren(...songOptions());
 $('cc-song-online').replaceChildren(...songOptions());
 try {
@@ -6657,7 +6660,7 @@ const saveKi = () => {
 const kiTeamIcon = (team) => `icons/invaders/team-${team}.png`;
 $('ki-song').replaceChildren(...songOptions());
 $('ki-song-online').replaceChildren(...songOptions());
-$('ki-song').value = RACE_SONGS.some((s) => s.id === ki.song) ? ki.song : 'random';
+$('ki-song').value = ki.song === 'none' || RACE_SONGS.some((s) => s.id === ki.song) ? ki.song : 'random';
 $('ki-song').addEventListener('change', (e) => {
   ki.song = e.target.value;
   saveKi();
@@ -6709,6 +6712,7 @@ function openInvadersMenu() {
 $('btn-ki-close').addEventListener('click', () => $('dialog-invaders').close());
 
 const katInvaders = createKatInvaders({
+  mute: $('btn-ki-mute'),
   canvas: $('ki-canvas'),
   score: $('ki-score'),
   lives: $('ki-lives'),
@@ -6976,7 +6980,7 @@ const saveKs = () => {
 const ksTeamIcon = (team) => `icons/circles/team-${team}.png`;
 $('ks-song').replaceChildren(...songOptions());
 $('ks-song-online').replaceChildren(...songOptions());
-$('ks-song').value = RACE_SONGS.some((s) => s.id === ks.song) ? ks.song : 'random';
+$('ks-song').value = ks.song === 'none' || RACE_SONGS.some((s) => s.id === ks.song) ? ks.song : 'random';
 $('ks-song').addEventListener('change', (e) => {
   ks.song = e.target.value;
   saveKs();
@@ -7005,6 +7009,7 @@ function openSurvivalMenu() {
 $('btn-ks-close').addEventListener('click', () => $('dialog-survival').close());
 
 const katSurvival = createKatSurvival({
+  mute: $('btn-ks-mute'),
   canvas: $('ks-canvas'),
   minimap: $('ks-minimap'),
   clock: $('ks-clock'),
@@ -7259,6 +7264,7 @@ $('btn-wordle-new').addEventListener('click', async () => {
 
 // Kat Kart
 const katKart = createKatKart({
+  mute: $('btn-kart-mute'),
   canvas: $('kart-canvas'),
   minimap: $('kart-minimap'),
   place: $('kart-place'),
@@ -7390,6 +7396,7 @@ for (const select of [$('kart-song-solo'), $('kart-song-online')]) {
   select.replaceChildren(
     el('option', { value: 'map', text: "🗺️ The map's song" }),
     el('option', { value: 'random', text: '🔀 Random' }),
+    el('option', { value: 'none', text: '🔇 No song' }),
     ...RACE_SONGS.map((song) => el('option', { value: song.id, text: `${song.title} · ${song.artist}` }))
   );
 }

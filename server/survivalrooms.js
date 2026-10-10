@@ -182,7 +182,7 @@ export function registerSurvivalRoutes({ api, auth, wrap, clock, publicUser, db,
       const room = roomOr404(req);
       hostOnly(room, req, 'picks the music');
       const song = String(req.body?.song ?? '');
-      if (song !== 'random' && !KART_SONGS.includes(song)) fail(400, "That song isn't on the Kat Kart OST");
+      if (song !== 'random' && song !== 'none' && !KART_SONGS.includes(song)) fail(400, "That song isn't on the Kat Kart OST");
       room.song = song;
       return { room: describe(room, clock()) };
     })
@@ -199,7 +199,7 @@ export function registerSurvivalRoutes({ api, auth, wrap, clock, publicUser, db,
       room.state = 'running';
       room.startAt = now + COUNTDOWN;
       room.seed = crypto.randomInt(1, 2 ** 31 - 1);
-      if (!KART_SONGS.includes(room.song)) room.song = KART_SONGS[crypto.randomInt(KART_SONGS.length)];
+      if (room.song !== 'none' && !KART_SONGS.includes(room.song)) room.song = KART_SONGS[crypto.randomInt(KART_SONGS.length)];
       room.game = createGame(
         room.seed,
         present(room).map((p) => ({ id: p.id, name: p.name, team: p.team }))

@@ -233,7 +233,7 @@ export function registerCircleRoutes({ api, auth, wrap, clock, publicUser, db, b
       if (room.hostId !== req.user.id) fail(403, 'Only the host picks the music');
       if (room.state !== 'lobby') fail(409, 'The game has already started');
       const song = String(req.body?.song ?? '');
-      if (song !== 'random' && !KART_SONGS.includes(song)) fail(400, "That song isn't on the Kat Kart OST");
+      if (song !== 'random' && song !== 'none' && !KART_SONGS.includes(song)) fail(400, "That song isn't on the Kat Kart OST");
       room.song = song;
       return { room: describe(room, clock()) };
     })
@@ -252,7 +252,7 @@ export function registerCircleRoutes({ api, auth, wrap, clock, publicUser, db, b
       room.players.sort((a, b) => TEAMS.indexOf(a.team) - TEAMS.indexOf(b.team));
       room.deck = newDeck(room.players.map((p) => p.team), randomInt);
       // Random music: pick now, so everyone hears the same song.
-      if (!KART_SONGS.includes(room.song)) room.song = KART_SONGS[randomInt(KART_SONGS.length)];
+      if (room.song !== 'none' && !KART_SONGS.includes(room.song)) room.song = KART_SONGS[randomInt(KART_SONGS.length)];
       room.state = 'dealing';
       room.startAt = now + DEAL_MS;
       room.dir = 1;

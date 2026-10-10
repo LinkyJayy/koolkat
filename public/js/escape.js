@@ -78,6 +78,7 @@ export function createKatEscape(els) {
   let assets = null;
   // The same music as Kat Kart (a song from the Kat Kart OST).
   const music = createRaceMusic();
+  music.bindMute(els.mute);
 
   async function loadAssets() {
     if (assets) return assets;
