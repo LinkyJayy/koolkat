@@ -7343,6 +7343,7 @@ const kartTiltWanted = () => {
 };
 $('kart-tilt').checked = kartTiltWanted();
 katKart.setTilt(kartTiltWanted());
+$('kart-tilt-options').hidden = !kartTiltWanted();
 $('kart-tilt').addEventListener('change', (e) => {
   try {
     localStorage.setItem(KART_TILT_KEY, e.target.checked ? '1' : '0');
@@ -7350,6 +7351,36 @@ $('kart-tilt').addEventListener('change', (e) => {
     // Only for this visit.
   }
   katKart.setTilt(e.target.checked);
+  $('kart-tilt-options').hidden = !e.target.checked;
+});
+// Flip the direction, and how sensitive it is (1 to 10), remembered.
+const KART_TILT_OPTS = 'koolkat.katKart.tiltOptions';
+const tiltOpts = { flip: false, sensitivity: 8 };
+try {
+  Object.assign(tiltOpts, JSON.parse(localStorage.getItem(KART_TILT_OPTS) || '{}'));
+} catch {
+  // The defaults it is.
+}
+const applyTiltOpts = () => {
+  tiltOpts.sensitivity = Math.max(1, Math.min(10, Math.round(Number(tiltOpts.sensitivity) || 8)));
+  $('kart-tilt-flip').checked = Boolean(tiltOpts.flip);
+  $('kart-tilt-sens').value = String(tiltOpts.sensitivity);
+  $('kart-tilt-sens-value').textContent = String(tiltOpts.sensitivity);
+  katKart.setTiltOptions(tiltOpts);
+  try {
+    localStorage.setItem(KART_TILT_OPTS, JSON.stringify(tiltOpts));
+  } catch {
+    // Only for this visit.
+  }
+};
+applyTiltOpts();
+$('kart-tilt-flip').addEventListener('change', (e) => {
+  tiltOpts.flip = e.target.checked;
+  applyTiltOpts();
+});
+$('kart-tilt-sens').addEventListener('input', (e) => {
+  tiltOpts.sensitivity = Number(e.target.value);
+  applyTiltOpts();
 });
 /** iPhones ask before a page can use the motion sensor (it has to be from a tap). */
 function askForTilt() {

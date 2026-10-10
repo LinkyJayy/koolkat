@@ -1303,6 +1303,8 @@ export function createKatKart(els) {
   const IOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/.test(navigator.userAgent);
   const tilt = {
     enabled: false,
+    flip: false,
+    sensitivity: 8,
     value: 0, // -1 (left) to 1 (right), smoothed
     seenAt: 0,
     listening: false,
@@ -1313,14 +1315,15 @@ export function createKatKart(els) {
       // The device's x/y turned into the screen's left-right.
       let sx = g.x * Math.cos(angle) + g.y * Math.sin(angle);
       if (IOS) sx = -sx; // iPhones report it the other way round
-      // The phone's right side down: steer right. (On real phones the reading's
-      // sign is this way round; it was the other way and steered backwards.)
-      const lean = Math.max(-1, Math.min(1, sx / 9.81));
-      const DEAD = 0.07; // about 4° either way is straight on
-      const FULL = 0.42; // about 25° is a full turn
+      // The phone's right side down: steer right (or the other way, if you flipped it).
+      const lean = Math.max(-1, Math.min(1, (sx / 9.81) * (tilt.flip ? -1 : 1)));
+      // Sensitivity 1 to 10: a full turn at 40° of tilt down to 5°; straight on within a sixth of that.
+      const fullDeg = 40 - ((tilt.sensitivity - 1) * 35) / 9;
+      const FULL = Math.sin((fullDeg * Math.PI) / 180);
+      const DEAD = FULL / 6;
       const mag = Math.max(0, Math.abs(lean) - DEAD) / (FULL - DEAD);
       const target = Math.sign(lean) * Math.min(1, mag);
-      tilt.value += (target - tilt.value) * 0.35;
+      tilt.value += (target - tilt.value) * 0.5;
       tilt.seenAt = performance.now();
     },
     listen(on) {
@@ -2020,6 +2023,11 @@ export function createKatKart(els) {
     setTilt(on) {
       tilt.enabled = Boolean(on);
       tilt.listen(tilt.enabled && Boolean(race));
+    },
+    /** Tilt options: { flip, sensitivity (1 to 10) }. */
+    setTiltOptions({ flip, sensitivity } = {}) {
+      if (flip != null) tilt.flip = Boolean(flip);
+      if (sensitivity != null) tilt.sensitivity = Math.max(1, Math.min(10, Number(sensitivity) || 8));
     },
     /** Is the phone's motion sensor steering right now? */
     get tilting() {

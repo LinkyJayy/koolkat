@@ -2920,3 +2920,7 @@ img.pixel { image-rendering: pixelated; }
 .music-mute.muted { opacity: 0.75; }
 /* Longer pick names ("Random Rainbow") go onto two lines. */
 .cc-pick-name { white-space: normal; text-align: center; line-height: 1.1; overflow-wrap: anywhere; }
+.kart-tilt-options { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 14px; margin: -4px 0 10px; font-size: 14px; font-weight: 700; }
+.kart-tilt-options[hidden] { display: none; }
+.kart-tilt-options label { display: inline-flex; align-items: center; gap: 6px; }
+.kart-tilt-sens input { width: 120px; }
