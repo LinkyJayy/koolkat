@@ -38,7 +38,8 @@ export function describeEvent(room, e) {
   if (e.type === 'penalty') return `${e.circle === 'lose4' ? '➖4' : '➖2'} ${by} made ${who(e.target)} lose ${e.lost} circle${e.lost === 1 ? '' : 's'}${auto}`;
   if (e.type !== 'draw') return '';
   const refill = e.refill ? '🤖 The Deck ran out, so the bot spilled the bag again! ' : '';
-  const took = `${refill}${by} took ${CIRCLE_NAMES[e.circle]}`;
+  const how = e.picked === 'random' ? ' 🎲' : e.picked === 'random-rainbow' ? ' 🌈🎲' : '';
+  const took = `${refill}${by} took ${CIRCLE_NAMES[e.circle]}${how}`;
   if (TEAMS.includes(e.circle)) return `${took} (+1)${auto}`;
   if (e.choose) return `${took}! Picking who loses ${e.circle === 'lose4' ? 4 : 2}…`;
   if (e.circle === 'lose2' || e.circle === 'lose4') return `${took} → ${who(e.target)} loses ${e.lost}${auto}`;

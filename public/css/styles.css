@@ -2918,3 +2918,5 @@ img.pixel { image-rendering: pixelated; }
 .music-mute { font-size: 18px; line-height: 1; }
 .music-mute[hidden] { display: none; }
 .music-mute.muted { opacity: 0.75; }
+/* Longer pick names ("Random Rainbow") go onto two lines. */
+.cc-pick-name { white-space: normal; text-align: center; line-height: 1.1; overflow-wrap: anywhere; }

@@ -34,7 +34,7 @@ import { BOLTS_PER_GEM, chaseGems, escapeGems, invaderGems, placeGems, wordleGem
 import { DIFFICULTIES as KI_DIFFICULTIES, LIVES as KI_LIVES, createKatInvaders } from './invaders.js';
 import { createKatSurvival } from './survival.js';
 import { createBooks } from './books.js';
-import { choicesFor as ccChoicesFor, choose as ccChoose, deckCounts as ccDeckCounts, draw as ccDraw, newDeck as ccNewDeck, ranked as ccRanked } from './circle-rules.js';
+import { choicesFor as ccChoicesFor, pickCounts as ccPickCounts, choose as ccChoose, deckCounts as ccDeckCounts, draw as ccDraw, newDeck as ccNewDeck, ranked as ccRanked } from './circle-rules.js';
 import { BASE_TEAMS, TEAMS as CC_TEAMS, TEAM_NAMES as CC_TEAM_NAMES, TURNS as CC_TURNS, circleIcon as ccCircleIcon, createCircleTable, describeEvent as ccDescribe, teamIcon as ccTeamIcon } from './circles.js';
 import { KART_MAPS, RACE_SONGS, RACERS as KART_RACERS, createKatKart, createRaceMusic, formatRaceTime, showNowPlaying } from './kart.js';
 
@@ -6553,16 +6553,17 @@ async function ccPlay(body = {}) {
 }
 
 /**
- * Your turn: pick the circle to take, your own colour or a rainbow one (the
- * other teams' colours aren't yours to take). Each shows how many are left;
- * if none of them are, the bot spills the bag again whichever you pick.
+ * Your turn: pick your own colour, a random circle (your colour or a rainbow
+ * one, by chance), a random rainbow circle (Lose 2, Lose 4 or Lucky), or the
+ * Lucky Card. Each shows how many circles it could be; if your colour and the
+ * rainbow ones have all gone, the bot spills the bag again whichever you pick.
  */
-const CC_PICK_NAMES = { lose2: 'Lose 2', lose4: 'Lose 4', lucky: 'Lucky' };
+const CC_PICK_NAMES = { random: 'Random', 'random-rainbow': 'Random Rainbow', lucky: 'Lucky' };
 function renderCirclePicks(room) {
   const me = room.players.find((p) => p.id === state.me.userId);
   const kinds = ccChoicesFor(me.team);
-  const counts = room.counts ?? {};
-  const empty = kinds.every((k) => !counts[k]);
+  const counts = ccPickCounts(room.counts ?? {}, me.team);
+  const empty = !counts.random;
   const list = $('cc-pick-list');
   const key = `${room.events.at(-1)?.id}:${kinds.map((k) => counts[k] ?? 0).join()}`;
   if (list.dataset.key === key) return;

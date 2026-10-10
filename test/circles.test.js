@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { openDatabase } from '../server/db.js';
 import { createApp } from '../server/app.js';
 import { LUCKY, TURNS, choose, draw, newDeck, playLucky } from '../server/circlerooms.js';
-import { TEAMS, deckCounts } from '../public/js/circle-rules.js';
+import { TEAMS, choicesFor, deckCounts, pickCounts } from '../public/js/circle-rules.js';
 import { createIdentity, deriveKeysFromPassword } from '../public/js/crypto.js';
 
 const game = (n = 3) => ({
@@ -50,20 +50,34 @@ describe('Circle Chaos rules', () => {
     assert.ok(refill.circle === 'red' || ['lose2', 'lose4', 'lucky'].includes(refill.circle));
   });
 
-  test('pick which circle to take: your colour or a rainbow one', () => {
+  test('pick your colour, a random circle, a random rainbow circle or the Lucky Card', () => {
     const g = game();
     g.deck = ['lose2', 'red', 'lucky', 'green', 'red'];
     assert.deepEqual(deckCounts(g.deck), { ...Object.fromEntries(TEAMS.map((t) => [t, 0])), red: 2, green: 1, lose2: 1, lose4: 0, lucky: 1 });
+    assert.deepEqual(choicesFor('red'), ['red', 'random', 'random-rainbow', 'lucky']);
+    assert.deepEqual(pickCounts(deckCounts(g.deck), 'red'), { red: 2, random: 4, 'random-rainbow': 2, lucky: 1 });
     assert.equal(draw(g, undefined, 'green'), null, "not someone else's colour");
-    assert.equal(draw(g, undefined, 'lose4'), null, 'none of those left');
+    assert.equal(draw(g, undefined, 'lose2'), null, "Lose 2 can't be picked on purpose");
+    assert.equal(draw(g, undefined, 'lose4'), null, "nor Lose 4");
     assert.equal(g.turnId, 1, 'still your turn');
     assert.equal(draw(g, undefined, 'lucky').circle, 'lucky', 'Red picks the Lucky Card under its own circles');
     assert.deepEqual(g.deck, ['lose2', 'red', 'green', 'red']);
+    // Random rainbow: only the rainbow ones (here just Lose 2).
     g.turnId = 1;
-    assert.equal(draw(g, () => 0, 'lose2').choose, true);
+    const rr = draw(g, () => 0, 'random-rainbow');
+    assert.deepEqual([rr.circle, rr.picked, rr.choose], ['lose2', 'random-rainbow', true]);
     assert.deepEqual(g.deck, ['red', 'green', 'red']);
-    // Nothing of yours left: the bot spills the bag, and you still get what you picked.
     g.pending = null;
+    g.turnId = 1;
+    assert.equal(draw(g, undefined, 'random-rainbow'), null, 'no rainbow ones left');
+    // Random: any you could take (never someone else's colour).
+    for (let i = 0; i < 2; i++) {
+      g.turnId = 1;
+      const r = draw(g, (n) => n - 1, 'random');
+      assert.deepEqual([r.circle, r.picked], ['red', 'random']);
+    }
+    assert.deepEqual(g.deck, ['green']);
+    // Nothing of yours left: the bot spills the bag, and you still get what you picked.
     g.turnId = 2;
     const refill = draw(g, undefined, 'yellow');
     assert.deepEqual([refill.refill, refill.circle, refill.to], [true, 'yellow', 2]);

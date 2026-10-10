@@ -121,6 +121,8 @@ const PRECACHE = [
   'icons/circles/lose2.png',
   'icons/circles/lose4.png',
   'icons/circles/lucky.png',
+  'icons/circles/random.png',
+  'icons/circles/random-rainbow.png',
   'icons/circles/bag.png',
   'icons/circles/bot.png',
   'vendor/qrcode.mjs',
