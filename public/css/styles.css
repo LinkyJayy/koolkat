@@ -2924,3 +2924,24 @@ img.pixel { image-rendering: pixelated; }
 .kart-tilt-options[hidden] { display: none; }
 .kart-tilt-options label { display: inline-flex; align-items: center; gap: 6px; }
 .kart-tilt-sens input { width: 120px; }
+
+/* ---------- My Singing Katz ---------- */
+.msk-card { background: linear-gradient(160deg, #62b6ff, #5cbf4a); }
+.msk-card img { object-fit: contain; padding: 6%; }
+.msk-screen { background: #155e9e; color: #fff; display: flex; flex-direction: column; }
+@media (min-width: 760px) { .msk-screen { left: 0 !important; right: 0 !important; } }
+.msk-top { display: flex; align-items: center; gap: 10px; padding: calc(8px + var(--safe-top)) 10px 6px; background: rgba(0, 0, 0, 0.25); }
+.msk-top h2 { flex: 1; margin: 0; font-size: 18px; text-align: center; }
+.msk-top .fineprint { color: rgba(255, 255, 255, 0.8); font-weight: 700; }
+.msk-stage { position: relative; flex: 1; min-height: 0; }
+#msk-canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: pointer; }
+.msk-status { position: absolute; left: 50%; top: 40%; transform: translateX(-50%); margin: 0; padding: 8px 14px; border-radius: 12px; background: rgba(0, 0, 0, 0.6); font-weight: 800; }
+.msk-status[hidden] { display: none; }
+.msk-controls { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 10px calc(10px + var(--safe-bottom, 0px)); background: rgba(0, 0, 0, 0.25); }
+.msk-toggles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; width: min(100%, 440px); }
+.msk-toggle { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 4px; border: 3px solid #ffd23f; border-radius: 14px; background: #fff; color: #0f172a; font: inherit; font-weight: 800; font-size: 13px; cursor: pointer; }
+.msk-toggle img { height: 44px; object-fit: contain; }
+.msk-toggle.asleep { border-color: #94a3b8; opacity: 0.6; }
+.msk-state { position: absolute; top: 2px; right: 6px; font-size: 14px; }
+.msk-hint { margin: 0; color: rgba(255, 255, 255, 0.8); }
+#btn-msk-pause { background: #fff; color: #0f172a; }

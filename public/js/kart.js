@@ -713,7 +713,11 @@ export function setGameMusicMuted(muted) {
     // Only for this visit.
   }
   for (const p of players) p.applyMute();
+  for (const fn of muteListeners) fn(gamesMuted);
 }
+const muteListeners = new Set();
+/** Told whenever the Playables' music is muted or unmuted (for games with their own sound). */
+export const onGameMusicMute = (fn) => muteListeners.add(fn);
 
 export function createRaceMusic() {
   let ctx = null;

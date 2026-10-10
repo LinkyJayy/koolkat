@@ -128,6 +128,7 @@
           <button type="button" class="playable-card kart-card" data-play="kart"><img src="icons/kat-kart.png" alt=""><span class="playable-name">Kat Kart</span><span class="playable-sub">Race friends or bots</span></button>
           <button type="button" class="playable-card escape-card" data-play="escape"><img src="icons/escape-cat.png" alt="" class="pixel"><span class="playable-name">KatEscape</span><span class="playable-sub">Run from the cop</span></button>
           <button type="button" class="playable-card invaders-card" data-play="invaders"><img src="icons/invaders/team-red.png" alt="" class="pixel"><span class="playable-name">Kat Invaders</span><span class="playable-sub">Shoot the mice</span></button>
+          <button type="button" class="playable-card msk-card" data-play="msk"><img src="icons/msk/synth-sing.png" alt=""><span class="playable-name">My Singing Katz</span><span class="playable-sub">KatIsland sings</span></button>
           <button type="button" class="playable-card survival-card" data-play="survival"><img src="icons/survival/card.png" alt="" class="pixel"><span class="playable-name">Kat Survival</span><span class="playable-sub">Survive the night</span></button>
           <button type="button" class="playable-card circles-card" data-play="circles"><img src="icons/circles/bag.png" alt="" class="pixel"><span class="playable-name">Circle Chaos</span><span class="playable-sub">Grab circles, cause chaos</span></button>
           <button type="button" class="playable-card wordle-card" data-play="wordle"><span class="wordle-art" aria-hidden="true"><b class="c">K</b><b class="p">A</b><b class="a">T</b><b class="c">S</b><b class="a">!</b></span><span class="playable-name">Kat Wordle</span><span class="playable-sub">Guess the word in 6 tries</span></button>
@@ -225,6 +226,11 @@
         <span class="playable-name">Kat Invaders</span>
         <span class="playable-sub">Mice are coming! Shoot as many as you can in 2 minutes (10 to 50 points each), but don't let them get close. Solo, Practice vs bots, or with friends.</span>
         <span class="playable-best" id="invaders-best"></span>
+      </button>
+      <button type="button" class="playable-card big msk-card" data-play="msk">
+        <img src="icons/msk/drums-idle.png" alt="">
+        <span class="playable-name">My Singing Katz</span>
+        <span class="playable-sub">Like My Singing Monsters, with Kats: on KatIsland, KatSynth, KatDrums and KatBass sing the song together. Tap a Kat to put it to sleep or wake it up.</span>
       </button>
       <button type="button" class="playable-card big survival-card" data-play="survival">
         <img src="icons/survival/card.png" alt="" class="pixel">
@@ -454,6 +460,28 @@
           <button type="button" class="btn primary" id="btn-ki-again">Play again</button>
         </div>
       </div>
+    </div>
+  </section>
+
+  <!-- My Singing Katz -->
+  <section id="screen-msk" class="screen msk-screen" hidden>
+    <header class="msk-top">
+      <button type="button" class="icon-btn" id="btn-msk-back" aria-label="Back to Playables"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12Z"/></svg></button>
+      <h2>🎤 My Singing Katz <span class="fineprint">KatIsland</span></h2>
+      <button type="button" class="icon-btn music-mute" id="btn-msk-mute" aria-label="Mute">🔊</button>
+    </header>
+    <div class="msk-stage">
+      <canvas id="msk-canvas" aria-label="KatIsland, with KatSynth, KatDrums and KatBass singing"></canvas>
+      <p class="msk-status" id="msk-status" hidden>Tuning up…</p>
+    </div>
+    <div class="msk-controls">
+      <div class="msk-toggles" id="msk-toggles" role="group" aria-label="Who's singing (tap to put a Kat to sleep or wake it up)">
+        <button type="button" class="msk-toggle" data-kat="synth" aria-pressed="true"><img src="icons/msk/synth-idle.png" alt=""><span>KatSynth</span><b class="msk-state">🎵</b></button>
+        <button type="button" class="msk-toggle" data-kat="drums" aria-pressed="true"><img src="icons/msk/drums-idle.png" alt=""><span>KatDrums</span><b class="msk-state">🎵</b></button>
+        <button type="button" class="msk-toggle" data-kat="bass" aria-pressed="true"><img src="icons/msk/bass-idle.png" alt=""><span>KatBass</span><b class="msk-state">🎵</b></button>
+      </div>
+      <button type="button" class="btn small" id="btn-msk-pause">⏸ Pause</button>
+      <p class="fineprint msk-hint">Tap a Kat to put it to sleep (🤫) or wake it up.</p>
     </div>
   </section>
 

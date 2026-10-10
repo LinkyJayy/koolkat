@@ -34,6 +34,7 @@ import { BOLTS_PER_GEM, chaseGems, escapeGems, invaderGems, placeGems, wordleGem
 import { DIFFICULTIES as KI_DIFFICULTIES, LIVES as KI_LIVES, createKatInvaders } from './invaders.js';
 import { createKatSurvival } from './survival.js';
 import { createBooks } from './books.js';
+import { createSingingKatz } from './singingkatz.js';
 import { choicesFor as ccChoicesFor, pickCounts as ccPickCounts, choose as ccChoose, deckCounts as ccDeckCounts, draw as ccDraw, newDeck as ccNewDeck, ranked as ccRanked } from './circle-rules.js';
 import { BASE_TEAMS, TEAMS as CC_TEAMS, TEAM_NAMES as CC_TEAM_NAMES, TURNS as CC_TURNS, circleIcon as ccCircleIcon, createCircleTable, describeEvent as ccDescribe, teamIcon as ccTeamIcon } from './circles.js';
 import { KART_MAPS, RACE_SONGS, RACERS as KART_RACERS, createKatKart, createRaceMusic, formatRaceTime, showNowPlaying } from './kart.js';
@@ -197,6 +198,7 @@ function show(name) {
     leaveEscapeRoom();
   }
   if (state.screen === 'book' && name !== 'book') books.stop();
+  if (state.screen === 'msk' && name !== 'msk') singingKatz.stop();
   if (state.screen === 'survival' && name !== 'survival') {
     katSurvival.stop();
     leaveSurvivalRoom();
@@ -5730,6 +5732,7 @@ document.addEventListener('click', (e) => {
   else if (card.dataset.play === 'circles') openCirclesMenu();
   else if (card.dataset.play === 'invaders') openInvadersMenu();
   else if (card.dataset.play === 'survival') openSurvivalMenu();
+  else if (card.dataset.play === 'msk') openSingingKatz();
   else openWordle();
 });
 
@@ -7245,6 +7248,25 @@ function leaveSurvivalRoom() {
   api('POST', `/survival/rooms/${ks.code}/leave`).catch(() => {});
   ks.code = null;
 }
+
+// ---------- My Singing Katz ----------
+const singingKatz = createSingingKatz({
+  canvas: $('msk-canvas'),
+  status: $('msk-status'),
+  pause: $('btn-msk-pause'),
+  mute: $('btn-msk-mute'),
+  toggles: $('msk-toggles'),
+});
+function openSingingKatz() {
+  singingKatz.unlock(); // this tap lets the music play
+  if (!audioEl.paused) audioEl.pause();
+  show('msk');
+  singingKatz.start().catch((err) => {
+    $('msk-status').textContent = err.message;
+    $('msk-status').hidden = false;
+  });
+}
+$('btn-msk-back').addEventListener('click', openPlayables);
 
 // ---------- KoolKat Books ----------
 const books = createBooks({ $, el, api, toast, withBusy, avatar, badgeImg, openUserProfile, openComments, show, askConfirm, timeAgo, formatTime, API_BASE, getToken, goHome: () => openHome() });
