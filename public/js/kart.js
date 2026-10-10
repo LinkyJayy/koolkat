@@ -1313,8 +1313,9 @@ export function createKatKart(els) {
       // The device's x/y turned into the screen's left-right.
       let sx = g.x * Math.cos(angle) + g.y * Math.sin(angle);
       if (IOS) sx = -sx; // iPhones report it the other way round
-      // The phone's right side down reads as a pull to the right: steer right.
-      const lean = Math.max(-1, Math.min(1, -sx / 9.81));
+      // The phone's right side down: steer right. (On real phones the reading's
+      // sign is this way round; it was the other way and steered backwards.)
+      const lean = Math.max(-1, Math.min(1, sx / 9.81));
       const DEAD = 0.07; // about 4° either way is straight on
       const FULL = 0.42; // about 25° is a full turn
       const mag = Math.max(0, Math.abs(lean) - DEAD) / (FULL - DEAD);
