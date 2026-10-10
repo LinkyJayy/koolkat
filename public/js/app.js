@@ -7332,11 +7332,47 @@ $('kart-landscape').addEventListener('change', (e) => {
     // Remembering it is only a convenience.
   }
 });
+// Tilt to steer (on unless you turn it off): with the phone sideways, turn it like a steering wheel.
+const KART_TILT_KEY = 'koolkat.katKart.tilt';
+const kartTiltWanted = () => {
+  try {
+    return localStorage.getItem(KART_TILT_KEY) !== '0';
+  } catch {
+    return true;
+  }
+};
+$('kart-tilt').checked = kartTiltWanted();
+katKart.setTilt(kartTiltWanted());
+$('kart-tilt').addEventListener('change', (e) => {
+  try {
+    localStorage.setItem(KART_TILT_KEY, e.target.checked ? '1' : '0');
+  } catch {
+    // Only for this visit.
+  }
+  katKart.setTilt(e.target.checked);
+});
+/** iPhones ask before a page can use the motion sensor (it has to be from a tap). */
+function askForTilt() {
+  if (!kartTiltWanted()) return;
+  const ask = window.DeviceMotionEvent?.requestPermission;
+  if (typeof ask === 'function') ask.call(window.DeviceMotionEvent).catch(() => {});
+}
+let kartTiltHinted = false;
 // Tapping Solo, Make a race, Join or Race again: go sideways first, if that's what you picked.
 for (const id of ['btn-kart-solo', 'btn-kart-create', 'btn-kart-join', 'btn-kart-again']) {
-  $(id).addEventListener('click', () => kartLandscapeWanted() && !kartSideways && kartLandscape(true));
+  $(id).addEventListener('click', () => {
+    askForTilt();
+    if (kartLandscapeWanted() && !kartSideways) kartLandscape(true);
+  });
 }
+// The first time you race sideways with tilt on, say how it works.
+setInterval(() => {
+  if (kartTiltHinted || state.screen !== 'kart' || !katKart.tilting) return;
+  kartTiltHinted = true;
+  toast('🔄 Turn your phone like a steering wheel to steer');
+}, 1000);
 $('btn-kart-rotate').addEventListener('click', () => {
+  askForTilt();
   const on = !kartSideways;
   kartLandscape(on);
   $('kart-landscape').checked = on;

@@ -1292,10 +1292,53 @@ export function createKatKart(els) {
     cancelAnimationFrame(frame);
     clearInterval(syncTimer);
     if (online) syncTimer = setInterval(sendSync, 100);
+    tilt.listen(tilt.enabled);
     frame = requestAnimationFrame(loop);
   }
 
+  // ---------- tilt to steer (phone held sideways) ----------
+  // The motion sensor says which way gravity pulls; turned into the screen's
+  // own directions, its sideways part is how far you've turned the phone, like
+  // a steering wheel. Only in landscape, and only if it's switched on.
+  const IOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/.test(navigator.userAgent);
+  const tilt = {
+    enabled: false,
+    value: 0, // -1 (left) to 1 (right), smoothed
+    seenAt: 0,
+    listening: false,
+    onMotion(e) {
+      const g = e.accelerationIncludingGravity;
+      if (!g || g.x == null || g.y == null) return;
+      const angle = ((screen.orientation?.angle ?? window.orientation ?? 0) * Math.PI) / 180;
+      // The device's x/y turned into the screen's left-right.
+      let sx = g.x * Math.cos(angle) + g.y * Math.sin(angle);
+      if (IOS) sx = -sx; // iPhones report it the other way round
+      // The phone's right side down reads as a pull to the right: steer right.
+      const lean = Math.max(-1, Math.min(1, -sx / 9.81));
+      const DEAD = 0.07; // about 4° either way is straight on
+      const FULL = 0.42; // about 25° is a full turn
+      const mag = Math.max(0, Math.abs(lean) - DEAD) / (FULL - DEAD);
+      const target = Math.sign(lean) * Math.min(1, mag);
+      tilt.value += (target - tilt.value) * 0.35;
+      tilt.seenAt = performance.now();
+    },
+    listen(on) {
+      if (on === tilt.listening || typeof window === 'undefined') return;
+      tilt.listening = on;
+      if (on) window.addEventListener('devicemotion', tilt.handler);
+      else window.removeEventListener('devicemotion', tilt.handler);
+      tilt.value = 0;
+    },
+    /** How far to steer from the tilt (0 when it's off, not sideways, or there's no sensor). */
+    steer() {
+      if (!tilt.enabled || innerWidth <= innerHeight || performance.now() - tilt.seenAt > 500) return 0;
+      return Math.abs(tilt.value) < 0.02 ? 0 : tilt.value;
+    },
+  };
+  tilt.handler = (e) => tilt.onMotion(e);
+
   function stop() {
+    tilt.listen(false);
     cancelAnimationFrame(frame);
     clearInterval(syncTimer);
     music.pause();
@@ -1412,7 +1455,8 @@ export function createKatKart(els) {
         steer = Math.max(-1, Math.min(1, diff * 3));
       } else {
         // Touch or keyboard (A/D, arrows); otherwise a controller's D-pad or sticks.
-        steer = (input.right ? 1 : 0) - (input.left ? 1 : 0) || gamepadSteer();
+        // (Tilting the phone, held sideways like a steering wheel, steers too.)
+        steer = (input.right ? 1 : 0) - (input.left ? 1 : 0) || gamepadSteer() || tilt.steer();
       }
       const road = onRoad(r.x, r.y);
       let max = road ? 2.6 : 1.1;
@@ -1971,6 +2015,15 @@ export function createKatKart(els) {
     // Call from a tap (phones only allow sound after one), before the race starts.
     unlockAudio: () => music.unlock(),
     keyDown: (e) => onKey(e, true),
+    /** Tilt to steer, when the phone's sideways. */
+    setTilt(on) {
+      tilt.enabled = Boolean(on);
+      tilt.listen(tilt.enabled && Boolean(race));
+    },
+    /** Is the phone's motion sensor steering right now? */
+    get tilting() {
+      return tilt.enabled && tilt.listening && performance.now() - tilt.seenAt < 500 && innerWidth > innerHeight;
+    },
     keyUp: (e) => onKey(e, false),
     get running() {
       return Boolean(race);
