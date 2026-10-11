@@ -94,6 +94,30 @@ describe('KoolKat Music', () => {
     assert.equal((await call('GET', `/users/${boss.id}`, { token: amy.token })).body.user.stats.songs, 1);
   });
 
+  test('albums: songs with the same album name make an album', async () => {
+    const post = async (title, album, withCover = false) => {
+      const audio = await upload(boss.token, 'audio', MP3);
+      const cover = withCover ? (await upload(boss.token, 'cover', JPEG)).body.uploadId : null;
+      const res = await call('POST', '/music', { token: boss.token, body: { title, album, audioId: audio.body.uploadId, coverId: cover, duration: 100 } });
+      assert.equal(res.status, 201, JSON.stringify(res.body));
+      return res.body.song;
+    };
+    await post('Natho Town', 'KoolKat 2 OST', true);
+    await post('Crystal Cavern', 'koolkat 2 ost '); // any capitals, extra spaces: the same album
+    const home = (await call('GET', '/music/home', { token: amy.token })).body;
+    const ost = home.albums.find((a) => a.name === 'KoolKat 2 OST');
+    assert.ok(ost, 'shows on the Music home page, named as on its first song');
+    assert.equal(ost.songs, 2);
+    assert.equal(ost.artist.id, boss.id);
+    assert.ok(ost.cover, 'the cover from one of its songs');
+    assert.equal(ost.length, 200);
+    const page = (await call('GET', `/music/albums/${boss.id}?name=${encodeURIComponent('KoolKat 2 OST')}`, { token: amy.token })).body;
+    assert.deepEqual(page.songs.map((x) => x.title), ['Natho Town', 'Crystal Cavern'], 'in the order they came out');
+    assert.equal((await call('GET', `/music/albums/${boss.id}?name=nope`, { token: amy.token })).status, 404);
+    assert.ok((await call('GET', '/music/albums?q=ost', { token: amy.token })).body.albums.some((a) => a.songs === 2), 'search finds it');
+    assert.ok((await call('GET', `/music/albums?user=${boss.id}`, { token: amy.token })).body.albums.length >= 2);
+  });
+
   test('only the artist or an admin deletes a song', async () => {
     assert.equal((await call('DELETE', `/music/${song.id}`, { token: amy.token })).status, 403);
     assert.equal((await call('DELETE', `/music/${song.id}`, { token: boss.token })).status, 200);

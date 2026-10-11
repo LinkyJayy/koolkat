@@ -183,11 +183,16 @@
         </button>
         <h3 class="music-heading" id="music-top-heading">Top songs</h3>
         <div class="music-row" id="music-top"></div>
+        <h3 class="music-heading" id="music-albums-heading" hidden>Albums</h3>
+        <div class="music-row" id="music-albums" hidden></div>
         <h3 class="music-heading">New releases</h3>
         <ul class="song-list" id="music-new"></ul>
         <p class="music-empty" id="music-empty" hidden>No songs yet. Artists with KoolKat Unlimited can post one with +.</p>
       </div>
       <div id="music-list-view" hidden>
+        <div class="album-head" id="music-album-head" hidden></div>
+        <h3 class="music-heading" id="music-search-albums-heading" hidden>Albums</h3>
+        <div class="music-row" id="music-search-albums" hidden></div>
         <ul class="song-list" id="music-list"></ul>
         <p class="music-empty" id="music-list-empty" hidden></p>
       </div>
@@ -1101,7 +1106,8 @@
         <button type="button" class="song-cover song-new-cover" id="btn-song-cover" aria-label="Choose the album cover"><span>＋<br>Album cover</span></button>
         <div class="song-new-fields">
           <label>Title<input name="title" maxlength="80" required placeholder="Song title"></label>
-          <label>Album <span class="fineprint">(optional)</span><input name="album" maxlength="80" placeholder="Album or single name"></label>
+          <label>Album <span class="fineprint">(optional)</span><input name="album" maxlength="80" placeholder="Album or single name" list="song-album-list" autocomplete="off"></label>
+          <datalist id="song-album-list"></datalist>
         </div>
       </div>
       <button type="button" class="btn small wide-ish" id="btn-song-audio">🎵 Choose the song</button>

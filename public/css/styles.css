@@ -2945,3 +2945,15 @@ img.pixel { image-rendering: pixelated; }
 .msk-state { position: absolute; top: 2px; right: 6px; font-size: 14px; }
 .msk-hint { margin: 0; color: rgba(255, 255, 255, 0.8); }
 #btn-msk-pause { background: #fff; color: #0f172a; }
+
+/* KoolKat Music albums */
+.album-head { display: flex; gap: 14px; align-items: flex-end; margin: 4px 0 16px; }
+.album-head[hidden] { display: none; }
+.album-head-cover { width: 132px; height: 132px; flex-shrink: 0; border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); overflow: hidden; }
+.album-head-cover img { width: 100%; height: 100%; object-fit: cover; }
+.album-head-text { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
+.album-head-text h3 { margin: 0; font-size: 24px; font-weight: 900; line-height: 1.1; overflow-wrap: anywhere; }
+.album-head-text .fineprint { color: rgba(255, 255, 255, 0.7); }
+.album-artist { display: inline-flex; align-items: center; gap: 6px; color: #fff; font-weight: 800; }
+.album-play { margin-top: 4px; }
+#music-search-albums-heading[hidden], #music-search-albums[hidden], #music-albums-heading[hidden], #music-albums[hidden] { display: none; }

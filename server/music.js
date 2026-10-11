@@ -98,6 +98,22 @@ export function registerMusicRoutes({ api, db, clock, auth, wrap, publicUser, ha
     insertComment: db.prepare('INSERT INTO song_comments (song_id, user_id, body, created_at) VALUES (?, ?, ?, ?)'),
     removeComment: db.prepare('DELETE FROM song_comments WHERE id = ?'),
     stats: db.prepare('SELECT COUNT(*) AS n FROM songs WHERE artist_id = ?'),
+    // Albums: an artist's songs with the same album name (any capitals), newest first.
+    albums: db.prepare(`
+      SELECT s.artist_id, lower(trim(s.album)) AS akey, MIN(s.id) AS first_id, MAX(s.id) AS last_id, COUNT(*) AS n, SUM(COALESCE(s.duration, 0)) AS length
+      FROM songs s WHERE s.album IS NOT NULL AND trim(s.album) != ''
+      GROUP BY s.artist_id, akey ORDER BY last_id DESC LIMIT ?`),
+    albumsByArtist: db.prepare(`
+      SELECT s.artist_id, lower(trim(s.album)) AS akey, MIN(s.id) AS first_id, MAX(s.id) AS last_id, COUNT(*) AS n, SUM(COALESCE(s.duration, 0)) AS length
+      FROM songs s WHERE s.album IS NOT NULL AND trim(s.album) != '' AND s.artist_id = ?
+      GROUP BY s.artist_id, akey ORDER BY last_id DESC LIMIT ?`),
+    albumSearch: db.prepare(`
+      SELECT s.artist_id, lower(trim(s.album)) AS akey, MIN(s.id) AS first_id, MAX(s.id) AS last_id, COUNT(*) AS n, SUM(COALESCE(s.duration, 0)) AS length
+      FROM songs s JOIN users u ON u.id = s.artist_id
+      WHERE s.album IS NOT NULL AND trim(s.album) != '' AND (s.album LIKE ? ESCAPE '\\' OR u.display_name LIKE ? ESCAPE '\\' OR u.username LIKE ? ESCAPE '\\')
+      GROUP BY s.artist_id, akey ORDER BY last_id DESC LIMIT ?`),
+    albumCover: db.prepare(`SELECT cover_id FROM songs WHERE artist_id = ? AND lower(trim(album)) = ? AND cover_id IS NOT NULL ORDER BY id DESC LIMIT 1`),
+    albumSongs: db.prepare(`${SELECT} WHERE s.artist_id = ? AND lower(trim(s.album)) = ? ORDER BY s.id ASC`),
   };
 
   const userOf = (req) => q.user.get(req.user.id);
@@ -128,6 +144,21 @@ export function registerMusicRoutes({ api, db, clock, auth, wrap, publicUser, ha
     canDelete: s.artist_id === viewer.id || isAdminUser(viewer),
   });
 
+  /** An album: its name (as written on its first song), cover, artist and how many songs. */
+  const describeAlbum = (row) => {
+    const latest = q.song.get(0, row.last_id);
+    const first = row.first_id === row.last_id ? latest : q.song.get(0, row.first_id);
+    return {
+      artistId: row.artist_id,
+      name: first.album.trim(),
+      cover: media(q.albumCover.get(row.artist_id, row.akey)?.cover_id),
+      songs: row.n,
+      length: row.length || null,
+      updatedAt: latest.created_at,
+      artist: publicUser({ ...latest, id: row.artist_id }),
+    };
+  };
+
   const songOr404 = (req) => {
     const id = Number(req.params.id);
     const song = Number.isInteger(id) ? q.song.get(req.user.id, id) : null;
@@ -154,15 +185,48 @@ export function registerMusicRoutes({ api, db, clock, auth, wrap, publicUser, ha
     })
   );
 
-  // The front page: most played, and the songs you've hearted (Liked Songs).
+  // The front page: most played, the newest albums, and the songs you've hearted (Liked Songs).
   api.get(
     '/music/home',
     auth,
     wrap((req) => ({
       top: q.top.all(req.user.id, 10).map((s) => describe(s, req.user)),
+      albums: q.albums.all(20).map(describeAlbum),
       liked: q.liked.all(req.user.id, req.user.id, 100).map((s) => describe(s, req.user)),
       canPost: hasUnlimitedUser(userOf(req)),
     }))
+  );
+
+  // Albums, newest first; ?user=ID for an artist's albums; ?q= to search.
+  api.get(
+    '/music/albums',
+    auth,
+    wrap((req) => {
+      const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 100);
+      const userId = Number(req.query.user);
+      const text = String(req.query.q ?? '').trim().slice(0, 60);
+      let rows;
+      if (text) {
+        const like = `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+        rows = q.albumSearch.all(like, like, like, limit);
+      } else if (Number.isInteger(userId) && userId > 0) rows = q.albumsByArtist.all(userId, limit);
+      else rows = q.albums.all(limit);
+      return { albums: rows.map(describeAlbum) };
+    })
+  );
+
+  // One album: ?name= (any capitals) by artist :artistId, its songs in the order they came out.
+  api.get(
+    '/music/albums/:artistId',
+    auth,
+    wrap((req) => {
+      const artistId = Number(req.params.artistId);
+      const key = String(req.query.name ?? '').trim().toLowerCase();
+      const songs = Number.isInteger(artistId) && key ? q.albumSongs.all(req.user.id, artistId, key) : [];
+      if (!songs.length) fail(404, "That album isn't on KoolKat Music");
+      const row = { artist_id: artistId, akey: key, first_id: songs[0].id, last_id: songs.at(-1).id, n: songs.length, length: songs.reduce((t, s) => t + (s.duration ?? 0), 0) };
+      return { album: describeAlbum(row), songs: songs.map((s) => describe(s, req.user)) };
+    })
   );
 
   // Step 1: upload each file on its own: ?kind=audio (the song), video (music video) or cover.

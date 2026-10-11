@@ -4938,7 +4938,7 @@ $('reel-form').addEventListener('submit', async (e) => {
 // Like Spotify: songs from KoolKat artists, a player that keeps going while
 // you use the rest of the app, Liked Songs, search, and music videos.
 // Everyone can listen, heart and comment; posting is part of KoolKat Unlimited.
-const music = { view: 'home', top: [], newest: [], liked: [], list: [], canPost: false, searchTimer: null, listTitle: '' };
+const music = { view: 'home', top: [], albums: [], newest: [], liked: [], list: [], canPost: false, searchTimer: null, listTitle: '' };
 const player = { queue: [], index: -1, song: null, mode: 'song', listened: 0, lastTime: null, counted: false };
 const audioEl = new Audio();
 audioEl.preload = 'auto';
@@ -5078,6 +5078,7 @@ async function loadMusicHome() {
   try {
     const [homeData, newest] = await Promise.all([api('GET', '/music/home'), api('GET', '/music?limit=50')]);
     music.top = homeData.top;
+    music.albums = homeData.albums ?? [];
     music.liked = homeData.liked;
     music.newest = newest.songs;
     music.canPost = homeData.canPost;
@@ -5093,16 +5094,62 @@ function renderMusicHome() {
   $('music-top-heading').hidden = top.length === 0;
   $('music-top').hidden = top.length === 0;
   $('music-top').replaceChildren(...top.map((s, i) => songCard(s, top, i)));
+  $('music-albums-heading').hidden = $('music-albums').hidden = music.albums.length === 0;
+  $('music-albums').replaceChildren(...music.albums.map(albumCard));
   $('music-new').replaceChildren(...music.newest.map((s, i) => songRow(s, music.newest, i)));
   $('music-empty').hidden = music.newest.length > 0;
 }
 
-function setMusicView(view, { title = '', songs = [], empty = '' } = {}) {
+// ---------- albums: an artist's songs with the same album name ----------
+const albumLength = (a) => (a.length ? ` · ${Math.max(1, Math.round(a.length / 60))} min` : '');
+function albumCard(album) {
+  return el(
+    'button',
+    { type: 'button', class: 'song-card album-card', onclick: () => openAlbum(album) },
+    fillCover(el('span', { class: 'song-card-cover' }), album),
+    el('span', { class: 'song-card-title', text: album.name }),
+    el('span', { class: 'song-card-sub', text: `${album.artist.displayName} · ${album.songs} song${album.songs === 1 ? '' : 's'}` })
+  );
+}
+async function openAlbum(album) {
+  try {
+    const res = await api('GET', `/music/albums/${album.artistId}?name=${encodeURIComponent(album.name)}`);
+    show('music');
+    // Songs without their own cover show the album's.
+    const songs = res.songs.map((song) => (song.cover || !res.album.cover ? song : { ...song, cover: res.album.cover }));
+    setMusicView('album', { title: res.album.name, songs, empty: 'This album has no songs any more.', album: res.album });
+    $('music-body').scrollTo({ top: 0 });
+  } catch (err) {
+    toast(err.message, { error: true });
+  }
+}
+function renderAlbumHead(album, songs) {
+  $('music-album-head').replaceChildren(
+    fillCover(el('span', { class: 'album-head-cover' }), album),
+    el(
+      'div',
+      { class: 'album-head-text' },
+      el('span', { class: 'fineprint', text: 'Album' }),
+      el('h3', { text: album.name }),
+      el('button', { type: 'button', class: 'author-link album-artist', onclick: () => openUserProfile(album.artist.id) }, avatar(album.artist, 'small'), el('span', { text: album.artist.displayName }), badgeImg(album.artist)),
+      el('span', { class: 'fineprint', text: `${album.songs} song${album.songs === 1 ? '' : 's'}${albumLength(album)}` }),
+      el('button', { type: 'button', class: 'btn primary small album-play', onclick: () => songs.length && playSong(songs, 0) }, '▶ Play')
+    )
+  );
+}
+
+function setMusicView(view, { title = '', songs = [], empty = '', album = null, albums = [] } = {}) {
   music.view = view;
   $('music-main').hidden = view !== 'home';
   $('music-list-view').hidden = view === 'home';
-  $('btn-music-back').hidden = view !== 'liked';
-  $('music-title').textContent = view === 'liked' ? title : 'KoolKat Music';
+  $('btn-music-back').hidden = view !== 'liked' && view !== 'album';
+  $('music-title').textContent = view === 'liked' || view === 'album' ? title : 'KoolKat Music';
+  // An album's page starts with its cover and a Play button; a search can find albums too.
+  $('music-album-head').hidden = view !== 'album';
+  if (album) renderAlbumHead(album, songs);
+  const showAlbums = view === 'search' && albums.length > 0;
+  $('music-search-albums-heading').hidden = $('music-search-albums').hidden = !showAlbums;
+  if (showAlbums) $('music-search-albums').replaceChildren(...albums.map(albumCard));
   if (view === 'home') return;
   music.list = songs;
   $('music-list').replaceChildren(...songs.map((s, i) => songRow(s, songs, i)));
@@ -5121,9 +5168,9 @@ $('music-search').addEventListener('input', (e) => {
   if (!text) return setMusicView('home');
   music.searchTimer = setTimeout(async () => {
     try {
-      const { songs } = await api('GET', `/music?q=${encodeURIComponent(text)}`);
+      const [{ songs }, { albums }] = await Promise.all([api('GET', `/music?q=${encodeURIComponent(text)}`), api('GET', `/music/albums?q=${encodeURIComponent(text)}&limit=20`)]);
       if ($('music-search').value.trim() !== text) return;
-      setMusicView('search', { songs, empty: `No songs, albums or artists match “${text}”.` });
+      setMusicView('search', { songs, albums, empty: albums.length ? '' : `No songs, albums or artists match “${text}”.` });
     } catch (err) {
       toast(err.message, { error: true });
     }
@@ -5384,6 +5431,10 @@ $('btn-song-new').addEventListener('click', () => {
   }
   resetSongDraft();
   $('dialog-song-new').showModal();
+  // Your albums, so a new song can go on one (the same name puts it on the same album).
+  api('GET', `/music/albums?user=${state.me.userId}&limit=100`)
+    .then(({ albums }) => $('song-album-list').replaceChildren(...albums.map((a) => el('option', { value: a.name }))))
+    .catch(() => {});
 });
 
 function resetSongDraft() {
@@ -5513,6 +5564,7 @@ $('song-form').addEventListener('submit', async (e) => {
       toast(`🎵 “${song.title}” is out!`);
       music.newest.unshift(song);
       if (state.screen === 'music') renderMusicHome();
+      if (song.album) loadMusicHome(); // its album (new or bigger) shows up
     } finally {
       $('song-upload-progress').hidden = true;
       step.hidden = true;
