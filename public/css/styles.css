@@ -2957,3 +2957,6 @@ img.pixel { image-rendering: pixelated; }
 .album-artist { display: inline-flex; align-items: center; gap: 6px; color: #fff; font-weight: 800; }
 .album-play { margin-top: 4px; }
 #music-search-albums-heading[hidden], #music-search-albums[hidden], #music-albums-heading[hidden], #music-albums[hidden] { display: none; }
+.kart-ds { margin: 0 0 6px; }
+.kart-ds-head { margin: 0 0 4px; font-weight: 800; font-size: 14px; }
+.kart-ds-head .fineprint { font-weight: 600; }

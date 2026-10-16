@@ -1174,7 +1174,17 @@
       <label class="kart-song-pick kart-landscape-pick"><input type="checkbox" id="kart-tilt"> 🔄 Tilt to steer when sideways</label>
       <div class="kart-tilt-options" id="kart-tilt-options">
         <label class="kart-landscape-pick"><input type="checkbox" id="kart-tilt-flip"> ↔️ Flip tilt direction</label>
-        <label class="kart-tilt-sens">Sensitivity <input type="range" id="kart-tilt-sens" min="1" max="10" step="1" value="8" aria-label="Tilt sensitivity"> <b id="kart-tilt-sens-value">8</b></label>
+      </div>
+      <div class="kart-ds" id="kart-ds">
+        <p class="kart-ds-head">🎮 PS5 DualSense motion steering <span class="fineprint" id="kart-ds-status"></span></p>
+        <div class="kart-tilt-options">
+          <button type="button" class="btn small" id="btn-kart-ds">Connect DualSense</button>
+          <label class="kart-landscape-pick"><input type="checkbox" id="kart-ds-on"> Steer by tilting it</label>
+          <label class="kart-landscape-pick"><input type="checkbox" id="kart-ds-flip"> ↔️ Flip</label>
+        </div>
+      </div>
+      <div class="kart-tilt-options">
+        <label class="kart-tilt-sens">Tilt sensitivity <input type="range" id="kart-tilt-sens" min="1" max="10" step="1" value="8" aria-label="Tilt sensitivity"> <b id="kart-tilt-sens-value">8</b></label>
       </div>
       <button type="button" class="btn primary wide" id="btn-kart-solo">🤖 Solo vs bots · <span id="kart-level">Level 1</span></button>
       <p class="fineprint">Win a race and the bots get faster. Lose and they get easier.</p>

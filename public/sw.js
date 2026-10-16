@@ -48,6 +48,7 @@ const PRECACHE = [
   'js/survival.js',
   'js/books.js',
   'js/singingkatz.js',
+  'js/dualsense.js',
   'js/msk-katisland.js',
   'icons/msk/synth-idle.png',
   'icons/msk/synth-sing.png',

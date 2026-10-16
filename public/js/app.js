@@ -35,6 +35,7 @@ import { DIFFICULTIES as KI_DIFFICULTIES, LIVES as KI_LIVES, createKatInvaders }
 import { createKatSurvival } from './survival.js';
 import { createBooks } from './books.js';
 import { createSingingKatz } from './singingkatz.js';
+import { createDualSense, dualSenseSupported } from './dualsense.js';
 import { choicesFor as ccChoicesFor, pickCounts as ccPickCounts, choose as ccChoose, deckCounts as ccDeckCounts, draw as ccDraw, newDeck as ccNewDeck, ranked as ccRanked } from './circle-rules.js';
 import { BASE_TEAMS, TEAMS as CC_TEAMS, TEAM_NAMES as CC_TEAM_NAMES, TURNS as CC_TURNS, circleIcon as ccCircleIcon, createCircleTable, describeEvent as ccDescribe, teamIcon as ccTeamIcon } from './circles.js';
 import { KART_MAPS, RACE_SONGS, RACERS as KART_RACERS, createKatKart, createRaceMusic, formatRaceTime, showNowPlaying } from './kart.js';
@@ -7448,6 +7449,59 @@ const applyTiltOpts = () => {
   }
 };
 applyTiltOpts();
+// A PS5 DualSense: tilt it like a steering wheel (the browser talks to it directly; Chrome or Edge on a computer).
+const dualSense = createDualSense();
+const DS_KEY = 'koolkat.katKart.dualsense';
+const dsOpts = { on: true, flip: false };
+try {
+  Object.assign(dsOpts, JSON.parse(localStorage.getItem(DS_KEY) || '{}'));
+} catch {
+  // The defaults it is.
+}
+const saveDs = () => {
+  try {
+    localStorage.setItem(DS_KEY, JSON.stringify(dsOpts));
+  } catch {
+    // Only for this visit.
+  }
+};
+katKart.setControllerMotion(() => (dsOpts.on && dualSense.connected ? dualSense.lean : null), { flip: dsOpts.flip });
+function renderDualSense() {
+  const supported = dualSenseSupported();
+  const connected = dualSense.connected || Boolean(dualSense.device?.opened);
+  $('btn-kart-ds').hidden = !supported;
+  $('btn-kart-ds').textContent = connected ? 'Disconnect' : 'Connect DualSense';
+  $('kart-ds-on').checked = dsOpts.on;
+  $('kart-ds-flip').checked = dsOpts.flip;
+  $('kart-ds-on').disabled = $('kart-ds-flip').disabled = !supported;
+  $('kart-ds-status').textContent = !supported
+    ? '(needs Chrome or Edge on a computer)'
+    : dualSense.connected
+      ? `· connected${dualSense.via ? ` (${dualSense.via})` : ''}`
+      : connected
+        ? '· connecting…'
+        : '· plug it in or pair it, then Connect';
+}
+dualSense.onChange(renderDualSense);
+setInterval(() => !$('dialog-kart').open || renderDualSense(), 1000);
+renderDualSense();
+$('btn-kart-ds').addEventListener('click', (e) =>
+  withBusy(e.currentTarget, async () => {
+    if (dualSense.device) await dualSense.disconnect();
+    else if (await dualSense.connect()) toast('🎮 DualSense connected: tilt it like a steering wheel to steer');
+    renderDualSense();
+  })
+);
+$('kart-ds-on').addEventListener('change', (e) => {
+  dsOpts.on = e.target.checked;
+  saveDs();
+});
+$('kart-ds-flip').addEventListener('change', (e) => {
+  dsOpts.flip = e.target.checked;
+  katKart.setControllerMotion(() => (dsOpts.on && dualSense.connected ? dualSense.lean : null), { flip: dsOpts.flip });
+  saveDs();
+});
+
 $('kart-tilt-flip').addEventListener('change', (e) => {
   tiltOpts.flip = e.target.checked;
   applyTiltOpts();

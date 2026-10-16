@@ -124,7 +124,7 @@ export function createApp({
         "base-uri 'none'; frame-ancestors 'none'",
       'X-Content-Type-Options': 'nosniff',
       'Referrer-Policy': 'no-referrer',
-      'Permissions-Policy': 'camera=(self), microphone=(self), geolocation=(self)',
+      'Permissions-Policy': 'camera=(self), microphone=(self), geolocation=(self), hid=(self)',
       'Cross-Origin-Opener-Policy': 'same-origin',
     });
     next();

@@ -1321,13 +1321,7 @@ export function createKatKart(els) {
       if (IOS) sx = -sx; // iPhones report it the other way round
       // The phone's right side down: steer right (or the other way, if you flipped it).
       const lean = Math.max(-1, Math.min(1, (sx / 9.81) * (tilt.flip ? -1 : 1)));
-      // Sensitivity 1 to 10: a full turn at 40° of tilt down to 5°; straight on within a sixth of that.
-      const fullDeg = 40 - ((tilt.sensitivity - 1) * 35) / 9;
-      const FULL = Math.sin((fullDeg * Math.PI) / 180);
-      const DEAD = FULL / 6;
-      const mag = Math.max(0, Math.abs(lean) - DEAD) / (FULL - DEAD);
-      const target = Math.sign(lean) * Math.min(1, mag);
-      tilt.value += (target - tilt.value) * 0.5;
+      tilt.value += (tilt.curve(lean) - tilt.value) * 0.5;
       tilt.seenAt = performance.now();
     },
     listen(on) {
@@ -1336,6 +1330,27 @@ export function createKatKart(els) {
       if (on) window.addEventListener('devicemotion', tilt.handler);
       else window.removeEventListener('devicemotion', tilt.handler);
       tilt.value = 0;
+    },
+    /**
+     * How far to steer for a lean (the sine of the tilt angle): sensitivity 1 to 10 is a
+     * full turn at 40° of tilt down to 5°, and straight on within a sixth of that.
+     */
+    curve(lean) {
+      const fullDeg = 40 - ((tilt.sensitivity - 1) * 35) / 9;
+      const FULL = Math.sin((fullDeg * Math.PI) / 180);
+      const DEAD = FULL / 6;
+      const mag = Math.max(0, Math.abs(lean) - DEAD) / (FULL - DEAD);
+      return Math.sign(lean) * Math.min(1, mag);
+    },
+    // A controller's motion (a PS5 DualSense): a source of lean, and its own flip.
+    pad: null, // () => lean or null
+    padFlip: false,
+    padValue: 0,
+    padSteer() {
+      const lean = tilt.pad?.();
+      if (lean == null) return 0;
+      tilt.padValue += (tilt.curve(lean * (tilt.padFlip ? -1 : 1)) - tilt.padValue) * 0.5;
+      return Math.abs(tilt.padValue) < 0.02 ? 0 : tilt.padValue;
     },
     /** How far to steer from the tilt (0 when it's off, not sideways, or there's no sensor). */
     steer() {
@@ -1464,7 +1479,7 @@ export function createKatKart(els) {
       } else {
         // Touch or keyboard (A/D, arrows); otherwise a controller's D-pad or sticks.
         // (Tilting the phone, held sideways like a steering wheel, steers too.)
-        steer = (input.right ? 1 : 0) - (input.left ? 1 : 0) || gamepadSteer() || tilt.steer();
+        steer = (input.right ? 1 : 0) - (input.left ? 1 : 0) || gamepadSteer() || tilt.padSteer() || tilt.steer();
       }
       const road = onRoad(r.x, r.y);
       let max = road ? 2.6 : 1.1;
@@ -2027,6 +2042,11 @@ export function createKatKart(els) {
     setTilt(on) {
       tilt.enabled = Boolean(on);
       tilt.listen(tilt.enabled && Boolean(race));
+    },
+    /** Steer by tilting a controller: `source()` gives its lean (or null when it's not steering); `flip` turns it round. */
+    setControllerMotion(source, { flip } = {}) {
+      tilt.pad = source;
+      if (flip != null) tilt.padFlip = Boolean(flip);
     },
     /** Tilt options: { flip, sensitivity (1 to 10) }. */
     setTiltOptions({ flip, sensitivity } = {}) {
